@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.intellij.helidon"
-version = "261.0.0"
+version = "262.0.0"
 
 kotlin {
   jvmToolchain(21)
@@ -80,4 +80,3 @@ tasks {
       ?.let { systemProperty("idea.home.path", it) }
   }
 }
-

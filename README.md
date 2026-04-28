@@ -9,6 +9,17 @@ This is the extracted Helidon plugin from JetBrains' `intellij-obsolete-plugins`
 - Imported commit: `b7fc718c8815aaa9f593096a469bda51e7cbcb4a`
 - Imported commit date: `2026-03-31 16:25:44 +0200`
 
+## Install
+
+Add this custom plugin repository in IntelliJ IDEA:
+
+```text
+https://danielkec.github.io/helidon-intellij-plugin/updatePlugins.xml
+```
+
+Use `Settings | Plugins | gear icon | Manage Plugin Repositories... | +`,
+then install `Helidon` from the Plugins dialog.
+
 ## Build
 
 This project is a standalone Gradle IntelliJ Platform plugin project.

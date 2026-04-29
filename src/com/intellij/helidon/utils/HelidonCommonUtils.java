@@ -22,6 +22,8 @@ import com.intellij.psi.search.searches.ReferencesSearch;
 import com.intellij.psi.util.CachedValue;
 import com.intellij.psi.util.CachedValueProvider.Result;
 import com.intellij.psi.util.CachedValuesManager;
+import com.intellij.psi.util.InheritanceUtil;
+import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.uast.UastModificationTracker;
 import com.intellij.uast.UastSmartPointer;
 import com.intellij.util.Processor;
@@ -43,11 +45,13 @@ public final class HelidonCommonUtils {
   }
 
   public static boolean hasHelidonLibrary(Project project) {
-    return JavaLibraryUtil.hasLibraryClass(project, HelidonConstants.ROUTING);
+    return JavaLibraryUtil.hasLibraryClass(project, HelidonConstants.HTTP_ROUTING) ||
+           JavaLibraryUtil.hasLibraryClass(project, HelidonConstants.ROUTING);
   }
 
   public static boolean hasHelidonLibrary(@Nullable Module module) {
-    return JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.ROUTING);
+    return JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.HTTP_ROUTING) ||
+           JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.ROUTING);
   }
 
   public static boolean hasHelidonMPLibrary(@Nullable Module module) {
@@ -72,20 +76,18 @@ public final class HelidonCommonUtils {
       Map<String, UExpression> expressionMap = mapUrlsToServiceInvocations(module, registerMethod);
       for (Map.Entry<String, UExpression> entry : expressionMap.entrySet()) {
         String urlDefinition = entry.getKey();
-        if (StringUtil.isNotEmpty(urlDefinition)) {
-          PsiType type = entry.getValue().getExpressionType();
-          if (type != null) {
-            PsiClassType psiClassType = JavaPsiFacade.getElementFactory(host.getProject()).createType(definedInUClass.getJavaPsi());
-            if (type.isAssignableFrom(psiClassType)) {
-              Set<String> parentUrlPaths = getParentUrlPaths(entry.getValue().getSourcePsi());
-              if (parentUrlPaths.isEmpty()) {
-                allParentPaths.add(urlDefinition);
-              }
-              else {
-                for (String path : parentUrlPaths) {
-                  if (StringUtil.isNotEmpty(path)) {
-                    allParentPaths.add(path + urlDefinition);
-                  }
+        PsiType type = entry.getValue().getExpressionType();
+        if (type != null) {
+          PsiClassType psiClassType = JavaPsiFacade.getElementFactory(host.getProject()).createType(definedInUClass.getJavaPsi());
+          if (type.isAssignableFrom(psiClassType)) {
+            Set<String> parentUrlPaths = getParentUrlPaths(entry.getValue().getSourcePsi());
+            if (parentUrlPaths.isEmpty()) {
+              allParentPaths.add(urlDefinition);
+            }
+            else {
+              for (String path : parentUrlPaths) {
+                if (StringUtil.isNotEmpty(path)) {
+                  allParentPaths.add(path + urlDefinition);
                 }
               }
             }
@@ -101,7 +103,7 @@ public final class HelidonCommonUtils {
     Map<String, UExpression> resultMap = new HashMap<>();
     for (UCallExpression uCallExpression : getUCallExpressions(getRoutingClassReferencesScope(module), registerMethod)) {
       List<UExpression> valueArguments = uCallExpression.getValueArguments();
-      if (valueArguments.size() != 2) continue;
+      if (valueArguments.size() < 2) continue;
       String expressionText = getUExpressionText(valueArguments.get(0));
       if (expressionText != null) {
         resultMap.put(expressionText, valueArguments.get(1));
@@ -147,7 +149,7 @@ public final class HelidonCommonUtils {
 
   public static @Nullable PsiType getRegisteredServiceType(@NotNull UCallExpression callExpression) {
     List<UExpression> arguments = callExpression.getValueArguments();
-    return arguments.size() == 2 ? arguments.get(1).getExpressionType() : null;
+    return arguments.size() >= 2 ? arguments.get(1).getExpressionType() : null;
   }
 
   public static boolean processBuilderRegisterMethodsWithProgress(@NotNull Processor<? super HelidonUrlTargetInfo> processor,
@@ -181,7 +183,7 @@ public final class HelidonCommonUtils {
                                                   @Nullable Module module) {
     if (module == null) return true;
     for (Pair<PsiMethod, HelidonRequestMethods> rulesMethod : getBuilderHttpMethods(module)) {
-      if (!findAndProcessTargets(processor, scope, rulesMethod.first, rulesMethod.second, 0)) return false;
+      if (!findAndProcessTargets(processor, scope, rulesMethod.first, rulesMethod.second, 0, true)) return false;
     }
     return true;
   }
@@ -191,7 +193,19 @@ public final class HelidonCommonUtils {
                                                @NotNull PsiMethod psiMethod,
                                                @NotNull HelidonRequestMethods requestMethods,
                                                int expressionNum) {
-    for (UExpression expression : findExpressions(psiMethod, scope, expressionNum)) {
+    return findAndProcessTargets(processor, scope, psiMethod, requestMethods, expressionNum, false);
+  }
+
+  private static boolean findAndProcessTargets(@NotNull Processor<? super HelidonUrlTargetInfo> processor,
+                                               @NotNull SearchScope scope,
+                                               @NotNull PsiMethod psiMethod,
+                                               @NotNull HelidonRequestMethods requestMethods,
+                                               int expressionNum,
+                                               boolean skipServiceClasses) {
+    for (UCallExpression callExpression : getUCallExpressions(scope, psiMethod)) {
+      if (skipServiceClasses && isInsideHttpServiceClass(callExpression)) continue;
+      UExpression expression = callExpression.getArgumentForParameter(expressionNum);
+      if (expression == null) continue;
       if (!processExpressions(processor, requestMethods, expression)) return false;
     }
     return true;
@@ -234,12 +248,13 @@ public final class HelidonCommonUtils {
     return true;
   }
 
-  private static @NotNull Set<UExpression> findExpressions(@NotNull PsiMethod psiMethod,
-                                                           @NotNull SearchScope scope,
-                                                           int expNum) {
-    return getUCallExpressions(scope, psiMethod).stream().
-      map(uCallExpression -> uCallExpression.getArgumentForParameter(expNum))
-      .filter(Objects::nonNull).collect(Collectors.toSet());
+  private static boolean isInsideHttpServiceClass(@NotNull UCallExpression callExpression) {
+    PsiElement sourcePsi = callExpression.getSourcePsi();
+    if (sourcePsi == null) return false;
+    PsiClass psiClass = PsiTreeUtil.getParentOfType(sourcePsi, PsiClass.class);
+    return psiClass != null &&
+           (InheritanceUtil.isInheritor(psiClass, HelidonConstants.HTTP_SERVICE) ||
+            InheritanceUtil.isInheritor(psiClass, HelidonConstants.SERVICE));
   }
 
   private static boolean processTargets(@NotNull Processor<? super HelidonUrlTargetInfo> processor,
@@ -265,26 +280,34 @@ public final class HelidonCommonUtils {
 
   private static @NotNull Collection<Pair<PsiMethod, HelidonRequestMethods>> getRulesHttpMethods(@NotNull Module module) {
     return CachedValuesManager.getManager(module.getProject())
-      .getCachedValue(module, () -> Result.createSingleDependency(getHttpMethods(module, HelidonConstants.ROUTING_RULES),
+      .getCachedValue(module, () -> Result.createSingleDependency(getHttpMethods(module,
+                                                                                 HelidonConstants.HTTP_RULES,
+                                                                                 HelidonConstants.ROUTING_RULES),
                                                                   JavaLibraryModificationTracker.getInstance(module.getProject())));
   }
 
   private static @NotNull Collection<Pair<PsiMethod, HelidonRequestMethods>> getBuilderHttpMethods(@NotNull Module module) {
     return CachedValuesManager.getManager(module.getProject())
-      .getCachedValue(module, () -> Result.createSingleDependency(getHttpMethods(module, HelidonConstants.ROUTING_BUILDER),
+      .getCachedValue(module, () -> Result.createSingleDependency(getHttpMethods(module,
+                                                                                 HelidonConstants.HTTP_ROUTING_BUILDER,
+                                                                                 HelidonConstants.ROUTING_BUILDER),
                                                                   JavaLibraryModificationTracker.getInstance(module.getProject())));
   }
 
-  private static @NotNull Collection<Pair<PsiMethod, HelidonRequestMethods>> getHttpMethods(@NotNull Module module, @NotNull String containerClass) {
-    PsiClass routingBuilderClass =
-      JavaPsiFacade.getInstance(module.getProject()).findClass(containerClass, module.getModuleRuntimeScope(true));
+  private static @NotNull Collection<Pair<PsiMethod, HelidonRequestMethods>> getHttpMethods(@NotNull Module module,
+                                                                                            @NotNull String... containerClasses) {
+    Set<Pair<PsiMethod, HelidonRequestMethods>> methods = new HashSet<>();
+    for (String containerClass : containerClasses) {
+      PsiClass routingBuilderClass = findClass(module, containerClass);
 
-    if (routingBuilderClass == null) return Collections.emptySet();
+      if (routingBuilderClass == null) continue;
 
-    return Arrays.stream(routingBuilderClass.getMethods()).filter(method -> {
-      return getHttpMethodsPattern().accepts(method) ||
-             getAnyOfMethodPattern().accepts(method);
-    }).map(method -> Pair.create(method, HelidonRequestMethods.getTypeByMethodName(method.getName()))).collect(Collectors.toSet());
+      Arrays.stream(routingBuilderClass.getAllMethods()).filter(method -> {
+        return getHttpMethodsPattern().accepts(method) ||
+               getAnyOfMethodPattern().accepts(method);
+      }).map(method -> Pair.create(method, HelidonRequestMethods.getTypeByMethodName(method.getName()))).forEach(methods::add);
+    }
+    return methods;
   }
 
   private static @NotNull Set<PsiMethod> getBuilderRegisterMethod(@NotNull Module module) {
@@ -295,12 +318,16 @@ public final class HelidonCommonUtils {
 
   private static @NotNull Set<PsiMethod> getRegisterMethod(@NotNull Module module) {
     Set<PsiMethod> methods = new HashSet<>();
-    String[] registerClasses = {HelidonConstants.ROUTING_RULES}; //HelidonConstants.ROUTING_BUILDER
+    String[] registerClasses = {
+      HelidonConstants.HTTP_RULES,
+      HelidonConstants.HTTP_ROUTING_BUILDER,
+      HelidonConstants.ROUTING_RULES,
+      HelidonConstants.ROUTING_BUILDER
+    };
 
     for (String registerClass : registerClasses) {
 
-      PsiClass routingBuilderClass =
-        JavaPsiFacade.getInstance(module.getProject()).findClass(registerClass, module.getModuleRuntimeScope(true));
+      PsiClass routingBuilderClass = findClass(module, registerClass);
 
       if (routingBuilderClass == null) continue;
       for (PsiMethod psiMethod : routingBuilderClass.findMethodsByName("register", false)) {
@@ -321,15 +348,31 @@ public final class HelidonCommonUtils {
   }
 
   private static GlobalSearchScope calculateRoutingClassReferencesScope(@NotNull Module module) {
-    PsiClass routingClass =
-      JavaPsiFacade.getInstance(module.getProject()).findClass(HelidonConstants.ROUTING, module.getModuleRuntimeScope(true));
-
-    if (routingClass == null) return GlobalSearchScope.EMPTY_SCOPE;
-
-    Set<VirtualFile> virtualFiles = ReferencesSearch.search(routingClass, module.getModuleWithDependenciesScope()).findAll().stream()
-      .map(reference -> reference.getElement().getContainingFile().getVirtualFile())
-      .filter(Objects::nonNull)
-      .collect(Collectors.toSet());
+    Set<VirtualFile> virtualFiles = new HashSet<>();
+    for (String routingReferenceClass : getRoutingReferenceClasses()) {
+      PsiClass routingClass = findClass(module, routingReferenceClass);
+      if (routingClass == null) continue;
+      ReferencesSearch.search(routingClass, module.getModuleWithDependenciesScope()).findAll().stream()
+        .map(reference -> reference.getElement().getContainingFile().getVirtualFile())
+        .filter(Objects::nonNull)
+        .forEach(virtualFiles::add);
+    }
     return virtualFiles.isEmpty() ? GlobalSearchScope.EMPTY_SCOPE : GlobalSearchScope.filesScope(module.getProject(), virtualFiles);
+  }
+
+  private static @NotNull List<String> getRoutingReferenceClasses() {
+    return Arrays.asList(HelidonConstants.WEB_SERVER,
+                         HelidonConstants.HTTP_ROUTING,
+                         HelidonConstants.HTTP_ROUTING_BUILDER,
+                         HelidonConstants.HTTP_RULES,
+                         HelidonConstants.HTTP_SERVICE,
+                         HelidonConstants.ROUTING,
+                         HelidonConstants.ROUTING_BUILDER,
+                         HelidonConstants.ROUTING_RULES,
+                         HelidonConstants.SERVICE);
+  }
+
+  private static @Nullable PsiClass findClass(@NotNull Module module, @NotNull String className) {
+    return JavaPsiFacade.getInstance(module.getProject()).findClass(className, module.getModuleRuntimeScope(true));
   }
 }

@@ -66,7 +66,8 @@ public final class HelidonClassAnnotator extends RelatedItemLineMarkerProvider {
     if (psiElement instanceof PsiIdentifier) {
       final PsiElement parent = psiElement.getParent();
       if (parent instanceof PsiClass) {
-        if (InheritanceUtil.isInheritor((PsiClass)parent, HelidonConstants.SERVICE)) {
+        if (InheritanceUtil.isInheritor((PsiClass)parent, HelidonConstants.HTTP_SERVICE) ||
+            InheritanceUtil.isInheritor((PsiClass)parent, HelidonConstants.SERVICE)) {
           Set<UExpression> calls =
             getServiceRegisterExpressions(module, JavaPsiFacade.getInstance(module.getProject()).getElementFactory()
               .createType((PsiClass)parent));

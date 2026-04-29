@@ -4,14 +4,24 @@ package com.intellij.helidon.constants;
 import org.jetbrains.annotations.NonNls;
 
 public interface HelidonConstants {
-   @NonNls String ROUTING = "io.helidon.webserver.Routing";
-   @NonNls String ROUTING_BUILDER = "io.helidon.webserver.Routing.Builder";
-   @NonNls String ROUTING_RULES = "io.helidon.webserver.Routing.Rules";
-   @NonNls String SERVICE = "io.helidon.webserver.Service";
-   @NonNls String HANDLER = "io.helidon.webserver.Handler";
-   @NonNls String HTTP_REQUEST_PATH = "io.helidon.common.http.HttpRequest.Path";
-   @NonNls String HTTP_SERVER_REQUEST = "io.helidon.webserver.ServerRequest";
-   @NonNls String HTTP_SERVER_RESPONSE = "io.helidon.webserver.ServerResponse";
+  @NonNls String WEB_SERVER = "io.helidon.webserver.WebServer";
+  @NonNls String HTTP_ROUTING = "io.helidon.webserver.http.HttpRouting";
+  @NonNls String HTTP_ROUTING_BUILDER = "io.helidon.webserver.http.HttpRouting.Builder";
+  @NonNls String HTTP_RULES = "io.helidon.webserver.http.HttpRules";
+  @NonNls String HTTP_SERVICE = "io.helidon.webserver.http.HttpService";
+  @NonNls String HTTP_HANDLER = "io.helidon.webserver.http.Handler";
+  @NonNls String HTTP_SERVER_REQUEST = "io.helidon.webserver.http.ServerRequest";
+  @NonNls String HTTP_SERVER_RESPONSE = "io.helidon.webserver.http.ServerResponse";
+  @NonNls String HTTP_PARAMETERS = "io.helidon.common.parameters.Parameters";
+
+  @NonNls String ROUTING = "io.helidon.webserver.Routing";
+  @NonNls String ROUTING_BUILDER = "io.helidon.webserver.Routing.Builder";
+  @NonNls String ROUTING_RULES = "io.helidon.webserver.Routing.Rules";
+  @NonNls String SERVICE = "io.helidon.webserver.Service";
+  @NonNls String HANDLER = "io.helidon.webserver.Handler";
+  @NonNls String HTTP_REQUEST_PATH = "io.helidon.common.http.HttpRequest.Path";
+  @NonNls String LEGACY_HTTP_SERVER_REQUEST = "io.helidon.webserver.ServerRequest";
+  @NonNls String LEGACY_HTTP_SERVER_RESPONSE = "io.helidon.webserver.ServerResponse";
 
   @NonNls String MP_MAIN = "io.helidon.microprofile.cdi.Main";
 }

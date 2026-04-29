@@ -2,7 +2,6 @@
 package com.intellij.helidon.providers
 
 import com.intellij.helidon.constants.HelidonConstants
-import com.intellij.helidon.constants.HelidonConstants.HTTP_REQUEST_PATH
 import com.intellij.helidon.utils.HelidonCommonUtils
 import com.intellij.microservices.jvm.url.uastUrlPathReferenceInjectorForScheme
 import com.intellij.microservices.url.FrameworkUrlPathSpecification
@@ -16,7 +15,6 @@ import com.intellij.microservices.url.PlaceholderSplitEscaper
 import com.intellij.microservices.jvm.pathvars.PathVariableReferenceProvider
 import com.intellij.microservices.jvm.url.UastUrlPathReferenceProvider
 import com.intellij.patterns.PsiJavaPatterns.psiMethod
-import com.intellij.patterns.PsiMethodPattern
 import com.intellij.patterns.StandardPatterns
 import com.intellij.patterns.StandardPatterns.or
 import com.intellij.patterns.uast.UExpressionPattern
@@ -27,18 +25,28 @@ import com.intellij.psi.CommonClassNames.JAVA_LANG_ITERABLE
 import com.intellij.psi.CommonClassNames.JAVA_LANG_STRING
 import org.jetbrains.uast.UExpression
 
-private val handlerMethods: List<String> = listOf("get", "post", "put", "delete", "options", "head", "trace", "any")
+private val handlerMethods: List<String> = listOf("get", "post", "put", "patch", "delete", "options", "head", "trace", "any")
 
-internal val httpMethodsPattern: PsiMethodPattern = psiMethod()
-  .withName(StandardPatterns.string().oneOf(handlerMethods)).withParameters(
-    JAVA_LANG_STRING, HelidonConstants.HANDLER + "...")
+internal val httpMethodsPattern = or(
+  psiMethod()
+    .withName(StandardPatterns.string().oneOf(handlerMethods))
+    .withParameters(JAVA_LANG_STRING, HelidonConstants.HTTP_HANDLER + "..."),
+  psiMethod()
+    .withName(StandardPatterns.string().oneOf(handlerMethods))
+    .withParameters(JAVA_LANG_STRING, HelidonConstants.HANDLER + "...")
+)
 
-internal val anyOfMethodPattern: PsiMethodPattern = psiMethod()
+internal val anyOfMethodPattern = psiMethod()
   .withName("anyOf")
   .withParameters(JAVA_LANG_ITERABLE, JAVA_LANG_STRING, HelidonConstants.HANDLER + "...")
-internal val registerMethodPattern: PsiMethodPattern = psiMethod()
-  .withName("register")
-  .withParameters(JAVA_LANG_STRING, HelidonConstants.SERVICE + "...")
+internal val registerMethodPattern = or(
+  psiMethod()
+    .withName("register")
+    .withParameters(JAVA_LANG_STRING, HelidonConstants.HTTP_SERVICE + "..."),
+  psiMethod()
+    .withName("register")
+    .withParameters(JAVA_LANG_STRING, HelidonConstants.SERVICE + "...")
+)
 
 internal fun httpRulesMethods(elementPattern: UExpressionPattern<UExpression, *>): UExpressionPattern<*, *> =
   elementPattern.callParameter(0, callExpression().withResolvedMethod(httpMethodsPattern, false))
@@ -68,9 +76,14 @@ internal class HelidonReferenceContributor : PsiReferenceContributor() {
                                                PathVariableReferenceProvider.TO_PATH_VARIABLE)
 
     val httpRequestPathParam = injectionHostUExpression().callParameter(0,
-                                                                        callExpression().withResolvedMethod(
-                                                                          psiMethod().withName("param").definedInClass(HTTP_REQUEST_PATH),
-                                                                          false))
+                                                                        callExpression().withResolvedMethod(or(
+                                                                          psiMethod().withName("get")
+                                                                            .definedInClass(HelidonConstants.HTTP_PARAMETERS),
+                                                                          psiMethod().withName("first")
+                                                                            .definedInClass(HelidonConstants.HTTP_PARAMETERS),
+                                                                          psiMethod().withName("param")
+                                                                            .definedInClass(HelidonConstants.HTTP_REQUEST_PATH)
+                                                                        ), false))
     registrar.registerUastReferenceProvider(httpRequestPathParam, HelidonHttpRequestPathParamReferenceProvider.INSTANCE)
   }
 }

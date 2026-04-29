@@ -38,6 +38,7 @@ public final class HelidonUrlResolver extends HttpUrlResolver {
 
       GlobalSearchScope scope = HelidonCommonUtils.getRoutingClassReferencesScope(module);
       if (!HelidonCommonUtils.processBuilderRegisterMethods(collectProcessor, scope, module)) break;
+      if (!HelidonCommonUtils.processBuilderHttpMethods(collectProcessor, scope, module)) break;
       if (!HelidonCommonUtils.processRulesHttpMethods(collectProcessor, scope, module)) break;
     }
     return new ArrayList<>(collectProcessor.getResults());

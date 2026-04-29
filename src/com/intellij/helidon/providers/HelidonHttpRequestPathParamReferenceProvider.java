@@ -59,8 +59,21 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
     if (declaration == null) return false;
     PsiParameter[] parameters = declaration.getParameterList().getParameters();
     return parameters.length == 2
-           && parameters[0].getType().isAssignableFrom(getTypeByName(HelidonConstants.HTTP_SERVER_REQUEST, declaration.getProject()))
-           && parameters[1].getType().isAssignableFrom(getTypeByName(HelidonConstants.HTTP_SERVER_RESPONSE, declaration.getProject()));
+           && isAssignableFromAny(parameters[0].getType(), declaration.getProject(),
+                                  HelidonConstants.HTTP_SERVER_REQUEST,
+                                  HelidonConstants.LEGACY_HTTP_SERVER_REQUEST)
+           && isAssignableFromAny(parameters[1].getType(), declaration.getProject(),
+                                  HelidonConstants.HTTP_SERVER_RESPONSE,
+                                  HelidonConstants.LEGACY_HTTP_SERVER_RESPONSE);
+  }
+
+  private static boolean isAssignableFromAny(@NotNull PsiType type, @NotNull Project project, @NotNull String... classNames) {
+    for (String className : classNames) {
+      if (type.isAssignableFrom(getTypeByName(className, project))) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static @NotNull PsiClassType getTypeByName(@NotNull String request, @NotNull Project project) {

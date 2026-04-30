@@ -40,6 +40,12 @@ require_command() {
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$repo_root"
 
+export GIT_EDITOR=true
+export GIT_SEQUENCE_EDITOR=true
+export GIT_MERGE_AUTOEDIT=no
+export GIT_TERMINAL_PROMPT=0
+export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o BatchMode=yes}"
+
 dry_run=false
 bump="patch"
 bump_set=false
@@ -311,23 +317,23 @@ if readme.exists():
 
 rewrite("docs/updatePlugins.xml",
         r'^(\s+url=")[^"]+(")$',
-        rf'\g<1>{release_url}\2',
+        rf'\g<1>{release_url}\g<2>',
         "plugin release URL")
 
 rewrite("docs/updatePlugins.xml",
         r'^(\s+version=")[^"]+(">)$',
-        rf'\g<1>{version}\2',
+        rf'\g<1>{version}\g<2>',
         "plugin update version")
 
 if until_build:
     rewrite("docs/updatePlugins.xml",
             r'^(\s+<idea-version since-build=")[^"]+(" until-build=")[^"]+("/>)$',
-            rf'\g<1>{since_build}\2{until_build}\3',
+            rf'\g<1>{since_build}\g<2>{until_build}\g<3>',
             "IDE compatibility bounds")
 else:
     rewrite("docs/updatePlugins.xml",
             r'^(\s+<idea-version since-build=")[^"]+("[^/]*/>)$',
-            rf'\g<1>{since_build}\2',
+            rf'\g<1>{since_build}\g<2>',
             "IDE since-build")
 PY
 
@@ -339,8 +345,8 @@ echo "Building Helidon plugin $new_version..."
 git diff --check
 
 git add build.gradle.kts README.md docs/updatePlugins.xml
-git commit -m "Release $tag"
-git tag -a "$tag" -m "Release $tag"
+git -c commit.gpgsign=false commit -m "Release $tag"
+git -c tag.gpgSign=false tag -a "$tag" -m "Release $tag"
 
 git push origin "$branch"
 git push origin "$tag"

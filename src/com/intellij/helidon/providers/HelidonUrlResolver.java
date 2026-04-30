@@ -14,6 +14,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.util.CommonProcessors.CollectProcessor;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Locale;
@@ -21,14 +22,14 @@ import java.util.Set;
 
 @Presentation(typeName = HelidonBundle.HELIDON_LIBRARY, icon = "com.intellij.helidon.HelidonIcons.Helidon")
 public final class HelidonUrlResolver extends HttpUrlResolver {
-  private final Project myProject;
-  private final Iterable<UrlTargetInfo> myVariants;
+  private final @NotNull Project myProject;
+  private final @Nullable Iterable<UrlTargetInfo> myVariants;
 
-  public HelidonUrlResolver(Project project) {
+  public HelidonUrlResolver(@NotNull Project project) {
     this(project, null);
   }
 
-  HelidonUrlResolver(Project project, Iterable<UrlTargetInfo> variants) {
+  HelidonUrlResolver(@NotNull Project project, @Nullable Iterable<UrlTargetInfo> variants) {
     myProject = project;
     myVariants = variants;
   }

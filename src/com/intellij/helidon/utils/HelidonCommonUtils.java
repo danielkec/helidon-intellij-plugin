@@ -381,7 +381,9 @@ public final class HelidonCommonUtils {
                                                 @Nullable Module module) {
     if (module == null) return true;
     for (Pair<PsiMethod, HelidonRequestMethods> rulesMethod : getRulesHttpMethods(module)) {
-      if (!findAndProcessTargets(processor, scope, rulesMethod.first, rulesMethod.second, 0)) return false;
+      if (!findAndProcessTargets(processor, scope, rulesMethod.first, rulesMethod.second, getPathArgumentIndex(rulesMethod.second))) {
+        return false;
+      }
     }
     return true;
   }
@@ -391,9 +393,15 @@ public final class HelidonCommonUtils {
                                                   @Nullable Module module) {
     if (module == null) return true;
     for (Pair<PsiMethod, HelidonRequestMethods> rulesMethod : getBuilderHttpMethods(module)) {
-      if (!findAndProcessTargets(processor, scope, rulesMethod.first, rulesMethod.second, 0, true)) return false;
+      if (!findAndProcessTargets(processor, scope, rulesMethod.first, rulesMethod.second, getPathArgumentIndex(rulesMethod.second), true)) {
+        return false;
+      }
     }
     return true;
+  }
+
+  private static int getPathArgumentIndex(@NotNull HelidonRequestMethods requestMethods) {
+    return requestMethods == HelidonRequestMethods.ANY_OF ? 1 : 0;
   }
 
   private static boolean findAndProcessTargets(@NotNull Processor<? super HelidonUrlTargetInfo> processor,

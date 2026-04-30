@@ -50,9 +50,14 @@ internal val httpMethodsPattern = or(
     .withParameters(JAVA_LANG_STRING, HelidonConstants.HANDLER + "...")
 )
 
-internal val anyOfMethodPattern = psiMethod()
-  .withName("anyOf")
-  .withParameters(JAVA_LANG_ITERABLE, JAVA_LANG_STRING, HelidonConstants.HANDLER + "...")
+internal val anyOfMethodPattern = or(
+  psiMethod()
+    .withName("anyOf")
+    .withParameters(JAVA_LANG_ITERABLE, JAVA_LANG_STRING, HelidonConstants.HTTP_HANDLER + "..."),
+  psiMethod()
+    .withName("anyOf")
+    .withParameters(JAVA_LANG_ITERABLE, JAVA_LANG_STRING, HelidonConstants.HANDLER + "...")
+)
 internal val registerMethodPattern = psiMethod()
   .withName("register")
   .with(object : PatternCondition<PsiMethod>("pathBasedHelidonRegisterMethod") {

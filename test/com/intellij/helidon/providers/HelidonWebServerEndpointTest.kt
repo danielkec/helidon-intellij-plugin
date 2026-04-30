@@ -36,6 +36,50 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     assertTrue(endpoints.any { it.type == HelidonRequestMethods.PATCH && it.urlDefinition == "/hello/{name}" })
   }
 
+  fun testHelidon4AnyOfMethodPatternAcceptsHttpHandler() {
+    val rulesClass = addHelidon4AnyOfStubs().first
+
+    val anyOfMethod = rulesClass.methods.single { it.name == "anyOf" }
+
+    assertTrue(anyOfMethodPattern.accepts(anyOfMethod))
+  }
+
+  fun testHelidon4AnyOfRouteUsesPathArgument() {
+    addHelidon4AnyOfStubs()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.webserver.http.HttpRouting;
+      import java.util.List;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.anyOf(List.of("GET", "POST"), "/multi/{name}", (req, res) -> {});
+        }
+      }
+    """.trimIndent())
+
+    val endpoints = collectBuilderEndpoints()
+
+    assertTrue(endpoints.any { it.type == HelidonRequestMethods.ANY_OF && it.urlDefinition == "/multi/{name}" })
+  }
+
+  fun testHelidon4AnyOfRulesRouteUsesPathArgument() {
+    addHelidon4AnyOfStubs()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.webserver.http.HttpRules;
+      import java.util.List;
+
+      class GreetingService {
+        void routing(HttpRules rules) {
+          rules.anyOf(List.of("GET", "POST"), "/multi/{name}", (req, res) -> {});
+        }
+      }
+    """.trimIndent())
+
+    val endpoints = collectServiceEndpoints(myFixture.findClass("GreetingService"))
+
+    assertTrue(endpoints.any { it.type == HelidonRequestMethods.ANY_OF && it.urlDefinition == "/multi/{name}" })
+  }
+
   fun testRegisteredHelidon4ServiceEndpointsKeepParentPath() {
     myFixture.configureByText("Main.java", """
       import io.helidon.webserver.http.HttpRouting;
@@ -441,5 +485,33 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     val module = ModuleUtilCore.findModuleForPsiElement(myFixture.file)!!
     assertTrue(HelidonCommonUtils.processRulesHttpMethods(processor, LocalSearchScope(serviceClass), module))
     return processor.results
+  }
+
+  private fun addHelidon4AnyOfStubs(): Pair<PsiClass, PsiClass> {
+    val handlerClass = myFixture.addClass("""
+      package io.helidon.webserver.http;
+
+      public interface Handler {
+        void handle(Object request, Object response);
+      }
+    """.trimIndent())
+    val rulesClass = myFixture.addClass("""
+      package io.helidon.webserver.http;
+
+      public interface HttpRules {
+        HttpRules anyOf(java.lang.Iterable<String> methods, String path, Handler... handlers);
+      }
+    """.trimIndent())
+    val routingClass = myFixture.addClass("""
+      package io.helidon.webserver.http;
+
+      public interface HttpRouting {
+        interface Builder extends HttpRules {
+          Builder anyOf(java.lang.Iterable<String> methods, String path, Handler... handlers);
+        }
+      }
+    """.trimIndent())
+    assertNotNull(handlerClass)
+    return Pair(rulesClass, routingClass)
   }
 }

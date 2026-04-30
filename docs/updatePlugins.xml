@@ -2,8 +2,8 @@
 <plugins>
   <plugin
       id="com.intellij.helidon"
-      url="https://github.com/danielkec/helidon-intellij-plugin/releases/download/v262.0.1/Helidon-262.0.1.zip"
-      version="262.0.1">
+      url="https://github.com/danielkec/helidon-intellij-plugin/releases/download/v262.0.2/Helidon-262.0.2.zip"
+      version="262.0.2">
     <name>Helidon</name>
     <idea-version since-build="261" until-build="261.*"/>
   </plugin>

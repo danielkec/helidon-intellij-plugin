@@ -129,12 +129,13 @@ public final class HelidonCommonUtils {
   private static @NotNull List<ServiceRegistration> calculateServiceRegistrations(@NotNull Module module) {
     List<ServiceRegistration> result = new ArrayList<>();
     for (PsiMethod registerMethod : getBuilderRegisterMethod(module)) {
-      result.addAll(getServiceRegistrations(module, registerMethod));
+      result.addAll(calculateServiceRegistrationsForMethod(module, registerMethod));
     }
     return Collections.unmodifiableList(result);
   }
 
-  private static @NotNull List<ServiceRegistration> getServiceRegistrations(@NotNull Module module, @NotNull PsiMethod registerMethod) {
+  private static @NotNull List<ServiceRegistration> calculateServiceRegistrationsForMethod(@NotNull Module module,
+                                                                                           @NotNull PsiMethod registerMethod) {
     List<ServiceRegistration> result = new ArrayList<>();
     for (UCallExpression uCallExpression : getUCallExpressions(getRoutingClassReferencesScope(module), registerMethod)) {
       List<UExpression> valueArguments = uCallExpression.getValueArguments();

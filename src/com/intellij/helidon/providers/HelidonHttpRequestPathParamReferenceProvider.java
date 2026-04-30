@@ -95,16 +95,8 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
     PsiMethod routeMethod = methodCallExpression.resolveMethod();
     if (routeMethod == null) return true;
 
-    int pathArgumentIndex;
-    if (getHttpMethodsPattern().accepts(routeMethod) || isPathRegisterMethodCall(methodCallExpression, routeMethod)) {
-      pathArgumentIndex = 0;
-    }
-    else if (getAnyOfMethodPattern().accepts(routeMethod)) {
-      pathArgumentIndex = 1;
-    }
-    else {
-      return true;
-    }
+    int pathArgumentIndex = getRoutePathArgumentIndex(routeMethod);
+    if (pathArgumentIndex < 0) return true;
 
     PsiExpression[] expressions = methodCallExpression.getArgumentList().getExpressions();
     if (expressions.length <= pathArgumentIndex ||
@@ -120,13 +112,13 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
     return true;
   }
 
-  private static boolean isPathRegisterMethodCall(@NotNull PsiMethodCallExpression methodCallExpression,
-                                                  @NotNull PsiMethod routeMethod) {
-    if (!getRegisterMethodPattern().accepts(routeMethod)) return false;
-    PsiExpression[] expressions = methodCallExpression.getArgumentList().getExpressions();
-    if (expressions.length == 0) return false;
-    PsiType pathArgumentType = expressions[0].getType();
-    return pathArgumentType != null && pathArgumentType.equalsToText(CommonClassNames.JAVA_LANG_STRING);
+  private static int getRoutePathArgumentIndex(@NotNull PsiMethod routeMethod) {
+    if (getHttpMethodsPattern().accepts(routeMethod)) return 0;
+    if (getAnyOfMethodPattern().accepts(routeMethod)) return 1;
+    if (!getRegisterMethodPattern().accepts(routeMethod)) return -1;
+
+    PsiParameter[] parameters = routeMethod.getParameterList().getParameters();
+    return parameters.length > 0 && parameters[0].getType().equalsToText(CommonClassNames.JAVA_LANG_STRING) ? 0 : -1;
   }
 
   private static boolean processPathVariableDefinitions(@NotNull PsiElement expression,

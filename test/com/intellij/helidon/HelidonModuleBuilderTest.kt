@@ -9,6 +9,7 @@ import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase4
 import com.intellij.util.lang.JavaVersion
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -98,7 +99,14 @@ class HelidonModuleBuilderTest : LightJavaCodeInsightFixtureTestCase4(LightJavaC
         "targetCompatibility = JavaVersion.VERSION_21",
         "io.helidon:helidon-dependencies:4.4.1",
         "runtimeOnly('io.smallrye:jandex')",
-        "testImplementation('io.helidon.microprofile.testing:helidon-microprofile-testing-junit5')"
+        "testImplementation('io.helidon.microprofile.testing:helidon-microprofile-testing-junit5')",
+        "testCompileOnly('org.junit.jupiter:junit-jupiter-api')",
+        "testRuntimeOnly('org.junit.jupiter:junit-jupiter-engine')"
+      )
+      expectFileDoesNotContain(
+        "build.gradle",
+        "testCompileOnly('org.junit.jupiter:junit-jupiter-api:')",
+        "testRuntimeOnly('org.junit.jupiter:junit-jupiter-engine:')"
       )
       expectFileContains("gradle/wrapper/gradle-wrapper.properties", "gradle-9.2.0-bin.zip")
       if (generateLanguage == "kotlin") {
@@ -112,6 +120,14 @@ class HelidonModuleBuilderTest : LightJavaCodeInsightFixtureTestCase4(LightJavaC
     val actual = fixture.file.text
     expectedSnippets.forEach {
       assertTrue("Expected $path to contain:\n$it\n\nActual content:\n$actual", actual.contains(it))
+    }
+  }
+
+  private fun expectFileDoesNotContain(path: String, vararg unexpectedSnippets: String) {
+    fixture.configureFromTempProjectFile(path)
+    val actual = fixture.file.text
+    unexpectedSnippets.forEach {
+      assertFalse("Expected $path to not contain:\n$it\n\nActual content:\n$actual", actual.contains(it))
     }
   }
 

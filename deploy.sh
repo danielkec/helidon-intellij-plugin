@@ -254,8 +254,8 @@ Artifact:         $asset
 
 Commands that would run:
   ./gradlew clean buildPlugin
-  git commit -m "Release $tag"
-  git tag -a "$tag" -m "Release $tag"
+  git -c commit.gpgsign=false commit -m "Release $tag"
+  git -c tag.gpgSign=false tag -a "$tag" -m "Release $tag"
   git push origin "$branch"
   git push origin "$tag"
   gh release create "$tag" "$asset" --repo "$github_repo" --title "Helidon $new_version" --notes "Helidon IntelliJ Plugin $new_version" --verify-tag

@@ -42,10 +42,16 @@ internal val anyOfMethodPattern = psiMethod()
 internal val registerMethodPattern = or(
   psiMethod()
     .withName("register")
-    .withParameters(JAVA_LANG_STRING, HelidonConstants.HTTP_SERVICE + "..."),
+    .definedInClass(HelidonConstants.HTTP_RULES),
   psiMethod()
     .withName("register")
-    .withParameters(JAVA_LANG_STRING, HelidonConstants.SERVICE + "...")
+    .definedInClass(HelidonConstants.HTTP_ROUTING_BUILDER),
+  psiMethod()
+    .withName("register")
+    .definedInClass(HelidonConstants.ROUTING_RULES),
+  psiMethod()
+    .withName("register")
+    .definedInClass(HelidonConstants.ROUTING_BUILDER)
 )
 
 internal fun httpRulesMethods(elementPattern: UExpressionPattern<UExpression, *>): UExpressionPattern<*, *> =

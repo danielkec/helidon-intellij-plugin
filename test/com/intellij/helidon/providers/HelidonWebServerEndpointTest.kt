@@ -6,6 +6,7 @@ import com.intellij.helidon.utils.HelidonCommonUtils
 import com.intellij.helidon.utils.HelidonUrlTargetInfo
 import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.psi.PsiClass
+import com.intellij.psi.PsiElement
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.LocalSearchScope
 import com.intellij.util.CommonProcessors.CollectProcessor
@@ -67,6 +68,115 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     })
   }
 
+  fun testMultiServiceHelidon4RegistrationKeepsParentPathForEveryService() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.HttpRules;
+      import io.helidon.webserver.http.HttpService;
+      import io.helidon.webserver.http.ServerRequest;
+      import io.helidon.webserver.http.ServerResponse;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.register("/api", new AlphaService(), new BetaService());
+        }
+      }
+
+      class AlphaService implements HttpService {
+        @Override
+        public void routing(HttpRules rules) {
+          rules.get("/alpha/{name}", this::alpha);
+        }
+
+        void alpha(ServerRequest request, ServerResponse response) {
+        }
+      }
+
+      class BetaService implements HttpService {
+        @Override
+        public void routing(HttpRules rules) {
+          rules.get("/beta/{name}", this::beta);
+        }
+
+        void beta(ServerRequest request, ServerResponse response) {
+        }
+      }
+    """.trimIndent())
+
+    val alphaEndpoints = collectServiceEndpoints(myFixture.findClass("AlphaService"))
+    val betaEndpoints = collectServiceEndpoints(myFixture.findClass("BetaService"))
+
+    assertTrue(alphaEndpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/api" && it.urlDefinition == "/alpha/{name}"
+    })
+    assertTrue(betaEndpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/api" && it.urlDefinition == "/beta/{name}"
+    })
+  }
+
+  fun testConfigBuilderRoutingEndpointsAreDiscoveredThroughRoutingReferenceScope() {
+    val webServerConfigFile = myFixture.addFileToProject("WebServerConfigRoutes.java", """
+      import io.helidon.webserver.WebServerConfig;
+
+      class WebServerConfigRoutes {
+        static void configure() {
+          WebServerConfig.builder()
+            .routing(routing -> routing.get("/config/{name}", (req, res) -> {}));
+        }
+      }
+    """.trimIndent())
+    val listenerConfigFile = myFixture.addFileToProject("ListenerConfigRoutes.java", """
+      import io.helidon.webserver.ListenerConfig;
+
+      class ListenerConfigRoutes {
+        static void configure() {
+          ListenerConfig.builder()
+            .routing(routing -> routing.get("/listener/{name}", (req, res) -> {}));
+        }
+      }
+    """.trimIndent())
+    val module = ModuleUtilCore.findModuleForPsiElement(webServerConfigFile)!!
+
+    val scope = HelidonCommonUtils.getRoutingClassReferencesScope(module)
+    assertTrue(scope.contains(webServerConfigFile.virtualFile))
+    assertTrue(scope.contains(listenerConfigFile.virtualFile))
+
+    val endpoints = collectBuilderEndpoints(scope, webServerConfigFile)
+    assertTrue(endpoints.any { it.type == HelidonRequestMethods.GET && it.urlDefinition == "/config/{name}" })
+    assertTrue(endpoints.any { it.type == HelidonRequestMethods.GET && it.urlDefinition == "/listener/{name}" })
+  }
+
+  fun testSupplierServiceRegistrationKeepsParentPath() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.HttpRules;
+      import io.helidon.webserver.http.HttpService;
+      import io.helidon.webserver.http.ServerRequest;
+      import io.helidon.webserver.http.ServerResponse;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.register("/api/{tenant}", GreetingService::new);
+        }
+      }
+
+      class GreetingService implements HttpService {
+        @Override
+        public void routing(HttpRules rules) {
+          rules.get("/hello/{name}", this::hello);
+        }
+
+        void hello(ServerRequest request, ServerResponse response) {
+        }
+      }
+    """.trimIndent())
+
+    val serviceEndpoints = collectServiceEndpoints(myFixture.findClass("GreetingService"))
+    assertTrue(serviceEndpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/api/{tenant}" && it.urlDefinition == "/hello/{name}"
+    })
+  }
+
   fun testHelidon4PathParameterReference() {
     myFixture.configureByText("Main.java", """
       import io.helidon.webserver.http.HttpRouting;
@@ -97,10 +207,30 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     assertNotNull(reference.resolve())
   }
 
+  fun testInlineHelidon4PathParameterReference() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.webserver.http.HttpRouting;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.get("/hello/{name}", (req, res) -> {
+            req.path().pathParameters().get("na<caret>me");
+          });
+        }
+      }
+    """.trimIndent())
+
+    val reference = myFixture.getReferenceAtCaretPositionWithAssertion()
+    assertNotNull(reference.resolve())
+  }
+
   private fun collectBuilderEndpoints(): Collection<HelidonUrlTargetInfo> {
+    return collectBuilderEndpoints(GlobalSearchScope.fileScope(myFixture.file), myFixture.file)
+  }
+
+  private fun collectBuilderEndpoints(scope: GlobalSearchScope, context: PsiElement): Collection<HelidonUrlTargetInfo> {
     val processor = CollectProcessor<HelidonUrlTargetInfo>()
-    val module = ModuleUtilCore.findModuleForPsiElement(myFixture.file)!!
-    val scope = GlobalSearchScope.fileScope(myFixture.file)
+    val module = ModuleUtilCore.findModuleForPsiElement(context)!!
     assertTrue(HelidonCommonUtils.processBuilderRegisterMethods(processor, scope, module))
     assertTrue(HelidonCommonUtils.processBuilderHttpMethods(processor, scope, module))
     return processor.results

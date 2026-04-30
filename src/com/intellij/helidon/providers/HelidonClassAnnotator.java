@@ -11,6 +11,7 @@ import com.intellij.helidon.utils.HelidonCommonUtils;
 import com.intellij.ide.util.DefaultPsiElementCellRenderer;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleUtilCore;
+import com.intellij.openapi.util.Pair;
 import com.intellij.psi.*;
 import com.intellij.psi.presentation.java.SymbolPresentationUtil;
 import com.intellij.psi.util.InheritanceUtil;
@@ -19,7 +20,6 @@ import com.intellij.uast.UastSmartPointer;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.uast.UCallExpression;
 import org.jetbrains.uast.UExpression;
 
 import javax.swing.*;
@@ -90,25 +90,10 @@ public final class HelidonClassAnnotator extends RelatedItemLineMarkerProvider {
 
   private static @NotNull Set<UExpression> getServiceRegisterExpressions(@NotNull Module module, @NotNull PsiClassType serviceType) {
     Set<UExpression> expressions = new HashSet<>();
-    for (UCallExpression call : getServiceRegistrationCalls(module, serviceType)) {
-      List<UExpression> arguments = call.getValueArguments();
-      if (arguments.size() == 2) {
-        PsiType expressionType = arguments.get(1).getExpressionType();
-        if (expressionType != null && serviceType.isAssignableFrom(expressionType)) {
-          ContainerUtil.addIfNotNull(expressions, arguments.get(0));
-        }
-      }
+    for (Pair<UastSmartPointer<UExpression>, PsiType> entry : HelidonCommonUtils.getServiceRegisterPathExpressions(module)) {
+      if (entry.second.isAssignableFrom(serviceType)) ContainerUtil.addIfNotNull(expressions, entry.first.getElement());
     }
     return expressions;
-  }
-
-  private static @NotNull Set<UCallExpression> getServiceRegistrationCalls(@NotNull Module module, @NotNull PsiType type) {
-    Set<UCallExpression> calls = new HashSet<>();
-    for (Map.Entry<UastSmartPointer<UCallExpression>, PsiType> entry : HelidonCommonUtils.getServiceRegisterInvocations(module)
-      .entrySet()) {
-      if (entry.getValue().isAssignableFrom(type)) ContainerUtil.addIfNotNull(calls, entry.getKey().getElement());
-    }
-    return calls;
   }
 
   @Override

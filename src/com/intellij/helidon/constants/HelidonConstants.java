@@ -5,6 +5,10 @@ import org.jetbrains.annotations.NonNls;
 
 public interface HelidonConstants {
   @NonNls String WEB_SERVER = "io.helidon.webserver.WebServer";
+  @NonNls String WEB_SERVER_CONFIG = "io.helidon.webserver.WebServerConfig";
+  @NonNls String WEB_SERVER_CONFIG_BUILDER = "io.helidon.webserver.WebServerConfig.Builder";
+  @NonNls String LISTENER_CONFIG = "io.helidon.webserver.ListenerConfig";
+  @NonNls String LISTENER_CONFIG_BUILDER = "io.helidon.webserver.ListenerConfig.Builder";
   @NonNls String HTTP_ROUTING = "io.helidon.webserver.http.HttpRouting";
   @NonNls String HTTP_ROUTING_BUILDER = "io.helidon.webserver.http.HttpRouting.Builder";
   @NonNls String HTTP_RULES = "io.helidon.webserver.http.HttpRules";

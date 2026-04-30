@@ -6,13 +6,21 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.impl.source.tree.LeafPsiElement
 import org.jetbrains.yaml.psi.YAMLKeyValue
 
-private fun isKeyDefinition(psiElement: PsiElement): Boolean = psiElement is LeafPsiElement && psiElement.getParent() is YAMLKeyValue
+private fun findKeyValue(psiElement: PsiElement): YAMLKeyValue? {
+  if (psiElement is YAMLKeyValue) return psiElement
 
-private fun isKeyReference(psiElement: PsiElement): Boolean = psiElement is YAMLKeyValue
+  if (psiElement is LeafPsiElement) {
+    return psiElement.getParent() as? YAMLKeyValue
+  }
+
+  return null
+}
 
 internal class HelidonYamlKeyRenameVetoCondition : Condition<PsiElement> {
   override fun value(psiElement: PsiElement): Boolean {
-    return (isKeyDefinition(psiElement) || isKeyReference(psiElement)) &&
-           isInsideApplicationYamlFile(psiElement)
+    val keyValue = findKeyValue(psiElement) ?: return false
+    if (!isInsideApplicationYamlFile(keyValue)) return false
+
+    return keyValue.references.any { it is HelidonYamlKeyMetaConfigKeyReference && it.resolvedKey != null }
   }
 }

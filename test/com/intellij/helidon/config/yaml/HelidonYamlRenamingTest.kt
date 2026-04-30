@@ -6,25 +6,32 @@ import com.intellij.helidon.config.HELIDON_APPLICATION_YAML
 import com.intellij.refactoring.rename.PsiElementRenameHandler
 
 class HelidonYamlRenamingTest : HelidonHighlightingTestCase() {
-  fun testKeyRenamingVetoed() {
-    @Suppress("SpellCheckingInspection")
+  fun testMetadataBackedKeyRenamingVetoed() {
     assertRenamingVetoed("""
-      my:
-        in<caret>teger: 42
+      server:
+        ho<caret>st: localhost
     """.trimIndent(), false)
   }
 
-  fun testUnresolvedKeyRenamingVetoed() {
+  fun testUnresolvedKeyRenamingAllowed() {
     assertRenamingVetoed("""
       so<caret>me:
         INVALID: 42
-    """.trimIndent(), true)
+    """.trimIndent(), true, false)
+  }
+
+  fun testUserKeyRenamingAllowed() {
+    assertRenamingVetoed("""
+      app:
+        custom:
+          ke<caret>y: value
+    """.trimIndent(), false, false)
   }
 
   fun testKeyViaPropertyPlaceholderRenamingVetoed() {
     assertRenamingVetoed("""
-      my:
-        integer: ${"$"}{my.<caret>integer}
+      server:
+        host: ${"$"}{server.<caret>host}
     """.trimIndent(), false)
   }
 
@@ -36,7 +43,8 @@ class HelidonYamlRenamingTest : HelidonHighlightingTestCase() {
   }
 
   private fun assertRenamingVetoed(applicationYml: String,
-                                   usePlainElementFind: Boolean) {
+                                   usePlainElementFind: Boolean,
+                                   prohibited: Boolean = true) {
     myFixture.configureByText(HELIDON_APPLICATION_YAML, applicationYml)
     val element = if (usePlainElementFind) {
       myFixture.file.findElementAt(myFixture.caretOffset)
@@ -44,6 +52,6 @@ class HelidonYamlRenamingTest : HelidonHighlightingTestCase() {
     else {
       myFixture.elementAtCaret
     }
-    assertTrue(PsiElementRenameHandler.isVetoed(element))
+    assertEquals(prohibited, PsiElementRenameHandler.isVetoed(element))
   }
 }

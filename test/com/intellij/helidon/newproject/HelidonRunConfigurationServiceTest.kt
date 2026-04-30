@@ -6,11 +6,14 @@ import com.intellij.execution.application.ApplicationConfiguration
 import com.intellij.execution.application.ApplicationConfigurationType
 import com.intellij.helidon.constants.HelidonConstants
 import com.intellij.openapi.application.runWriteAction
+import com.intellij.openapi.module.Module
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.lang.reflect.Proxy
 
 class HelidonRunConfigurationServiceTest : LightJavaCodeInsightFixtureTestCase4(LightJavaCodeInsightFixtureTestCase.JAVA_21) {
   @Test
@@ -29,5 +32,42 @@ class HelidonRunConfigurationServiceTest : LightJavaCodeInsightFixtureTestCase4(
     val configuration = settings.single().configuration as ApplicationConfiguration
     assertSame(fixture.module, configuration.configurationModule.module)
     assertEquals(HelidonConstants.MP_MAIN, configuration.mainClassName)
+  }
+
+  @Test
+  fun createMicroProfileRunConfigurationIsModuleSpecific() {
+    val service = HelidonRunConfigurationService()
+    val secondModule = moduleNamed("second")
+
+    runWriteAction {
+      service.createMicroProfileRunConfiguration(fixture.module)
+      service.createMicroProfileRunConfiguration(secondModule)
+      service.createMicroProfileRunConfiguration(secondModule)
+    }
+
+    val settings = RunManager.getInstance(fixture.project)
+      .getConfigurationSettingsList(ApplicationConfigurationType::class.java)
+    val moduleNames = settings.map { (it.configuration as ApplicationConfiguration).configurationModule.moduleName }
+
+    assertEquals(2, settings.size)
+    assertTrue(moduleNames.containsAll(listOf(fixture.module.name, secondModule.name)))
+    assertTrue(settings.all { (it.configuration as ApplicationConfiguration).mainClassName == HelidonConstants.MP_MAIN })
+  }
+
+  private fun moduleNamed(name: String): Module {
+    val project = fixture.project
+    val moduleTypeName = fixture.module.moduleTypeName
+    return Proxy.newProxyInstance(Module::class.java.classLoader, arrayOf(Module::class.java)) { proxy, method, args ->
+      when (method.name) {
+        "getProject" -> project
+        "getName" -> name
+        "getModuleTypeName" -> moduleTypeName
+        "isDisposed" -> false
+        "equals" -> proxy === args?.firstOrNull()
+        "hashCode" -> System.identityHashCode(proxy)
+        "toString" -> name
+        else -> throw UnsupportedOperationException(method.name)
+      }
+    } as Module
   }
 }

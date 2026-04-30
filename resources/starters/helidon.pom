@@ -5,12 +5,12 @@
   <version>1.0</version>
 
   <properties>
-    <helidon.version>3.1.0</helidon.version>
-    <gradle.version>7.4.2</gradle.version>
-    <maven.version>3.8.5</maven.version>
-    <maven.wrapper.version>3.1.0</maven.wrapper.version>
-    <kotlin.version>1.7.20</kotlin.version>
-    <gradle.jandex.version>1.0.0</gradle.jandex.version>
+    <helidon.version>4.4.1</helidon.version>
+    <gradle.version>9.2.0</gradle.version>
+    <maven.version>3.9.15</maven.version>
+    <maven.wrapper.version>3.3.4</maven.wrapper.version>
+    <kotlin.version>2.3.21</kotlin.version>
+    <gradle.jandex.version>2.3.0</gradle.jandex.version>
   </properties>
 
   <dependencyManagement>

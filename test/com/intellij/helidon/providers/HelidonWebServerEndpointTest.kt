@@ -262,6 +262,54 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     })
   }
 
+  fun testListSupplierServiceRegistrationKeepsParentPathForListedServiceOnly() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.HttpRules;
+      import io.helidon.webserver.http.HttpService;
+      import io.helidon.webserver.http.ServerRequest;
+      import io.helidon.webserver.http.ServerResponse;
+      import java.util.List;
+      import java.util.function.Supplier;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.register("/api/{tenant}", List.of((Supplier<? extends HttpService>) GreetingService::new));
+        }
+      }
+
+      class GreetingService implements HttpService {
+        @Override
+        public void routing(HttpRules rules) {
+          rules.get("/hello/{name}", this::hello);
+        }
+
+        void hello(ServerRequest request, ServerResponse response) {
+        }
+      }
+
+      class OtherService implements HttpService {
+        @Override
+        public void routing(HttpRules rules) {
+          rules.get("/other/{name}", this::other);
+        }
+
+        void other(ServerRequest request, ServerResponse response) {
+        }
+      }
+    """.trimIndent())
+
+    val serviceEndpoints = collectServiceEndpoints(myFixture.findClass("GreetingService"))
+    val otherEndpoints = collectServiceEndpoints(myFixture.findClass("OtherService"))
+
+    assertTrue(serviceEndpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/api/{tenant}" && it.urlDefinition == "/hello/{name}"
+    })
+    assertFalse(otherEndpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/api/{tenant}" && it.urlDefinition == "/other/{name}"
+    })
+  }
+
   fun testHelidon4PathParameterReference() {
     myFixture.configureByText("Main.java", """
       import io.helidon.webserver.http.HttpRouting;

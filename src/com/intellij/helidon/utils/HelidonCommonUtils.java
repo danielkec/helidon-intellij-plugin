@@ -39,6 +39,7 @@ import static com.intellij.helidon.providers.HelidonReferenceContributorKt.*;
 
 public final class HelidonCommonUtils {
   private static final String JAVA_UTIL_FUNCTION_SUPPLIER = "java.util.function.Supplier";
+  private static final String JAVA_LANG_ITERABLE = "java.lang.Iterable";
   private static final Key<CachedValue<Map<SearchScope, Set<UCallExpression>>>> METHOD_INVOCATIONS_KEY =
     Key.create("METHOD_INVOCATIONS_KEY");
   private static final Key<CachedValue<List<ServiceRegistration>>> SERVICE_REGISTRATIONS_KEY =
@@ -241,6 +242,14 @@ public final class HelidonCommonUtils {
       return;
     }
 
+    if (unwrappedExpression instanceof PsiMethodCallExpression &&
+        isIterableType(unwrappedExpression.getType())) {
+      for (PsiExpression argument : ((PsiMethodCallExpression)unwrappedExpression).getArgumentList().getExpressions()) {
+        collectTopLevelServiceTypes(argument, project, result);
+      }
+      return;
+    }
+
     if (unwrappedExpression instanceof PsiConditionalExpression) {
       PsiConditionalExpression conditionalExpression = (PsiConditionalExpression)unwrappedExpression;
       collectTopLevelServiceTypes(conditionalExpression.getThenExpression(), project, result);
@@ -320,10 +329,24 @@ public final class HelidonCommonUtils {
 
     PsiClassType classType = (PsiClassType)type;
     PsiClass resolved = classType.resolve();
-    if (resolved == null || !JAVA_UTIL_FUNCTION_SUPPLIER.equals(resolved.getQualifiedName())) return;
+    if (resolved == null) return;
+    if (isIterableType(classType)) {
+      for (PsiType parameter : classType.getParameters()) {
+        collectServiceTypes(parameter, project, result);
+      }
+      return;
+    }
+    if (!JAVA_UTIL_FUNCTION_SUPPLIER.equals(resolved.getQualifiedName())) return;
     for (PsiType parameter : classType.getParameters()) {
       collectServiceTypes(parameter, project, result);
     }
+  }
+
+  private static boolean isIterableType(@Nullable PsiType type) {
+    if (!(type instanceof PsiClassType)) return false;
+    PsiClass resolved = ((PsiClassType)type).resolve();
+    return resolved != null &&
+           (JAVA_LANG_ITERABLE.equals(resolved.getQualifiedName()) || InheritanceUtil.isInheritor(resolved, JAVA_LANG_ITERABLE));
   }
 
   private static boolean isAssignableToAny(@NotNull PsiType type, @NotNull Project project, @NotNull String... classNames) {

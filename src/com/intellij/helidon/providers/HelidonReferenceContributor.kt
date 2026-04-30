@@ -26,6 +26,7 @@ import com.intellij.psi.*
 import com.intellij.psi.CommonClassNames.JAVA_LANG_ITERABLE
 import com.intellij.psi.CommonClassNames.JAVA_LANG_STRING
 import com.intellij.psi.search.GlobalSearchScope
+import com.intellij.psi.util.InheritanceUtil
 import com.intellij.util.ProcessingContext
 import org.jetbrains.uast.UExpression
 
@@ -89,6 +90,9 @@ private fun PsiType.isRegisterTargetType(project: Project): Boolean {
 
   val classType = targetType as? PsiClassType ?: return false
   val resolved = classType.resolve() ?: return false
+  if (resolved.qualifiedName == JAVA_LANG_ITERABLE || InheritanceUtil.isInheritor(resolved, JAVA_LANG_ITERABLE)) {
+    return classType.parameters.any { parameter -> parameter.isRegisterTargetType(project) }
+  }
   if (resolved.qualifiedName != JAVA_UTIL_FUNCTION_SUPPLIER) return false
   return classType.parameters.any { parameter -> parameter.isRegisterTargetType(project) }
 }

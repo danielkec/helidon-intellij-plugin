@@ -96,6 +96,30 @@ class HelidonYamlConfigTest : HelidonHighlightingTestCase() {
     assertEquals("key", yamlKeyValue.keyText)
   }
 
+  fun testNoPlaceholderReferenceInLiteralMultilineScalar() {
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      my:
+        key: value
+      server:
+        host: |
+          ${"$"}{my.<caret>key}
+    """.trimIndent())
+
+    assertNull(myFixture.getReferenceAtCaretPosition())
+  }
+
+  fun testNoPlaceholderReferenceInFoldedMultilineScalar() {
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      my:
+        key: value
+      server:
+        host: >
+          ${"$"}{my.<caret>key}
+    """.trimIndent())
+
+    assertNull(myFixture.getReferenceAtCaretPosition())
+  }
+
   companion object {
     fun doHighlighting(applicationYamlContent: String, codeInsightTestFixture: CodeInsightTestFixture) {
       codeInsightTestFixture.enableInspections(HelidonYamlConfigInspection())

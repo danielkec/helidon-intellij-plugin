@@ -5,6 +5,7 @@ import com.intellij.execution.RunManager
 import com.intellij.execution.application.ApplicationConfiguration
 import com.intellij.execution.application.ApplicationConfigurationType
 import com.intellij.helidon.constants.HelidonConstants
+import com.intellij.openapi.application.runWriteAction
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase4
 import org.junit.Assert.assertEquals
@@ -16,8 +17,10 @@ class HelidonRunConfigurationServiceTest : LightJavaCodeInsightFixtureTestCase4(
   fun createMicroProfileRunConfigurationIsIdempotentForModule() {
     val service = HelidonRunConfigurationService()
 
-    service.createMicroProfileRunConfiguration(fixture.module)
-    service.createMicroProfileRunConfiguration(fixture.module)
+    runWriteAction {
+      service.createMicroProfileRunConfiguration(fixture.module)
+      service.createMicroProfileRunConfiguration(fixture.module)
+    }
 
     val settings = RunManager.getInstance(fixture.project)
       .getConfigurationSettingsList(ApplicationConfigurationType::class.java)

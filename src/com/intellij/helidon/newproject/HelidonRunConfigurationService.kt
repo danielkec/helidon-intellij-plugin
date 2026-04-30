@@ -50,28 +50,36 @@ class HelidonRunConfigurationService {
       .submit(AppExecutorUtil.getAppExecutorService())
   }
 
-  internal fun modulesForRunConfigurations(project: Project): List<Module> =
-    ModuleManager.getInstance(project).modules.asSequence()
+  internal fun modulesForRunConfigurations(project: Project): List<Module> {
+    val modulesWithMicroProfileRunConfigurations = existingMicroProfileRunConfigurationModules(project)
+
+    return ModuleManager.getInstance(project).modules.asSequence()
       .filter { !it.name.endsWith(".test") }
       .filter { HelidonCommonUtils.hasHelidonMPLibrary(it) }
-      .filterNot { hasMicroProfileRunConfiguration(it) }
+      .filterNot { it in modulesWithMicroProfileRunConfigurations }
       .toList()
+  }
 
   internal fun hasMicroProfileRunConfiguration(module: Module): Boolean =
-    RunManager.getInstance(module.project)
+    module in existingMicroProfileRunConfigurationModules(module.project)
+
+  private fun existingMicroProfileRunConfigurationModules(project: Project): Set<Module> =
+    RunManager.getInstance(project)
       .getConfigurationSettingsList(ApplicationConfigurationType::class.java)
       .asSequence()
       .map { it.configuration }
       .filterIsInstance<ApplicationConfiguration>()
-      .any {
-        it.configurationModule.module == module && it.mainClassName == HelidonConstants.MP_MAIN
-      }
+      .filter { it.mainClassName == HelidonConstants.MP_MAIN }
+      .mapNotNull { it.configurationModule.module }
+      .toSet()
 
   private fun isNewProject(project: Project): Boolean {
     return project.getUserData(NEW_HELIDON_PROJECT_KEY) == java.lang.Boolean.TRUE
   }
 
   internal fun createMicroProfileRunConfiguration(module: Module) {
+    ApplicationManager.getApplication().assertWriteAccessAllowed()
+
     if (hasMicroProfileRunConfiguration(module)) {
       return
     }

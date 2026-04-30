@@ -116,9 +116,10 @@ internal class HelidonConfigMetadataBuilder(modulesMetadata: List<ModuleMetadata
 
     optionDeclaration.putUserData(ConfigKeyDocumentationProviderBase.CONFIG_KEY_DECLARATION_MODULE, module)
 
-    val subKeys: List<HelidonMetaConfigKey> = if (accessType == MetaConfigKey.AccessType.INDEXED) {
+    val subKeys: List<HelidonMetaConfigKey> = if (accessType == MetaConfigKey.AccessType.INDEXED ||
+                                                  accessType == MetaConfigKey.AccessType.MAP) {
       myConfigTypes[configOption.type]?.let {
-        processConfigType(it, "", EVERYTHING_PROCESSOR, module, processedConfigTypes)
+        processConfigType(it, "", EVERYTHING_PROCESSOR, module, processedConfigTypes.toMutableSet())
       } ?: emptyList()
     }
     else {
@@ -160,7 +161,10 @@ internal class HelidonConfigMetadataBuilder(modulesMetadata: List<ModuleMetadata
   private fun isLeafConfigOption(psiType: PsiType,
                                  configOption: ConfigOption,
                                  resolveScope: GlobalSearchScope): Boolean {
-    if (configOption.kind != ConfigOptionKind.VALUE) return true
+    if (configOption.kind == ConfigOptionKind.LIST ||
+        configOption.kind == ConfigOptionKind.MAP) {
+      return true
+    }
 
     return TypeConversionUtil.isPrimitiveWrapper(psiType) ||
            TypeUtils.isJavaLangString(psiType) ||
@@ -231,10 +235,11 @@ internal class HelidonConfigMetadataBuilder(modulesMetadata: List<ModuleMetadata
   }
 
   private fun getActualConfigOptionType(configOption: ConfigOption): String {
-    return if (configOption.kind == ConfigOptionKind.LIST)
-      "${CommonClassNames.JAVA_UTIL_LIST}<${configOption.type}>"
-    else
-      configOption.type
+    return when (configOption.kind) {
+      ConfigOptionKind.LIST -> "${CommonClassNames.JAVA_UTIL_LIST}<${configOption.type}>"
+      ConfigOptionKind.MAP -> "${CommonClassNames.JAVA_UTIL_MAP}<${CommonClassNames.JAVA_LANG_STRING}, ${configOption.type}>"
+      ConfigOptionKind.VALUE -> configOption.type
+    }
   }
 
   private class ClassCache(private val project: Project,

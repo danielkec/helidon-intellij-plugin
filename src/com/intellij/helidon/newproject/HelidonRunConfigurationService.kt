@@ -29,7 +29,7 @@ class HelidonRunConfigurationService {
     }
 
     if (onlyForNewProjects && !isNewProject(project)) {
-      // so far only newly created projects supported
+      // By default, create run configurations only for newly created projects.
       return
     }
 

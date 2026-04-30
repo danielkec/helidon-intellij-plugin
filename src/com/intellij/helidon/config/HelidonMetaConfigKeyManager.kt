@@ -2,6 +2,7 @@
 package com.intellij.helidon.config
 
 import com.intellij.helidon.utils.HelidonCommonUtils
+import com.intellij.java.library.JavaLibraryModificationTracker
 import com.intellij.microservices.jvm.config.MetaConfigKey
 import com.intellij.microservices.jvm.config.MetaConfigKeyManager
 import com.intellij.microservices.jvm.config.utils.findConfigFilesInMetaInf
@@ -36,7 +37,9 @@ class HelidonMetaConfigKeyManager : MetaConfigKeyManager() {
         getModuleMetadataForFile(metadataFile)
       }
       val allKeys = HelidonConfigMetadataBuilder(modulesMetadata, module.project).collectKeys(module)
-      CachedValueProvider.Result.create(allKeys, PsiModificationTracker.MODIFICATION_COUNT)
+      CachedValueProvider.Result.create(allKeys,
+                                        PsiModificationTracker.MODIFICATION_COUNT,
+                                        JavaLibraryModificationTracker.getInstance(module.project))
     }
   }
 

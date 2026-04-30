@@ -95,6 +95,84 @@ class HelidonYamlKeyCompletionTest : HelidonHighlightingTestCase() {
     assertContainsElements(lookupElementStrings!!, "server.backlog", "server.name", "server.port")
   }
 
+  fun testGivenPrefixKeyCompletionOnBlankLineBeforeExistingKeys() {
+    doCompletion("""
+      server:
+        <caret>
+        port: 8789
+        host: 0.0.0.0
+        concurrency-limit:
+          fixed:
+            permits: ${'$'}{proxy.concurrency}
+            queue-length: 200
+            queue-timeout: PT5M
+      proxy:
+        concurrency: 8
+        read-timeout: PT5M
+        connect-timeout: PT5M
+    """.trimIndent())
+    val lookupElementStrings = myFixture.lookupElementStrings
+    assertNotNull(lookupElementStrings)
+    assertContainsElements(lookupElementStrings!!, "server.backlog", "server.name", "server.sockets")
+  }
+
+  fun testGivenPrefixKeyCompletionOnEmptyLineBeforeExistingKeys() {
+    doCompletion("""
+      server:
+      <caret>
+        port: 8789
+        host: 0.0.0.0
+        concurrency-limit:
+          fixed:
+            permits: ${'$'}{proxy.concurrency}
+            queue-length: 200
+            queue-timeout: PT5M
+      proxy:
+        concurrency: 8
+        read-timeout: PT5M
+        connect-timeout: PT5M
+    """.trimIndent())
+    val lookupElementStrings = myFixture.lookupElementStrings
+    assertNotNull(lookupElementStrings)
+    assertContainsElements(lookupElementStrings!!, "server.backlog", "server.name", "server.sockets")
+  }
+
+  fun testGivenPrefixKeyCompletionBeforeIndentOnBlankLineBeforeExistingKeys() {
+    doCompletion("""
+      server:
+      <caret>${"  "}
+        port: 8789
+        host: 0.0.0.0
+        concurrency-limit:
+          fixed:
+            permits: ${'$'}{proxy.concurrency}
+            queue-length: 200
+            queue-timeout: PT5M
+      proxy:
+        concurrency: 8
+        read-timeout: PT5M
+        connect-timeout: PT5M
+    """.trimIndent())
+    val lookupElementStrings = myFixture.lookupElementStrings
+    assertNotNull(lookupElementStrings)
+    assertContainsElements(lookupElementStrings!!, "server.backlog", "server.name", "server.sockets")
+  }
+
+  fun testUserKeyCompletionOnEmptyLineBeforeExistingKeys() {
+    doCompletion("""
+      proxy:
+        <caret>
+        concurrency: 8
+        read-timeout: PT5M
+        connect-timeout: PT5M
+        oca:
+          mode: internal
+    """.trimIndent())
+    val lookupElementStrings = myFixture.lookupElementStrings
+    assertNotNull(lookupElementStrings)
+    assertContainsElements(lookupElementStrings!!, "concurrency", "read-timeout", "connect-timeout", "oca")
+  }
+
   fun testGivenPrefixKeyFilterExistingCompletionVariants() {
     doCompletion("""
       server:

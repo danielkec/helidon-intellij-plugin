@@ -15,6 +15,7 @@ import com.intellij.openapi.util.Condition
 import com.intellij.openapi.util.Key
 import com.intellij.patterns.ElementPattern
 import com.intellij.patterns.PlatformPatterns
+import com.intellij.util.PlatformIcons
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.util.PsiTreeUtil
@@ -240,6 +241,7 @@ internal class HelidonYamlKeyCompletionProvider : CompletionProvider<CompletionP
         }
       }
 
+    var hasAddedElements = false
     addYamlCompletionAdvertisement(parameters, result)
 
     val currentLineKeyComponents =
@@ -247,6 +249,7 @@ internal class HelidonYamlKeyCompletionProvider : CompletionProvider<CompletionP
                                       parentQualifiedName, configKeys)
     if (currentLineKeyComponents.isNotEmpty()) {
       result.addAllElements(currentLineKeyComponents)
+      hasAddedElements = true
     }
 
     val invocationCount = parameters.invocationCount
@@ -268,8 +271,22 @@ internal class HelidonYamlKeyCompletionProvider : CompletionProvider<CompletionP
       val lookupElement = configKey.presentation.tuneLookupElement(insertHandler)
       keyLookupElements.add(lookupElement)
     }
-    result.addAllElements(keyLookupElements)
-    result.stopHere()
+    if (keyLookupElements.isNotEmpty()) {
+      result.addAllElements(keyLookupElements)
+      hasAddedElements = true
+    }
+
+    if (!hasAddedElements) {
+      val localKeyLookupElements = getLocalKeyLookupElements(parentYamlKeyValue, element, originalElement)
+      if (localKeyLookupElements.isNotEmpty()) {
+        result.addAllElements(localKeyLookupElements)
+        hasAddedElements = true
+      }
+    }
+
+    if (hasAddedElements) {
+      result.stopHere()
+    }
   }
 
   private fun getParentKeyValue(element: PsiElement, originalElement: PsiElement?): YAMLKeyValue? {
@@ -316,5 +333,28 @@ internal class HelidonYamlKeyCompletionProvider : CompletionProvider<CompletionP
     }
 
     return lookupElements
+  }
+
+  private fun getLocalKeyLookupElements(parentYamlKeyValue: YAMLKeyValue?,
+                                        element: PsiElement,
+                                        originalElement: PsiElement?): List<LookupElement> {
+    val parentMapping = parentYamlKeyValue?.value as? YAMLMapping ?: return emptyList()
+    val currentKeyValue = getYamlParentKeyValue(element, originalElement)
+    val keyNames = LinkedHashSet<String>()
+
+    for (keyValue in parentMapping.keyValues) {
+      if (keyValue == currentKeyValue) continue
+
+      val keyName = keyValue.keyText
+      if (keyName.isBlank()) continue
+
+      keyNames.add(keyName)
+    }
+
+    return keyNames.map {
+      LookupElementBuilder.create(it)
+        .withIcon(PlatformIcons.PROPERTY_ICON)
+        .withInsertHandler(INSERT_COLON_AND_NEW_LINE_INSERT_HANDLER)
+    }
   }
 }

@@ -180,15 +180,18 @@ internal class HelidonConfigMetadataBuilder(modulesMetadata: List<ModuleMetadata
                                optionKey: String,
                                optionType: PsiType,
                                configType: ConfigType): Pair<PsiElement, MetaConfigKey.DeclarationResolveResult>? {
-    val (classFqn, methodName) = parseClassAndMethod(optionMethod) ?: return null
-
     val classCache = myClassCaches[configType.resolveScope] ?: return null
 
+    val methodDeclaration = parseClassAndMethod(optionMethod)
+    val classFqn = methodDeclaration?.first ?: configType.type
     val sourceTypeClass = classCache.get(classFqn) ?: return null
+    val navigationTarget = methodDeclaration
+      ?.let { findPropertyNavigationTarget(sourceTypeClass, it.second) }
+      ?: sourceTypeClass
 
     return Pair(HelidonConfigKeyDeclarationPsiElement(optionKey,
                                                       classFqn,
-                                                      findPropertyNavigationTarget(sourceTypeClass, methodName),
+                                                      navigationTarget,
                                                       sourceTypeClass,
                                                       configType.moduleName,
                                                       optionType),

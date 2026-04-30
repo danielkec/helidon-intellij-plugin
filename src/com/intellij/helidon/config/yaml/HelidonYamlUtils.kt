@@ -234,7 +234,7 @@ private object YamlPlaceholderLookupRenderer : LookupElementRenderer<LookupEleme
   }
 }
 
-private val INSERT_COLON_AND_NEW_LINE_INSERT_HANDLER = InsertHandler<LookupElement> { context: InsertionContext, _: LookupElement ->
+internal val INSERT_COLON_AND_NEW_LINE_INSERT_HANDLER = InsertHandler<LookupElement> { context: InsertionContext, _: LookupElement ->
   val element = context.file.findElementAt(context.startOffset) ?: return@InsertHandler
   val indent = YAMLUtil.getIndentToThisElement(element) + 2
   val newLine = "\n" + StringUtil.repeatSymbol(' ', indent)

@@ -83,6 +83,7 @@ class HelidonHintReferencesProvider {
         return ClassHintReferenceProvider(null, false, true) // plain 'Class'
       }
       val typeParameter = parameters[0] as? PsiWildcardType ?: return null
+      if (!typeParameter.isBounded || !typeParameter.isExtends) return null
       return ClassHintReferenceProvider(typeParameter.extendsBound.canonicalText, false, true)
     }
     return myByTypeProviders[typeFqn]

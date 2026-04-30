@@ -43,8 +43,8 @@ dependencies {
     runtimeOnly('jakarta.activation:jakarta.activation-api')
 
     testImplementation('io.helidon.microprofile.testing:helidon-microprofile-testing-junit5')
-    testCompileOnly('org.junit.jupiter:junit-jupiter-api:')
-    testRuntimeOnly('org.junit.jupiter:junit-jupiter-engine:')
+    testCompileOnly('org.junit.jupiter:junit-jupiter-api')
+    testRuntimeOnly('org.junit.jupiter:junit-jupiter-engine')
 }
 
 application {

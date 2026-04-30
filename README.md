@@ -41,6 +41,23 @@ Before widening the supported IDE range, run `./gradlew verifyPlugin` against
 the new target IDE build and update both `build.gradle.kts` and
 `docs/updatePlugins.xml` in the same release.
 
+## Distribution Identity
+
+This fork intentionally keeps the inherited plugin id `com.intellij.helidon` and
+vendor metadata from the extracted JetBrains plugin. Keeping the id preserves the
+same plugin identity for users installing from the custom update repository and
+avoids creating a separate Helidon plugin lineage.
+
+Do not publish this fork to JetBrains Marketplace under the inherited
+`com.intellij` id. `verifyPluginStructure` can warn that this prefix is reserved
+for JetBrains-owned plugins. The supported distribution channel for this fork is
+the custom plugin repository listed in the install section.
+
+Changing the id or vendor would be a new plugin identity migration. If that
+becomes necessary, update `resources/META-INF/plugin.xml`,
+`docs/updatePlugins.xml`, Gradle metadata, release notes, and install
+instructions together so users understand the migration path.
+
 ## Tests
 
 Tests no longer hardcode the original JetBrains developer machine path. To provide an
@@ -62,6 +79,3 @@ IDEA_HOME_PATH=/path/to/intellij/community ./gradlew test
 - `gen/` is part of the main source set and should be kept under version control.
 - Test-only IntelliJ platform dependencies are declared with `testBundledPlugin` so
   they do not leak into the runtime sandbox classpath.
-- The inherited plugin id is still `com.intellij.helidon`. `verifyPluginStructure`
-  warns that this uses JetBrains' reserved `com.intellij` prefix, but changing it
-  would create a new Marketplace plugin identity.

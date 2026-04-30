@@ -6,37 +6,52 @@ import com.intellij.helidon.config.HELIDON_APPLICATION_YAML
 import com.intellij.refactoring.rename.PsiElementRenameHandler
 
 class HelidonYamlRenamingTest : HelidonHighlightingTestCase() {
-  fun testKeyRenamingVetoed() {
-    @Suppress("SpellCheckingInspection")
-    assertRenamingVetoed("""
-      my:
-        in<caret>teger: 42
-    """.trimIndent(), false)
+  fun testMetadataBackedKeyRenamingVetoed() {
+    assertRenameVetoState("""
+      server:
+        ho<caret>st: localhost
+    """.trimIndent(), usePlainElementFind = false)
   }
 
-  fun testUnresolvedKeyRenamingVetoed() {
-    assertRenamingVetoed("""
+  fun testUnresolvedKeyRenamingAllowed() {
+    assertRenameVetoState("""
       so<caret>me:
         INVALID: 42
-    """.trimIndent(), true)
+    """.trimIndent(), usePlainElementFind = true, expectedVetoed = false)
+  }
+
+  fun testUserKeyRenamingAllowed() {
+    assertRenameVetoState("""
+      app:
+        custom:
+          ke<caret>y: value
+    """.trimIndent(), usePlainElementFind = false, expectedVetoed = false)
+  }
+
+  fun testMetadataBackedKeyValueRenamingAllowed() {
+    assertRenameVetoState("""
+      server:
+        host: loca<caret>lhost
+    """.trimIndent(), usePlainElementFind = true, expectedVetoed = false)
   }
 
   fun testKeyViaPropertyPlaceholderRenamingVetoed() {
-    assertRenamingVetoed("""
-      my:
-        integer: ${"$"}{my.<caret>integer}
-    """.trimIndent(), false)
+    assertRenameVetoState("""
+      server:
+        host: ${"$"}{server.<caret>host}
+    """.trimIndent(), usePlainElementFind = false)
   }
 
   fun testSystemPropertyPlaceholderRenamingVetoed() {
-    assertRenamingVetoed("""
+    assertRenameVetoState("""
       my:
         integer: ${"$"}{user.<caret>home}
-    """, false)
+    """, usePlainElementFind = false)
   }
 
-  private fun assertRenamingVetoed(applicationYml: String,
-                                   usePlainElementFind: Boolean) {
+  private fun assertRenameVetoState(applicationYml: String,
+                                    usePlainElementFind: Boolean,
+                                    expectedVetoed: Boolean = true) {
     myFixture.configureByText(HELIDON_APPLICATION_YAML, applicationYml)
     val element = if (usePlainElementFind) {
       myFixture.file.findElementAt(myFixture.caretOffset)
@@ -44,6 +59,6 @@ class HelidonYamlRenamingTest : HelidonHighlightingTestCase() {
     else {
       myFixture.elementAtCaret
     }
-    assertTrue(PsiElementRenameHandler.isVetoed(element))
+    assertEquals(expectedVetoed, PsiElementRenameHandler.isVetoed(element))
   }
 }

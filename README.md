@@ -31,6 +31,16 @@ This project is a standalone Gradle IntelliJ Platform plugin project.
 The current build targets IntelliJ IDEA `2026.1.1`, plugin version `262.0.0`,
 and Java `21`.
 
+## Compatibility
+
+This release line is published for IntelliJ IDEA `2026.1` builds (`261.*`).
+The same bound is declared in Gradle plugin metadata and in
+`docs/updatePlugins.xml`.
+
+Before widening the supported IDE range, run `./gradlew verifyPlugin` against
+the new target IDE build and update both `build.gradle.kts` and
+`docs/updatePlugins.xml` in the same release.
+
 ## Tests
 
 Tests no longer hardcode the original JetBrains developer machine path. To provide an

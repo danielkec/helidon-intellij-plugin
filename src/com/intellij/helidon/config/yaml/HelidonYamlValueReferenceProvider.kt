@@ -25,7 +25,7 @@ internal class HelidonYamlValueReferenceProvider : PsiReferenceProvider() {
   override fun getReferencesByElement(element: PsiElement, context: ProcessingContext): Array<PsiReference> {
     val yamlKeyValue = PsiTreeUtil.getParentOfType(element, YAMLKeyValue::class.java) ?: return PsiReference.EMPTY_ARRAY
     val yamlScalar = element as YAMLScalar
-    if (yamlScalar.isMultiline) PsiReference.EMPTY_ARRAY
+    if (yamlScalar.isMultiline) return PsiReference.EMPTY_ARRAY
 
     val placeholderReferences = createHelidonPlaceholderReferences(element)
     val key = MetaConfigKeyReference.getResolvedMetaConfigKey(yamlKeyValue) ?: return placeholderReferences

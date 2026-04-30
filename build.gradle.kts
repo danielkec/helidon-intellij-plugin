@@ -26,8 +26,6 @@ dependencies {
     intellijIdea("2026.1.1")
     bundledPlugin("com.intellij.java")
     bundledPlugin("com.intellij.modules.ultimate")
-    bundledPlugin("com.intellij.cdi")
-    bundledPlugin("tanvd.grazi")
     bundledPlugin("com.intellij.properties")
     bundledPlugin("com.intellij.modules.json")
     bundledPlugin("org.jetbrains.idea.maven")
@@ -36,6 +34,7 @@ dependencies {
 
     testBundledPlugin("com.intellij.java-i18n")
     testBundledPlugin("com.intellij.javaee")
+    testBundledPlugin("tanvd.grazi")
 
     testFramework(TestFrameworkType.Plugin.Java)
     testFramework(TestFrameworkType.Platform)

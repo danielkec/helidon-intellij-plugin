@@ -7,44 +7,44 @@ import com.intellij.refactoring.rename.PsiElementRenameHandler
 
 class HelidonYamlRenamingTest : HelidonHighlightingTestCase() {
   fun testMetadataBackedKeyRenamingVetoed() {
-    assertRenamingVetoed("""
+    assertRenameVetoState("""
       server:
         ho<caret>st: localhost
-    """.trimIndent(), false)
+    """.trimIndent(), usePlainElementFind = false)
   }
 
   fun testUnresolvedKeyRenamingAllowed() {
-    assertRenamingVetoed("""
+    assertRenameVetoState("""
       so<caret>me:
         INVALID: 42
-    """.trimIndent(), true, false)
+    """.trimIndent(), usePlainElementFind = true, expectedVetoed = false)
   }
 
   fun testUserKeyRenamingAllowed() {
-    assertRenamingVetoed("""
+    assertRenameVetoState("""
       app:
         custom:
           ke<caret>y: value
-    """.trimIndent(), false, false)
+    """.trimIndent(), usePlainElementFind = false, expectedVetoed = false)
   }
 
   fun testKeyViaPropertyPlaceholderRenamingVetoed() {
-    assertRenamingVetoed("""
+    assertRenameVetoState("""
       server:
         host: ${"$"}{server.<caret>host}
-    """.trimIndent(), false)
+    """.trimIndent(), usePlainElementFind = false)
   }
 
   fun testSystemPropertyPlaceholderRenamingVetoed() {
-    assertRenamingVetoed("""
+    assertRenameVetoState("""
       my:
         integer: ${"$"}{user.<caret>home}
-    """, false)
+    """, usePlainElementFind = false)
   }
 
-  private fun assertRenamingVetoed(applicationYml: String,
-                                   usePlainElementFind: Boolean,
-                                   prohibited: Boolean = true) {
+  private fun assertRenameVetoState(applicationYml: String,
+                                    usePlainElementFind: Boolean,
+                                    expectedVetoed: Boolean = true) {
     myFixture.configureByText(HELIDON_APPLICATION_YAML, applicationYml)
     val element = if (usePlainElementFind) {
       myFixture.file.findElementAt(myFixture.caretOffset)
@@ -52,6 +52,6 @@ class HelidonYamlRenamingTest : HelidonHighlightingTestCase() {
     else {
       myFixture.elementAtCaret
     }
-    assertEquals(prohibited, PsiElementRenameHandler.isVetoed(element))
+    assertEquals(expectedVetoed, PsiElementRenameHandler.isVetoed(element))
   }
 }

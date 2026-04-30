@@ -102,9 +102,7 @@ final class HelidonUrlFramework implements EndpointsUrlTargetProvider<HelidonUrl
       CollectProcessor<HelidonUrlTargetInfo> collectProcessor = new CollectProcessor<>() {
         @Override
         protected boolean accept(HelidonUrlTargetInfo info) {
-          String parentUrl = info.getParentUrl();
-          return parentUrl != null && groupEndpoint.getPath()
-            .equals(UrlPath.Companion.fromExactString(StringsKt.removePrefix(info.getParentUrl(), "/")));
+          return hasMatchingParentUrl(groupEndpoint, info.getParentUrl());
         }
       };
       for (PsiType serviceType : HelidonCommonUtils.getRegisteredServiceTypes(invocationPoint)) {
@@ -120,6 +118,18 @@ final class HelidonUrlFramework implements EndpointsUrlTargetProvider<HelidonUrl
     return emptyList();
   }
 
+  private static boolean hasMatchingParentUrl(@NotNull HelidonUrlTargetInfo groupEndpoint, @Nullable String parentUrl) {
+    return parentUrl != null && normalizeUrl(getFullUrlDefinition(groupEndpoint)).equals(normalizeUrl(parentUrl));
+  }
+
+  private static @NotNull String getFullUrlDefinition(@NotNull HelidonUrlTargetInfo info) {
+    String parentUrl = info.getParentUrl();
+    return parentUrl != null ? parentUrl + info.getUrlDefinition() : info.getUrlDefinition();
+  }
+
+  private static @NotNull String normalizeUrl(@NotNull String url) {
+    return StringsKt.removePrefix(url, "/");
+  }
 
   private static @NotNull PresentationData getPresentation(HelidonUrlTargetInfo info, String url) {
     HelidonRequestMethods infoType = info.getType();

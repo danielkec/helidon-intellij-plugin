@@ -2,6 +2,7 @@
 package com.intellij.helidon.config
 
 import com.intellij.helidon.HelidonHighlightingTestCase
+import com.intellij.microservices.jvm.config.MetaConfigKey
 
 class HelidonMetaConfigKeyManagerTest : HelidonHighlightingTestCase() {
 
@@ -11,5 +12,16 @@ class HelidonMetaConfigKeyManagerTest : HelidonHighlightingTestCase() {
 
     val keyWithNonCanonicalName = HelidonMetaConfigKeyManager.getInstance().findCanonicalApplicationMetaConfigKey(module, "Server.host")
     assertNull(keyWithNonCanonicalName)
+  }
+
+  fun testMapConfigKeyHasNestedValueTypeMetadata() {
+    val key = HelidonMetaConfigKeyManager.getInstance().findCanonicalApplicationMetaConfigKey(module, "server.sockets")
+    assertNotNull(key)
+    assertTrue(key!!.isAccessType(MetaConfigKey.AccessType.MAP))
+    assertEquals("Map<String, ListenerConfig>", key.type!!.presentableText)
+    assertEquals("ListenerConfig", key.effectiveValueType!!.presentableText)
+
+    val helidonKey = assertInstanceOf(key, HelidonMetaConfigKey::class.java)
+    assertContainsElements(helidonKey.subKeys.map { it.name }, "port", "host", "tls.enabled")
   }
 }

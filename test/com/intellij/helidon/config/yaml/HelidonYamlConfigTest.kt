@@ -67,6 +67,31 @@ class HelidonYamlConfigTest : HelidonHighlightingTestCase() {
     assertEquals(TextRange.create(0, 4), configKeyReference.rangeInElement)
   }
 
+  fun testMapValueSubKeyReferenceResolve() {
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      server:
+        sockets:
+          admin:
+            po<caret>rt: 8080
+    """.trimIndent())
+
+    val reference = assertInstanceOf(myFixture.getReferenceAtCaretPositionWithAssertion(), MetaConfigKeyReference::class.java)
+    val configKeyDeclarationPsiElement = assertInstanceOf(reference.resolve(), PsiNamedElement::class.java)
+    assertEquals("port", configKeyDeclarationPsiElement.name)
+  }
+
+  fun testMapValueSubKeyCompletion() {
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      server:
+        sockets:
+          admin:
+            p<caret>
+    """.trimIndent())
+    myFixture.completeBasic()
+
+    assertContainsElements(myFixture.lookupElementStrings!!, "port")
+  }
+
   fun testPlaceholderReferenceCompletion() {
     myFixture.configureByText(HELIDON_APPLICATION_YAML, """
       my:

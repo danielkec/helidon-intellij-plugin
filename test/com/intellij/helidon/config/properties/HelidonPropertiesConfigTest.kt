@@ -12,6 +12,7 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.util.registry.Registry
+import com.intellij.psi.PsiNamedElement
 import com.intellij.psi.PsiReference
 import com.intellij.psi.ResolveResult
 import com.intellij.psi.impl.source.resolve.reference.impl.PsiMultiReference
@@ -158,6 +159,20 @@ class HelidonPropertiesConfigTest : HelidonHighlightingTestCase() {
     myFixture.completeBasic()
     myFixture.finishLookup(Lookup.NORMAL_SELECT_CHAR)
     myFixture.checkResult("security.secrets.test.name=<caret>")
+  }
+
+  fun testMapValueSubKeyReferenceResolve() {
+    configureApplicationProperties("server.sockets.admin.po<caret>rt=8080")
+    val reference = myFixture.getReferenceAtCaretPositionWithAssertion()
+    val configKey = assertInstanceOf(reference.resolve(), PsiNamedElement::class.java)
+    assertEquals("port", configKey.name)
+  }
+
+  fun testMapValueSubKeyCompletion() {
+    configureApplicationProperties("server.sockets.admin.p<caret>")
+    myFixture.completeBasic()
+    myFixture.finishLookup(Lookup.NORMAL_SELECT_CHAR)
+    myFixture.checkResult("server.sockets.admin.port=<caret>")
   }
 
   private fun resolvePlaceholderReference(): Array<ResolveResult?> {

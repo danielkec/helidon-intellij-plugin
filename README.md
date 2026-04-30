@@ -50,8 +50,8 @@ IDEA_HOME_PATH=/path/to/intellij/community ./gradlew test
 
 - The plugin declares several IntelliJ Ultimate/platform bundled dependencies.
 - `gen/` is part of the main source set and should be kept under version control.
-- `resources/META-INF/plugin.xml` has the CDI plugin dependency commented out, while
-  `build.gradle.kts` still resolves `com.intellij.cdi` as a bundled plugin.
+- Test-only IntelliJ platform dependencies are declared with `testBundledPlugin` so
+  they do not leak into the runtime sandbox classpath.
 - The inherited plugin id is still `com.intellij.helidon`. `verifyPluginStructure`
   warns that this uses JetBrains' reserved `com.intellij` prefix, but changing it
   would create a new Marketplace plugin identity.

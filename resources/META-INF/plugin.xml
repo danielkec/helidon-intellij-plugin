@@ -19,8 +19,6 @@
   <dependencies>
     <plugin id="com.intellij.java"/>
     <plugin id="com.intellij.modules.ultimate"/>
-<!--    TODO not working -->
-<!--    <plugin id="com.intellij.cdi"/>-->
     <plugin id="com.intellij.microservices.jvm"/>
     <plugin id="com.intellij.properties"/>
     <module name="intellij.spellchecker"/>

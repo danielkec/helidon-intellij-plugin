@@ -14,6 +14,8 @@ import com.intellij.microservices.url.references.extractPathVariable
 import com.intellij.microservices.url.PlaceholderSplitEscaper
 import com.intellij.microservices.jvm.pathvars.PathVariableReferenceProvider
 import com.intellij.microservices.jvm.url.UastUrlPathReferenceProvider
+import com.intellij.openapi.project.Project
+import com.intellij.patterns.PatternCondition
 import com.intellij.patterns.PsiJavaPatterns.psiMethod
 import com.intellij.patterns.StandardPatterns
 import com.intellij.patterns.StandardPatterns.or
@@ -23,9 +25,20 @@ import com.intellij.patterns.uast.injectionHostUExpression
 import com.intellij.psi.*
 import com.intellij.psi.CommonClassNames.JAVA_LANG_ITERABLE
 import com.intellij.psi.CommonClassNames.JAVA_LANG_STRING
+import com.intellij.psi.search.GlobalSearchScope
+import com.intellij.util.ProcessingContext
 import org.jetbrains.uast.UExpression
 
+private const val JAVA_UTIL_FUNCTION_SUPPLIER = "java.util.function.Supplier"
+
 private val handlerMethods: List<String> = listOf("get", "post", "put", "patch", "delete", "options", "head", "trace", "any")
+
+private val registerClasses: Set<String> = setOf(
+  HelidonConstants.HTTP_RULES,
+  HelidonConstants.HTTP_ROUTING_BUILDER,
+  HelidonConstants.ROUTING_RULES,
+  HelidonConstants.ROUTING_BUILDER
+)
 
 internal val httpMethodsPattern = or(
   psiMethod()
@@ -39,20 +52,52 @@ internal val httpMethodsPattern = or(
 internal val anyOfMethodPattern = psiMethod()
   .withName("anyOf")
   .withParameters(JAVA_LANG_ITERABLE, JAVA_LANG_STRING, HelidonConstants.HANDLER + "...")
-internal val registerMethodPattern = or(
-  psiMethod()
-    .withName("register")
-    .definedInClass(HelidonConstants.HTTP_RULES),
-  psiMethod()
-    .withName("register")
-    .definedInClass(HelidonConstants.HTTP_ROUTING_BUILDER),
-  psiMethod()
-    .withName("register")
-    .definedInClass(HelidonConstants.ROUTING_RULES),
-  psiMethod()
-    .withName("register")
-    .definedInClass(HelidonConstants.ROUTING_BUILDER)
-)
+internal val registerMethodPattern = psiMethod()
+  .withName("register")
+  .with(object : PatternCondition<PsiMethod>("pathBasedHelidonRegisterMethod") {
+    override fun accepts(method: PsiMethod, context: ProcessingContext): Boolean = method.isPathBasedHelidonRegisterMethod()
+  })
+
+private fun PsiMethod.isPathBasedHelidonRegisterMethod(): Boolean {
+  val containingClassName = containingClass?.qualifiedName ?: return false
+  if (containingClassName !in registerClasses) return false
+
+  val parameters = parameterList.parameters
+  return parameters.size >= 2 &&
+         parameters[0].type.equalsToText(JAVA_LANG_STRING) &&
+         parameters.drop(1).any { parameter -> parameter.type.isRegisterTargetType(project) }
+}
+
+private fun PsiType.isRegisterTargetType(project: Project): Boolean {
+  val targetType = when (this) {
+    is PsiEllipsisType -> componentType
+    is PsiArrayType -> componentType
+    else -> this
+  }
+
+  if (targetType is PsiWildcardType) {
+    return targetType.extendsBound.isRegisterTargetType(project)
+  }
+
+  if (targetType.isAssignableToAny(project,
+                                   HelidonConstants.HTTP_SERVICE,
+                                   HelidonConstants.SERVICE,
+                                   HelidonConstants.HTTP_HANDLER,
+                                   HelidonConstants.HANDLER)) {
+    return true
+  }
+
+  val classType = targetType as? PsiClassType ?: return false
+  val resolved = classType.resolve() ?: return false
+  if (resolved.qualifiedName != JAVA_UTIL_FUNCTION_SUPPLIER) return false
+  return classType.parameters.any { parameter -> parameter.isRegisterTargetType(project) }
+}
+
+private fun PsiType.isAssignableToAny(project: Project, vararg classNames: String): Boolean {
+  return classNames.any { className ->
+    PsiType.getTypeByName(className, project, GlobalSearchScope.allScope(project)).isAssignableFrom(this)
+  }
+}
 
 internal fun httpRulesMethods(elementPattern: UExpressionPattern<UExpression, *>): UExpressionPattern<*, *> =
   elementPattern.callParameter(0, callExpression().withResolvedMethod(httpMethodsPattern, false))

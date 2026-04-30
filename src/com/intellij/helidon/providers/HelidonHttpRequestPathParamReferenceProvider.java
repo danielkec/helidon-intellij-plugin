@@ -96,7 +96,7 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
     if (routeMethod == null) return true;
 
     int pathArgumentIndex;
-    if (getHttpMethodsPattern().accepts(routeMethod) || getRegisterMethodPattern().accepts(routeMethod)) {
+    if (getHttpMethodsPattern().accepts(routeMethod) || isPathRegisterMethodCall(methodCallExpression, routeMethod)) {
       pathArgumentIndex = 0;
     }
     else if (getAnyOfMethodPattern().accepts(routeMethod)) {
@@ -118,6 +118,15 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
       }
     }
     return true;
+  }
+
+  private static boolean isPathRegisterMethodCall(@NotNull PsiMethodCallExpression methodCallExpression,
+                                                  @NotNull PsiMethod routeMethod) {
+    if (!getRegisterMethodPattern().accepts(routeMethod)) return false;
+    PsiExpression[] expressions = methodCallExpression.getArgumentList().getExpressions();
+    if (expressions.length == 0) return false;
+    PsiType pathArgumentType = expressions[0].getType();
+    return pathArgumentType != null && pathArgumentType.equalsToText(CommonClassNames.JAVA_LANG_STRING);
   }
 
   private static boolean processPathVariableDefinitions(@NotNull PsiElement expression,

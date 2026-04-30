@@ -116,6 +116,58 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     })
   }
 
+  fun testNestedServiceConstructorArgumentDoesNotKeepParentPathForInnerService() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.HttpRules;
+      import io.helidon.webserver.http.HttpService;
+      import io.helidon.webserver.http.ServerRequest;
+      import io.helidon.webserver.http.ServerResponse;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.register("/api", new CompositeService(new HelperService()));
+        }
+      }
+
+      class CompositeService implements HttpService {
+        CompositeService(Object ignored) {
+        }
+
+        @Override
+        public void routing(HttpRules rules) {
+          rules.get("/composite/{name}", this::composite);
+        }
+
+        void composite(ServerRequest request, ServerResponse response) {
+        }
+      }
+
+      class HelperService implements HttpService {
+        @Override
+        public void routing(HttpRules rules) {
+          rules.get("/helper/{name}", this::helper);
+        }
+
+        void helper(ServerRequest request, ServerResponse response) {
+        }
+      }
+    """.trimIndent())
+
+    val compositeEndpoints = collectServiceEndpoints(myFixture.findClass("CompositeService"))
+    val helperEndpoints = collectServiceEndpoints(myFixture.findClass("HelperService"))
+
+    assertTrue(compositeEndpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/api" && it.urlDefinition == "/composite/{name}"
+    })
+    assertFalse(helperEndpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/api" && it.urlDefinition == "/helper/{name}"
+    })
+    assertTrue(helperEndpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == null && it.urlDefinition == "/helper/{name}"
+    })
+  }
+
   fun testConfigBuilderRoutingEndpointsAreDiscoveredThroughRoutingReferenceScope() {
     val webServerConfigFile = myFixture.addFileToProject("WebServerConfigRoutes.java", """
       import io.helidon.webserver.WebServerConfig;
@@ -159,6 +211,37 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
       class Main {
         static void routing(HttpRouting.Builder routing) {
           routing.register("/api/{tenant}", GreetingService::new);
+        }
+      }
+
+      class GreetingService implements HttpService {
+        @Override
+        public void routing(HttpRules rules) {
+          rules.get("/hello/{name}", this::hello);
+        }
+
+        void hello(ServerRequest request, ServerResponse response) {
+        }
+      }
+    """.trimIndent())
+
+    val serviceEndpoints = collectServiceEndpoints(myFixture.findClass("GreetingService"))
+    assertTrue(serviceEndpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/api/{tenant}" && it.urlDefinition == "/hello/{name}"
+    })
+  }
+
+  fun testLambdaSupplierServiceRegistrationKeepsParentPath() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.HttpRules;
+      import io.helidon.webserver.http.HttpService;
+      import io.helidon.webserver.http.ServerRequest;
+      import io.helidon.webserver.http.ServerResponse;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.register("/api/{tenant}", () -> new GreetingService());
         }
       }
 

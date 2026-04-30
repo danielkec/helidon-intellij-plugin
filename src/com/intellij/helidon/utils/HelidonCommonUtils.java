@@ -215,17 +215,67 @@ public final class HelidonCommonUtils {
                                                 @NotNull Project project,
                                                 @NotNull Collection<? super PsiType> result) {
     if (sourcePsi == null) return;
-    if (sourcePsi instanceof PsiNewExpression) {
-      collectServiceTypes(((PsiNewExpression)sourcePsi).getType(), project, result);
+    if (sourcePsi instanceof PsiExpression) {
+      collectTopLevelServiceTypes((PsiExpression)sourcePsi, project, result);
     }
-    if (sourcePsi instanceof PsiMethodReferenceExpression) {
-      collectMethodReferenceServiceType((PsiMethodReferenceExpression)sourcePsi, project, result);
+  }
+
+  private static void collectTopLevelServiceTypes(@Nullable PsiExpression expression,
+                                                  @NotNull Project project,
+                                                  @NotNull Collection<? super PsiType> result) {
+    PsiExpression unwrappedExpression = unwrapServiceExpression(expression);
+    if (unwrappedExpression == null) return;
+
+    if (unwrappedExpression instanceof PsiNewExpression) {
+      collectServiceTypes(((PsiNewExpression)unwrappedExpression).getType(), project, result);
+      return;
     }
-    for (PsiNewExpression newExpression : PsiTreeUtil.findChildrenOfType(sourcePsi, PsiNewExpression.class)) {
-      collectServiceTypes(newExpression.getType(), project, result);
+
+    if (unwrappedExpression instanceof PsiMethodReferenceExpression) {
+      collectMethodReferenceServiceType((PsiMethodReferenceExpression)unwrappedExpression, project, result);
+      return;
     }
-    for (PsiMethodReferenceExpression methodReference : PsiTreeUtil.findChildrenOfType(sourcePsi, PsiMethodReferenceExpression.class)) {
-      collectMethodReferenceServiceType(methodReference, project, result);
+
+    if (unwrappedExpression instanceof PsiLambdaExpression) {
+      collectLambdaServiceTypes((PsiLambdaExpression)unwrappedExpression, project, result);
+      return;
+    }
+
+    if (unwrappedExpression instanceof PsiConditionalExpression) {
+      PsiConditionalExpression conditionalExpression = (PsiConditionalExpression)unwrappedExpression;
+      collectTopLevelServiceTypes(conditionalExpression.getThenExpression(), project, result);
+      collectTopLevelServiceTypes(conditionalExpression.getElseExpression(), project, result);
+    }
+  }
+
+  private static @Nullable PsiExpression unwrapServiceExpression(@Nullable PsiExpression expression) {
+    PsiExpression current = expression;
+    while (current instanceof PsiParenthesizedExpression || current instanceof PsiTypeCastExpression) {
+      if (current instanceof PsiParenthesizedExpression) {
+        current = ((PsiParenthesizedExpression)current).getExpression();
+      }
+      else {
+        current = ((PsiTypeCastExpression)current).getOperand();
+      }
+    }
+    return current;
+  }
+
+  private static void collectLambdaServiceTypes(@NotNull PsiLambdaExpression lambdaExpression,
+                                                @NotNull Project project,
+                                                @NotNull Collection<? super PsiType> result) {
+    PsiElement body = lambdaExpression.getBody();
+    if (body instanceof PsiExpression) {
+      collectTopLevelServiceTypes((PsiExpression)body, project, result);
+      return;
+    }
+
+    if (body instanceof PsiCodeBlock) {
+      for (PsiStatement statement : ((PsiCodeBlock)body).getStatements()) {
+        if (statement instanceof PsiReturnStatement) {
+          collectTopLevelServiceTypes(((PsiReturnStatement)statement).getReturnValue(), project, result);
+        }
+      }
     }
   }
 
@@ -465,18 +515,12 @@ public final class HelidonCommonUtils {
 
       if (routingBuilderClass == null) continue;
       for (PsiMethod psiMethod : routingBuilderClass.getAllMethods()) {
-        if (isPathRegisterMethod(psiMethod)) {
+        if (getRegisterMethodPattern().accepts(psiMethod)) {
           methods.add(psiMethod);
         }
       }
     }
     return methods;
-  }
-
-  private static boolean isPathRegisterMethod(@NotNull PsiMethod method) {
-    if (!"register".equals(method.getName())) return false;
-    PsiParameter[] parameters = method.getParameterList().getParameters();
-    return parameters.length >= 2 && parameters[0].getType().equalsToText(CommonClassNames.JAVA_LANG_STRING);
   }
 
   public static @NotNull GlobalSearchScope getRoutingClassReferencesScope(@NotNull Module module) {
@@ -491,10 +535,13 @@ public final class HelidonCommonUtils {
     for (String routingReferenceClass : getRoutingReferenceClasses()) {
       PsiClass routingClass = findClass(module, routingReferenceClass);
       if (routingClass == null) continue;
-      ReferencesSearch.search(routingClass, module.getModuleWithDependenciesScope()).findAll().stream()
-        .map(reference -> reference.getElement().getContainingFile().getVirtualFile())
-        .filter(Objects::nonNull)
-        .forEach(virtualFiles::add);
+      ReferencesSearch.search(routingClass, module.getModuleWithDependenciesScope()).forEach(reference -> {
+        PsiFile containingFile = reference.getElement().getContainingFile();
+        if (containingFile != null && containingFile.getVirtualFile() != null) {
+          virtualFiles.add(containingFile.getVirtualFile());
+        }
+        return true;
+      });
     }
     return virtualFiles.isEmpty() ? GlobalSearchScope.EMPTY_SCOPE : GlobalSearchScope.filesScope(module.getProject(), virtualFiles);
   }

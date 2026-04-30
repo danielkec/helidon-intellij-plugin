@@ -28,6 +28,13 @@ class HelidonYamlRenamingTest : HelidonHighlightingTestCase() {
     """.trimIndent(), usePlainElementFind = false, expectedVetoed = false)
   }
 
+  fun testMetadataBackedKeyValueRenamingAllowed() {
+    assertRenameVetoState("""
+      server:
+        host: loca<caret>lhost
+    """.trimIndent(), usePlainElementFind = true, expectedVetoed = false)
+  }
+
   fun testKeyViaPropertyPlaceholderRenamingVetoed() {
     assertRenameVetoState("""
       server:

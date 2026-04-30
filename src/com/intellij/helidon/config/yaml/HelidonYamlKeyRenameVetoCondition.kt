@@ -6,8 +6,13 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.yaml.psi.YAMLKeyValue
 
-private fun findKeyValue(psiElement: PsiElement): YAMLKeyValue? =
-  PsiTreeUtil.getParentOfType(psiElement, YAMLKeyValue::class.java, false)
+private fun findKeyValue(psiElement: PsiElement): YAMLKeyValue? {
+  val keyValue = PsiTreeUtil.getParentOfType(psiElement, YAMLKeyValue::class.java, false) ?: return null
+  if (psiElement == keyValue) return keyValue
+
+  val key = keyValue.key ?: return null
+  return if (psiElement == key || PsiTreeUtil.isAncestor(key, psiElement, true)) keyValue else null
+}
 
 internal class HelidonYamlKeyRenameVetoCondition : Condition<PsiElement> {
   override fun value(psiElement: PsiElement): Boolean {

@@ -77,6 +77,24 @@ class HelidonYamlKeyCompletionTest : HelidonHighlightingTestCase() {
     assertContainsElements(lookupElementStrings!!, "server.host", "server.backlog", "server.port")
   }
 
+  fun testGivenPrefixKeyCompletionBetweenExistingKeys() {
+    doCompletion("""
+      server:
+        host: 0.0.0.0
+        <caret>
+        concurrency-limit:
+          fixed:
+            permits: ${'$'}{proxy.concurrency}
+            queue-length: 200
+            queue-timeout: PT5M
+      proxy:
+        concurrency: 8
+    """.trimIndent())
+    val lookupElementStrings = myFixture.lookupElementStrings
+    assertNotNull(lookupElementStrings)
+    assertContainsElements(lookupElementStrings!!, "server.backlog", "server.name", "server.port")
+  }
+
   fun testGivenPrefixKeyFilterExistingCompletionVariants() {
     doCompletion("""
       server:

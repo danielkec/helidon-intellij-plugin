@@ -3,8 +3,6 @@ package com.intellij.helidon.config.yaml
 
 import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.config.HELIDON_APPLICATION_YAML
-import com.intellij.helidon.config.HelidonMetaConfigKeyManager
-import com.intellij.microservices.jvm.config.yaml.ConfigYamlAccessor
 import org.jetbrains.yaml.psi.YAMLFile
 
 class HelidonYamlAccessorTest : HelidonHighlightingTestCase() {
@@ -16,7 +14,7 @@ class HelidonYamlAccessorTest : HelidonHighlightingTestCase() {
           print<caret>Details: true
     """.trimIndent())
     val yamlDocument = (myFixture.file as YAMLFile).documents[0]
-    val accessor = ConfigYamlAccessor(yamlDocument, HelidonMetaConfigKeyManager.getInstance())
+    val accessor = HelidonConfigYamlAccessor(yamlDocument)
     val yamlKeyValue = accessor.findExistingKey("server.features.print-details")
     assertNotNull(yamlKeyValue)
     assertEquals("printDetails", yamlKeyValue!!.keyText)
@@ -30,7 +28,7 @@ class HelidonYamlAccessorTest : HelidonHighlightingTestCase() {
             na<caret>me : "dev"
     """.trimIndent())
     val yamlDocument = (myFixture.file as YAMLFile).documents[0]
-    val accessor = ConfigYamlAccessor(yamlDocument, HelidonMetaConfigKeyManager.getInstance())
+    val accessor = HelidonConfigYamlAccessor(yamlDocument)
     val yamlKeyValue = accessor.findExistingKey("security.secrets.*.name")
     assertNotNull(yamlKeyValue)
     assertEquals("name", yamlKeyValue!!.keyText)

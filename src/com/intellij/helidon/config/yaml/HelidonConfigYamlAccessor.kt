@@ -7,7 +7,10 @@ import com.intellij.microservices.jvm.config.MicroservicesConfigBundle
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleUtilCore
+import com.intellij.psi.PsiElement
+import com.intellij.psi.PsiRecursiveElementVisitor
 import com.intellij.util.IncorrectOperationException
+import com.intellij.util.Processor
 import org.jetbrains.yaml.YAMLElementGenerator
 import org.jetbrains.yaml.YAMLUtil
 import org.jetbrains.yaml.psi.*
@@ -21,6 +24,13 @@ internal class HelidonConfigYamlAccessor private constructor(private val root: Y
   internal constructor(root: YAMLKeyValue, module: Module? = null) : this(root as YAMLPsiElement, module)
 
   constructor(root: YAMLSequenceItem, module: Module? = null) : this(root as YAMLPsiElement, module)
+
+  internal val allKeys: List<YAMLKeyValue>
+    get() {
+      val result = ArrayList<YAMLKeyValue>()
+      collectAllKeys(root, result)
+      return result
+    }
 
   internal fun findExistingKey(qualifiedKey: String): YAMLKeyValue? {
     if (qualifiedKey.isBlank()) return null
@@ -163,5 +173,29 @@ internal class HelidonConfigYamlAccessor private constructor(private val root: Y
     val dummyKeyValue = topLevelKeys.iterator().next()
     checkNotNull(dummyKeyValue.parentMapping) { "no containing mapping for a kv (" + chainedKey + "): " + root.text }
     return dummyKeyValue
+  }
+
+  companion object {
+    fun processAllKeysReversed(root: YAMLPsiElement, processor: Processor<in YAMLKeyValue>): Boolean {
+      val keys = ArrayList<YAMLKeyValue>()
+      collectAllKeys(root, keys)
+      for (keyValue in keys.asReversed()) {
+        if (!processor.process(keyValue)) {
+          return false
+        }
+      }
+      return true
+    }
+
+    private fun collectAllKeys(root: YAMLPsiElement, result: MutableList<YAMLKeyValue>) {
+      root.accept(object : PsiRecursiveElementVisitor() {
+        override fun visitElement(element: PsiElement) {
+          if (element is YAMLKeyValue) {
+            result.add(element)
+          }
+          super.visitElement(element)
+        }
+      })
+    }
   }
 }

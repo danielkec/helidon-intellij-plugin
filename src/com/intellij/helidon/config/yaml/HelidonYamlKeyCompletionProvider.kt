@@ -9,7 +9,6 @@ import com.intellij.codeInsight.lookup.LookupElementDecorator
 import com.intellij.helidon.config.HelidonMetaConfigKeyManager
 import com.intellij.microservices.jvm.config.ConfigKeyPathReference
 import com.intellij.microservices.jvm.config.MetaConfigKey
-import com.intellij.microservices.jvm.config.yaml.ConfigYamlUtils
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.openapi.util.Condition
@@ -241,11 +240,11 @@ internal class HelidonYamlKeyCompletionProvider : CompletionProvider<CompletionP
         }
       }
 
-    ConfigYamlUtils.addCompletionAddIfNeeded(parameters, result)
+    addYamlCompletionAdvertisement(parameters, result)
 
     val currentLineKeyComponents =
-      ConfigYamlUtils.getCurrentLineKeyComponents(ObjectUtils.chooseNotNull(originalElement, element), binder,
-                                                  parentQualifiedName, configKeys)
+      getYamlCurrentLineKeyComponents(ObjectUtils.chooseNotNull(originalElement, element), binder,
+                                      parentQualifiedName, configKeys)
     if (currentLineKeyComponents.isNotEmpty()) {
       result.addAllElements(currentLineKeyComponents)
     }

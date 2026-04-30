@@ -7,7 +7,6 @@ import com.intellij.microservices.jvm.config.MetaConfigKey
 import com.intellij.microservices.jvm.config.MetaConfigKeyReference
 import com.intellij.microservices.jvm.config.MicroservicesConfigUtils
 import com.intellij.microservices.jvm.config.hints.NumberHintReferenceBase
-import com.intellij.microservices.jvm.config.yaml.ConfigYamlUtils
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.ElementManipulators
 import com.intellij.psi.PsiElement
@@ -36,7 +35,7 @@ internal class HelidonYamlValueReferenceProvider : PsiReferenceProvider() {
       else {
         listOf(ElementManipulators.getValueTextRange(element))
       }
-    context.put(NumberHintReferenceBase.NUMBER_VALUE_SANITIZER_KEY, ConfigYamlUtils.getYamlNumberValueSanitizer())
+    context.put(NumberHintReferenceBase.NUMBER_VALUE_SANITIZER_KEY, getYamlNumberValueSanitizer())
     val providerReferences = HelidonHintReferencesProvider.getInstance().getValueReferences(key, null, element, valueTextRanges, context)
     return ArrayUtil.mergeArrays(providerReferences, placeholderReferences)
   }

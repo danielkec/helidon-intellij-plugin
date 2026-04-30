@@ -7,7 +7,6 @@ import com.intellij.microservices.jvm.config.ConfigKeyParts
 import com.intellij.microservices.jvm.config.ConfigKeyPathReference
 import com.intellij.microservices.jvm.config.MetaConfigKey
 import com.intellij.microservices.jvm.config.MetaConfigKeyReference
-import com.intellij.microservices.jvm.config.yaml.ConfigYamlUtils
 import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.openapi.util.Comparing
 import com.intellij.openapi.util.TextRange
@@ -37,7 +36,7 @@ internal class HelidonYamlKeyMetaConfigKeyReference(yamlKeyValue: YAMLKeyValue) 
     return PsiElementResolveResult.createResults(SmartList(keyData.key!!.declaration))
   }
 
-  override fun getReferenceDisplayText(): String = ConfigYamlUtils.getReferenceDisplayText(element)
+  override fun getReferenceDisplayText(): String = getYamlReferenceDisplayText(element)
 
   private fun resolveKey(): HelidonYamlKeyData {
     val builder = HelidonYamlKeyDataBuilder(collectParents())

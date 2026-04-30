@@ -7,6 +7,7 @@ import com.intellij.helidon.config.HelidonConfigPlaceholderReference
 import com.intellij.microservices.jvm.config.MetaConfigKeyReference
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiNamedElement
+import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.testFramework.TestDataPath
 import com.intellij.testFramework.fixtures.CodeInsightTestFixture
 import com.jetbrains.jsonSchema.extension.JsonWidgetSuppressor
@@ -65,6 +66,17 @@ class HelidonYamlConfigTest : HelidonHighlightingTestCase() {
 
     val configKeyReference = assertInstanceOf(myFixture.getReferenceAtCaretPositionWithAssertion(), MetaConfigKeyReference::class.java)
     assertEquals(TextRange.create(0, 4), configKeyReference.rangeInElement)
+  }
+
+  fun testIndexedConfigKeyQualifiedName() {
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      items:
+        - na<caret>me: first
+    """.trimIndent())
+
+    val keyValue = PsiTreeUtil.getParentOfType(myFixture.file.findElementAt(myFixture.caretOffset), YAMLKeyValue::class.java)
+    assertNotNull(keyValue)
+    assertEquals("items[0].name", getQualifiedConfigKeyName(keyValue))
   }
 
   fun testMapValueSubKeyReferenceResolve() {

@@ -7,7 +7,6 @@ import com.intellij.helidon.config.isHelidonConfigFile
 import com.intellij.helidon.utils.HelidonCommonUtils.hasHelidonLibrary
 import com.intellij.lang.annotation.AnnotationHolder
 import com.intellij.microservices.jvm.config.MetaConfigKeyReference
-import com.intellij.microservices.jvm.config.yaml.ConfigYamlUtils
 import com.intellij.openapi.editor.colors.TextAttributesKey
 import com.intellij.openapi.util.Key
 import com.intellij.psi.PsiElement
@@ -59,7 +58,7 @@ internal class HelidonYamlAnnotator : HelidonConfigFileAnnotator() {
 
     val configKey = MetaConfigKeyReference.getResolvedMetaConfigKey(yamlKeyValue) ?: return
     val parametrizedConfigKey = HelidonParametrizedConfigKey.getParametrizedConfigKey(configKey.name) ?: return
-    val keyName = ConfigYamlUtils.getQualifiedConfigKeyName(yamlKeyValue)
+    val keyName = getQualifiedConfigKeyName(yamlKeyValue)
     val parameterRange = parametrizedConfigKey.getParameterRange(keyName) ?: return
     val parameter = parameterRange.substring(keyName)
     var parent = PsiTreeUtil.getParentOfType(yamlKeyValue, YAMLKeyValue::class.java)

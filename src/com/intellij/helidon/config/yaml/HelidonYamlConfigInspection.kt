@@ -9,7 +9,6 @@ import com.intellij.microservices.jvm.config.MetaConfigKey
 import com.intellij.microservices.jvm.config.MetaConfigKeyReference
 import com.intellij.microservices.jvm.config.MicroservicesConfigBundle
 import com.intellij.microservices.jvm.config.MicroservicesConfigUtils
-import com.intellij.microservices.jvm.config.yaml.ShowDuplicateKeysQuickFix
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiElementVisitor
 import com.intellij.psi.PsiFile
@@ -76,11 +75,9 @@ internal class HelidonYamlConfigInspection : LocalInspectionTool() {
       for ((configKey, values) in duplicates.entrySet()) {
         if (values.size == 1 || HelidonParametrizedConfigKey.getParametrizedConfigKey(configKey) != null) continue
 
-        val showDuplicatesFix = ShowDuplicateKeysQuickFix(configKey, values)
         for (keyValue in values) {
           holder.registerProblem(keyValue!!,
-                                 MicroservicesConfigBundle.message("config.duplicate.key", configKey),
-                                 showDuplicatesFix)
+                                 MicroservicesConfigBundle.message("config.duplicate.key", configKey))
         }
       }
     }

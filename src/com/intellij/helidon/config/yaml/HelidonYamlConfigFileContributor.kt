@@ -7,8 +7,6 @@ import com.intellij.helidon.config.HelidonConfigFileContributor
 import com.intellij.helidon.config.HelidonConfigValueSearcher.HelidonConfigValueResult
 import com.intellij.helidon.config.HelidonConfigValueSearcher.HelidonConfigValueSearchParams
 import com.intellij.helidon.config.HelidonMetaConfigKeyManager
-import com.intellij.microservices.jvm.config.yaml.ConfigYamlAccessor
-import com.intellij.microservices.jvm.config.yaml.ConfigYamlUtils
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
@@ -21,7 +19,7 @@ internal class HelidonYamlConfigFileContributor : HelidonConfigFileContributor(Y
     if (psiFile !is YAMLFile) return null
 
     for (document in psiFile.documents) {
-      val existingKey = ConfigYamlAccessor(document, HelidonMetaConfigKeyManager.getInstance()).findExistingKey(key)
+      val existingKey = HelidonConfigYamlAccessor(document).findExistingKey(key)
       if (existingKey != null) return existingKey
     }
     return null
@@ -32,15 +30,15 @@ internal class HelidonYamlConfigFileContributor : HelidonConfigFileContributor(Y
 
     val result = ArrayList<LookupElement>()
     for (document in psiFile.documents) {
-      val accessor = ConfigYamlAccessor(document, HelidonMetaConfigKeyManager.getInstance())
+      val accessor = HelidonConfigYamlAccessor(document)
       for (yamlKeyValue in accessor.allKeys) {
         val yamlValue = yamlKeyValue.value
         if (yamlValue !is YAMLScalar &&
             yamlValue !is YAMLSequence) {
           continue
         }
-        val qualifiedKey = ConfigYamlUtils.getQualifiedConfigKeyName(yamlKeyValue)
-        result.add(LookupElementBuilder.create(yamlKeyValue, qualifiedKey).withRenderer(ConfigYamlUtils.getYamlPlaceholderLookupRenderer()))
+        val qualifiedKey = getQualifiedConfigKeyName(yamlKeyValue)
+        result.add(LookupElementBuilder.create(yamlKeyValue, qualifiedKey).withRenderer(getYamlPlaceholderLookupRenderer()))
       }
     }
     return result
@@ -53,21 +51,21 @@ internal class HelidonYamlConfigFileContributor : HelidonConfigFileContributor(Y
 
     val keyValueProcessor = Processor { yamlKeyValue: YAMLKeyValue ->
       ProgressManager.checkCanceled()
-      val qualifiedKeyName = ConfigYamlUtils.getQualifiedConfigKeyName(yamlKeyValue)
+      val qualifiedKeyName = getQualifiedConfigKeyName(yamlKeyValue)
       if (qualifiedKeyName == keyName ||
           (params.checkRelaxedNames && binder.bindsTo(params.configKey, qualifiedKeyName))) {
         val keyElement = yamlKeyValue.key ?: return@Processor true
         val valueElement = yamlKeyValue.value
         if (valueElement is YAMLSequence || valueElement is YAMLMapping) return@Processor true
         val valueText = yamlKeyValue.valueText
-        val sanitizedValueText = ConfigYamlUtils.sanitizeNumberValueIfNeeded(valueText) { params.configKey.effectiveValueElementType } ?: valueText
+        val sanitizedValueText = sanitizeYamlNumberValueIfNeeded(valueText) { params.configKey.effectiveValueElementType } ?: valueText
         return@Processor processor.process(HelidonConfigValueResult(keyElement, valueElement, sanitizedValueText, params))
       }
       true
     }
 
     for (document in yamlFile.documents.asReversed()) {
-      if (!ConfigYamlAccessor.processAllKeysReversed(document, keyValueProcessor)) {
+      if (!HelidonConfigYamlAccessor.processAllKeysReversed(document, keyValueProcessor)) {
         return false
       }
     }

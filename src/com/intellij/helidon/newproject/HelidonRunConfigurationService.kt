@@ -39,11 +39,12 @@ class HelidonRunConfigurationService {
       .coalesceBy(this)
       .inSmartMode(project)
       .finishOnUiThread(ModalityState.nonModal(), Consumer { modules ->
-        for (module in modules) {
-          if (module.isDisposed) continue
+        runWriteAction {
+          val modulesWithMicroProfileRunConfigurations = existingMicroProfileRunConfigurationModules(project).toMutableSet()
+          for (module in modules) {
+            if (module.isDisposed) continue
 
-          runWriteAction {
-            createMicroProfileRunConfiguration(module)
+            createMicroProfileRunConfiguration(module, modulesWithMicroProfileRunConfigurations)
           }
         }
       })
@@ -79,8 +80,12 @@ class HelidonRunConfigurationService {
 
   internal fun createMicroProfileRunConfiguration(module: Module) {
     ApplicationManager.getApplication().assertWriteAccessAllowed()
+    createMicroProfileRunConfiguration(module, existingMicroProfileRunConfigurationModules(module.project).toMutableSet())
+  }
 
-    if (hasMicroProfileRunConfiguration(module)) {
+  private fun createMicroProfileRunConfiguration(module: Module,
+                                                 modulesWithMicroProfileRunConfigurations: MutableSet<Module>) {
+    if (!modulesWithMicroProfileRunConfigurations.add(module)) {
       return
     }
 

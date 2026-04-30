@@ -4,8 +4,10 @@ package com.intellij.helidon.providers
 import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.utils.HelidonCommonUtils
 import com.intellij.helidon.utils.HelidonUrlTargetInfo
+import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.psi.PsiClass
+import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.LocalSearchScope
@@ -207,6 +209,26 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     assertNotNull(reference.resolve())
   }
 
+  fun testObjectTypedMethodReferenceDoesNotResolveHelidon4PathParameterReference() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.ServerRequest;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.get("/hello/{name}", Main::hello);
+        }
+
+        static void hello(Object request, Object response) {
+          ((ServerRequest) request).path().pathParameters().get("na<caret>me");
+        }
+      }
+    """.trimIndent())
+
+    val reference = myFixture.getReferenceAtCaretPositionWithAssertion()
+    assertNull(reference.resolve())
+  }
+
   fun testInlineHelidon4PathParameterReference() {
     myFixture.configureByText("Main.java", """
       import io.helidon.webserver.http.HttpRouting;
@@ -222,6 +244,53 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
 
     val reference = myFixture.getReferenceAtCaretPositionWithAssertion()
     assertNotNull(reference.resolve())
+  }
+
+  fun testServiceRegistrationCacheInvalidatesAfterPathEdit() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.HttpRules;
+      import io.helidon.webserver.http.HttpService;
+      import io.helidon.webserver.http.ServerRequest;
+      import io.helidon.webserver.http.ServerResponse;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.register("/api", new GreetingService());
+        }
+      }
+
+      class GreetingService implements HttpService {
+        @Override
+        public void routing(HttpRules rules) {
+          rules.get("/hello/{name}", this::hello);
+        }
+
+        void hello(ServerRequest request, ServerResponse response) {
+        }
+      }
+    """.trimIndent())
+
+    val serviceClass = myFixture.findClass("GreetingService")
+    val initialEndpoints = collectServiceEndpoints(serviceClass)
+    assertTrue(initialEndpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/api" && it.urlDefinition == "/hello/{name}"
+    })
+
+    val document = myFixture.editor.document
+    val pathOffset = document.text.indexOf("\"/api\"") + 1
+    WriteCommandAction.runWriteCommandAction(project) {
+      document.replaceString(pathOffset, pathOffset + "/api".length, "/v2")
+    }
+    PsiDocumentManager.getInstance(project).commitAllDocuments()
+
+    val updatedEndpoints = collectServiceEndpoints(serviceClass)
+    assertFalse(updatedEndpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/api" && it.urlDefinition == "/hello/{name}"
+    })
+    assertTrue(updatedEndpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/v2" && it.urlDefinition == "/hello/{name}"
+    })
   }
 
   private fun collectBuilderEndpoints(): Collection<HelidonUrlTargetInfo> {

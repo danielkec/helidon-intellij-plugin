@@ -41,6 +41,8 @@ public final class HelidonCommonUtils {
   private static final String JAVA_UTIL_FUNCTION_SUPPLIER = "java.util.function.Supplier";
   private static final Key<CachedValue<Map<SearchScope, Set<UCallExpression>>>> METHOD_INVOCATIONS_KEY =
     Key.create("METHOD_INVOCATIONS_KEY");
+  private static final Key<CachedValue<List<ServiceRegistration>>> SERVICE_REGISTRATIONS_KEY =
+    Key.create("SERVICE_REGISTRATIONS_KEY");
 
   private HelidonCommonUtils() {
   }
@@ -115,15 +117,23 @@ public final class HelidonCommonUtils {
   }
 
   private static @NotNull List<ServiceRegistration> getServiceRegistrations(@NotNull Module module) {
+    return CachedValuesManager.getManager(module.getProject())
+      .getCachedValue(module, SERVICE_REGISTRATIONS_KEY, () -> {
+        return Result.create(calculateServiceRegistrations(module),
+                             UastModificationTracker.getInstance(module.getProject()),
+                             JavaLibraryModificationTracker.getInstance(module.getProject()));
+      }, false);
+  }
+
+  private static @NotNull List<ServiceRegistration> calculateServiceRegistrations(@NotNull Module module) {
     List<ServiceRegistration> result = new ArrayList<>();
     for (PsiMethod registerMethod : getBuilderRegisterMethod(module)) {
       result.addAll(getServiceRegistrations(module, registerMethod));
     }
-    return result;
+    return Collections.unmodifiableList(result);
   }
 
   private static @NotNull List<ServiceRegistration> getServiceRegistrations(@NotNull Module module, @NotNull PsiMethod registerMethod) {
-    // todo !! cache it
     List<ServiceRegistration> result = new ArrayList<>();
     for (UCallExpression uCallExpression : getUCallExpressions(getRoutingClassReferencesScope(module), registerMethod)) {
       List<UExpression> valueArguments = uCallExpression.getValueArguments();

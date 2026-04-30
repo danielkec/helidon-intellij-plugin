@@ -79,7 +79,7 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
       PsiMethod method = ((PsiMethodCallExpression)expression).resolveMethod();
       return method != null &&
              "pathParameters".equals(method.getName()) &&
-             isAssignableFromAny(method.getReturnType(), method.getProject(), HelidonConstants.HTTP_PARAMETERS);
+             isAssignableToAny(method.getReturnType(), method.getProject(), HelidonConstants.HTTP_PARAMETERS);
     }
     if (expression instanceof PsiReferenceExpression) {
       PsiElement resolved = ((PsiReferenceExpression)expression).resolve();
@@ -135,18 +135,18 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
     if (declaration == null) return false;
     PsiParameter[] parameters = declaration.getParameterList().getParameters();
     return parameters.length == 2
-           && isAssignableFromAny(parameters[0].getType(), declaration.getProject(),
-                                  HelidonConstants.HTTP_SERVER_REQUEST,
-                                  HelidonConstants.LEGACY_HTTP_SERVER_REQUEST)
-           && isAssignableFromAny(parameters[1].getType(), declaration.getProject(),
-                                  HelidonConstants.HTTP_SERVER_RESPONSE,
-                                  HelidonConstants.LEGACY_HTTP_SERVER_RESPONSE);
+           && isAssignableToAny(parameters[0].getType(), declaration.getProject(),
+                                HelidonConstants.HTTP_SERVER_REQUEST,
+                                HelidonConstants.LEGACY_HTTP_SERVER_REQUEST)
+           && isAssignableToAny(parameters[1].getType(), declaration.getProject(),
+                                HelidonConstants.HTTP_SERVER_RESPONSE,
+                                HelidonConstants.LEGACY_HTTP_SERVER_RESPONSE);
   }
 
-  private static boolean isAssignableFromAny(@Nullable PsiType type, @NotNull Project project, @NotNull String... classNames) {
+  private static boolean isAssignableToAny(@Nullable PsiType type, @NotNull Project project, @NotNull String... classNames) {
     if (type == null) return false;
     for (String className : classNames) {
-      if (type.isAssignableFrom(getTypeByName(className, project))) {
+      if (getTypeByName(className, project).isAssignableFrom(type)) {
         return true;
       }
     }

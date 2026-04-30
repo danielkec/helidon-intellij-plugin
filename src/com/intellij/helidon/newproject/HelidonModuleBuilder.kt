@@ -35,8 +35,8 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
     )
   }
 
-  // Helidon 3 requires at least Java 17
-  override fun getMinJavaVersion(): JavaVersion = LanguageLevel.JDK_17.toJavaVersion()
+  // Helidon 4 requires at least Java 21
+  override fun getMinJavaVersion(): JavaVersion = LanguageLevel.JDK_21.toJavaVersion()
 
   override fun createWizardSteps(context: WizardContext, modulesProvider: ModulesProvider): Array<ModuleWizardStep> {
     return emptyArray()
@@ -130,7 +130,7 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
   private class HelidonStarterInitialStep(contextProvider: StarterContextProvider) : StarterInitialStep(contextProvider) {
     override fun addFieldsAfter(layout: Panel) {
       layout.row {
-        hyperLink(HelidonBundle.message("helidon.mp.overview"), "https://helidon.io/docs/v3/#/mp/introduction")
+        hyperLink(HelidonBundle.message("helidon.mp.overview"), "https://helidon.io/docs/v4/#/mp/introduction")
       }
     }
   }

@@ -9,7 +9,7 @@
     <p>Adds support for the <a href="https://helidon.io/">Helidon</a> framework for writing microservices in Java.</p>
     <p>Features:</p>
     <ul>
-      <li>New project wizard.</p>
+      <li>New project wizard.</li>
       <li>Coding assistance: code completion, inspections, quick fixes.</li>
       <li>Autocompletion for YAML/Properties configuration files.</li>
       <li>Display of application endpoints in the Endpoints tool window.</li>

@@ -7,7 +7,9 @@ import com.intellij.java.library.JavaLibraryModificationTracker
 import com.intellij.microservices.jvm.config.ConfigPlaceholderReference
 import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.openapi.roots.ModuleRootManager
+import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.vfs.VfsUtilCore
+import com.intellij.psi.ElementManipulators
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiReference
@@ -56,9 +58,38 @@ fun getHelidonConfigFileIcon(file: PsiFile): Icon? {
 }
 
 fun createHelidonPlaceholderReferences(element: PsiElement): Array<PsiReference> {
-  return ConfigPlaceholderReference.createPlaceholderReferences(element) { psiElement, range ->
+  val completedReferences = ConfigPlaceholderReference.createPlaceholderReferences(element) { psiElement, range ->
     HelidonConfigPlaceholderReference.Builder(psiElement, range, false)
       .withSystemProperties()
       .build()
+  }
+  val incompleteReference = createIncompleteHelidonPlaceholderReference(element)
+  return if (incompleteReference == null) {
+    completedReferences
+  }
+  else {
+    arrayOf(*completedReferences, incompleteReference)
+  }
+}
+
+private fun createIncompleteHelidonPlaceholderReference(element: PsiElement): PsiReference? {
+  val valueText = ElementManipulators.getValueText(element)
+  var searchStart = 0
+  while (true) {
+    val placeholderStart = valueText.indexOf(ConfigPlaceholderReference.PLACEHOLDER_PREFIX, searchStart)
+    if (placeholderStart < 0) return null
+
+    val valueStart = placeholderStart + ConfigPlaceholderReference.PLACEHOLDER_PREFIX.length
+    val placeholderEnd = valueText.indexOf(ConfigPlaceholderReference.PLACEHOLDER_SUFFIX, valueStart)
+    if (placeholderEnd < 0) {
+      val defaultValueStart = valueText.indexOf(':', valueStart).takeIf { it >= 0 } ?: valueText.length
+      val range = TextRange.create(valueStart, defaultValueStart)
+        .shiftRight(ElementManipulators.getOffsetInElement(element))
+      return HelidonConfigPlaceholderReference.Builder(element, range, false)
+        .withSystemProperties()
+        .build()
+    }
+
+    searchStart = placeholderEnd + ConfigPlaceholderReference.PLACEHOLDER_SUFFIX.length
   }
 }

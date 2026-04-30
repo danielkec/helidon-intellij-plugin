@@ -105,6 +105,40 @@ class HelidonYamlConfigTest : HelidonHighlightingTestCase() {
                            "my.host",)
   }
 
+  fun testPlaceholderReferenceCompletionWithNestedPrefix() {
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      server:
+        concurrency-limit:
+          fixed:
+            permits: ${'$'}{proxy.<caret>}
+      proxy:
+        concurrency: 8
+        read-timeout: PT5M
+    """.trimIndent())
+    myFixture.completeBasic()
+
+    assertContainsElements(myFixture.lookupElementStrings!!,
+                           "proxy.concurrency",
+                           "proxy.read-timeout")
+  }
+
+  fun testPlaceholderReferenceCompletionWithIncompleteNestedPrefix() {
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      server:
+        concurrency-limit:
+          fixed:
+            permits: ${'$'}{proxy.<caret>
+      proxy:
+        concurrency: 8
+        read-timeout: PT5M
+    """.trimIndent())
+    myFixture.completeBasic()
+
+    assertContainsElements(myFixture.lookupElementStrings!!,
+                           "proxy.concurrency",
+                           "proxy.read-timeout")
+  }
+
   fun testPlaceholderReferenceResolveToOtherKey() {
     myFixture.configureByText(HELIDON_APPLICATION_YAML, """
       my:

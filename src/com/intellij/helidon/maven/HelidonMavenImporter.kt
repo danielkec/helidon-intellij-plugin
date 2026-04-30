@@ -16,7 +16,8 @@ internal class HelidonMavenImporter : MavenAfterImportConfigurator {
     }
     if (!hasApplicableChangedProjects) return
 
-    context.project.getService(HelidonRunConfigurationService::class.java).createRunConfigurations(context.project)
+    context.project.getService(HelidonRunConfigurationService::class.java)
+      .createRunConfigurations(context.project, onlyForNewProjects = false)
   }
 
   private fun isApplicable(mavenProject: MavenProject): Boolean =

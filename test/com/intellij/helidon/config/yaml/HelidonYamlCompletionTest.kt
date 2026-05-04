@@ -27,10 +27,10 @@ class HelidonYamlCompletionTest : HelidonHighlightingTestCase() {
     myFixture.completeBasic()
     val lookupElementStrings = myFixture.lookupElementStrings
     assertContainsElements(lookupElementStrings!!, listOf(
-      "server.host",
-      "server.name"
+      "host",
+      "name"
     ))
-    assertDoesntContain(lookupElementStrings, listOf("server.backlog"))
+    assertDoesntContain(lookupElementStrings, listOf("backlog", "server.backlog", "server.host", "server.name"))
     myFixture.type("ho")
     myFixture.finishLookup(Lookup.NORMAL_SELECT_CHAR)
     myFixture.checkResult("""
@@ -50,11 +50,12 @@ class HelidonYamlCompletionTest : HelidonHighlightingTestCase() {
     myFixture.completeBasic()
     val lookupElementStrings = myFixture.lookupElementStrings
     assertContainsElements(lookupElementStrings!!, listOf(
-      "server.name"
+      "name"
     ))
     assertDoesntContain(lookupElementStrings, listOf(
       "port",
-      "host"
+      "host",
+      "server.name"
     ))
     myFixture.type("na")
     myFixture.finishLookup(Lookup.NORMAL_SELECT_CHAR)

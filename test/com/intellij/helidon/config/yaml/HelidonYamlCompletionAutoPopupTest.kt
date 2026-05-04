@@ -8,11 +8,11 @@ class HelidonYamlCompletionAutoPopupTest : HelidonConfigCompletionAutoPopupTestC
   fun testParametrizedKeyAutoPopupInParent() {
     myFixture.configureByText(HELIDON_APPLICATION_YAML, """
       security:
-        secret<caret>s:
+        secr<caret>ets:
           dev:
             name:
     """.trimIndent())
-    tester.runWithAutoPopupEnabled { type("s") }
+    tester.runWithAutoPopupEnabled { type("e") }
     assertNotNull(myFixture.lookup)
   }
 

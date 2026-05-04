@@ -74,7 +74,8 @@ class HelidonYamlKeyCompletionTest : HelidonHighlightingTestCase() {
     """.trimIndent())
     val lookupElementStrings = myFixture.lookupElementStrings
     assertNotNull(lookupElementStrings)
-    assertContainsElements(lookupElementStrings!!, "server.host", "server.backlog", "server.port")
+    assertContainsElements(lookupElementStrings!!, "host", "backlog", "port")
+    assertDoesntContain(lookupElementStrings, "server.host", "server.backlog", "server.port")
   }
 
   fun testGivenPrefixKeyCompletionBetweenExistingKeys() {
@@ -92,7 +93,8 @@ class HelidonYamlKeyCompletionTest : HelidonHighlightingTestCase() {
     """.trimIndent())
     val lookupElementStrings = myFixture.lookupElementStrings
     assertNotNull(lookupElementStrings)
-    assertContainsElements(lookupElementStrings!!, "server.backlog", "server.name", "server.port")
+    assertContainsElements(lookupElementStrings!!, "backlog", "name", "port")
+    assertDoesntContain(lookupElementStrings, "server.backlog", "server.name", "server.port")
   }
 
   fun testGivenPrefixKeyCompletionOnBlankLineBeforeExistingKeys() {
@@ -113,7 +115,8 @@ class HelidonYamlKeyCompletionTest : HelidonHighlightingTestCase() {
     """.trimIndent())
     val lookupElementStrings = myFixture.lookupElementStrings
     assertNotNull(lookupElementStrings)
-    assertContainsElements(lookupElementStrings!!, "server.backlog", "server.name", "server.sockets")
+    assertContainsElements(lookupElementStrings!!, "backlog", "name", "sockets")
+    assertDoesntContain(lookupElementStrings, "server.backlog", "server.name", "server.sockets")
   }
 
   fun testGivenPrefixKeyCompletionOnEmptyLineBeforeExistingKeys() {
@@ -134,7 +137,8 @@ class HelidonYamlKeyCompletionTest : HelidonHighlightingTestCase() {
     """.trimIndent())
     val lookupElementStrings = myFixture.lookupElementStrings
     assertNotNull(lookupElementStrings)
-    assertContainsElements(lookupElementStrings!!, "server.backlog", "server.name", "server.sockets")
+    assertContainsElements(lookupElementStrings!!, "backlog", "name", "sockets")
+    assertDoesntContain(lookupElementStrings, "server.backlog", "server.name", "server.sockets")
   }
 
   fun testGivenPrefixKeyCompletionBeforeIndentOnBlankLineBeforeExistingKeys() {
@@ -155,7 +159,8 @@ class HelidonYamlKeyCompletionTest : HelidonHighlightingTestCase() {
     """.trimIndent())
     val lookupElementStrings = myFixture.lookupElementStrings
     assertNotNull(lookupElementStrings)
-    assertContainsElements(lookupElementStrings!!, "server.backlog", "server.name", "server.sockets")
+    assertContainsElements(lookupElementStrings!!, "backlog", "name", "sockets")
+    assertDoesntContain(lookupElementStrings, "server.backlog", "server.name", "server.sockets")
   }
 
   fun testUserKeyCompletionOnEmptyLineBeforeExistingKeys() {
@@ -173,6 +178,30 @@ class HelidonYamlKeyCompletionTest : HelidonHighlightingTestCase() {
     assertContainsElements(lookupElementStrings!!, "concurrency", "read-timeout", "connect-timeout", "oca")
   }
 
+  fun testParametrizedKeyCompletionInParent() {
+    doCompletion("""
+      security:
+        secret<caret>s:
+          dev:
+            name:
+    """.trimIndent())
+    val lookupElementStrings = myFixture.lookupElementStrings
+    assertNotNull(lookupElementStrings)
+    assertContainsElements(lookupElementStrings!!, "secrets")
+  }
+
+  fun testParametrizedKeyCompletionInChild() {
+    doCompletion("""
+      security:
+        secrets:
+          dev:
+            na<caret>
+    """.trimIndent())
+    val lookupElementStrings = myFixture.lookupElementStrings
+    assertNotNull(lookupElementStrings)
+    assertContainsElements(lookupElementStrings!!, "name")
+  }
+
   fun testGivenPrefixKeyFilterExistingCompletionVariants() {
     doCompletion("""
       server:
@@ -182,7 +211,8 @@ class HelidonYamlKeyCompletionTest : HelidonHighlightingTestCase() {
     """.trimIndent())
     val lookupElementStrings = myFixture.lookupElementStrings
     assertNotNull(lookupElementStrings)
-    assertContainsElements(lookupElementStrings!!, "server.tls.client-auth", "server.tls.session-cache-size")
+    assertContainsElements(lookupElementStrings!!, "client-auth", "session-cache-size")
+    assertDoesntContain(lookupElementStrings, "server.tls.client-auth", "server.tls.session-cache-size")
   }
 
   fun testGivenPrefixKeyWithExistingKeyTextCompletionVariants() {
@@ -193,7 +223,14 @@ class HelidonYamlKeyCompletionTest : HelidonHighlightingTestCase() {
     """.trimIndent())
     val lookupElementStrings = myFixture.lookupElementStrings
     assertNotNull(lookupElementStrings)
-    assertSameElements(lookupElementStrings!!, "server.tls.cipher-suite")
+    assertSameElements(lookupElementStrings!!, "cipher-suite")
+
+    myFixture.finishLookup(Lookup.NORMAL_SELECT_CHAR)
+    myFixture.checkResult("""
+      server:
+        tls:
+          cipher-suite: <caret>
+    """.trimIndent())
   }
 
   fun testGivenPrefixKeyMultipleDocumentsCompletionVariants() {
@@ -208,7 +245,15 @@ class HelidonYamlKeyCompletionTest : HelidonHighlightingTestCase() {
     """.trimIndent())
     val lookupElementStrings = myFixture.lookupElementStrings
     assertNotNull(lookupElementStrings)
-    assertSameElements(lookupElementStrings!!, "server.tls.cipher-suite")
+    assertSameElements(lookupElementStrings!!, "cipher-suite")
+  }
+
+  fun testRootKeyCompletionKeepsQualifiedLookupVariants() {
+    disableCompletionVariantsLimitForTest()
+    doCompletion("<caret>")
+    val lookupElementStrings = myFixture.lookupElementStrings
+    assertNotNull(lookupElementStrings)
+    assertContainsElements(lookupElementStrings!!, "server.backlog", "server.host", "server.port")
   }
 
   private fun disableCompletionVariantsLimitForTest() {

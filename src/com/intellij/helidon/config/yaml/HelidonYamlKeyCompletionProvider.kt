@@ -9,10 +9,12 @@ import com.intellij.codeInsight.lookup.LookupElementDecorator
 import com.intellij.helidon.config.HelidonMetaConfigKeyManager
 import com.intellij.microservices.jvm.config.ConfigKeyPathReference
 import com.intellij.microservices.jvm.config.MetaConfigKey
+import com.intellij.microservices.jvm.config.MetaConfigKeyManager.ConfigKeyNameBinder
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.openapi.util.Condition
 import com.intellij.openapi.util.Key
+import com.intellij.openapi.util.text.StringUtil
 import com.intellij.patterns.ElementPattern
 import com.intellij.patterns.PlatformPatterns
 import com.intellij.util.PlatformIcons
@@ -182,7 +184,8 @@ internal class HelidonYamlKeyCompletionProvider : CompletionProvider<CompletionP
     val element = parameters.position
     val originalElement = CompletionUtil.getOriginalElement(element)
 
-    val parentYamlKeyValue = getParentKeyValue(element, originalElement)
+    val currentYamlKeyValue = getCurrentKeyValue(element, originalElement, parameters.offset)
+    val parentYamlKeyValue = getParentKeyValue(element, originalElement, parameters.offset, currentYamlKeyValue)
 
     val originalDocumentAnchor = originalElement ?: element.containingFile.originalFile.findElementAt(parameters.offset)
     val yamlDocument = PsiTreeUtil.getParentOfType(ObjectUtils.chooseNotNull(originalDocumentAnchor, element), YAMLDocument::class.java)
@@ -217,7 +220,7 @@ internal class HelidonYamlKeyCompletionProvider : CompletionProvider<CompletionP
       }
       else {
         parentQualifiedName = keyData.keyText
-        root = keyData.root
+        root = parentYamlKeyValue
         if (keyData.parentKey != null) {
           configKeys = keyData.parentKey.subKeys
         }
@@ -244,35 +247,50 @@ internal class HelidonYamlKeyCompletionProvider : CompletionProvider<CompletionP
     var hasAddedElements = false
     addYamlCompletionAdvertisement(parameters, result)
 
-    val currentLineKeyComponents =
-      getYamlCurrentLineKeyComponents(ObjectUtils.chooseNotNull(originalElement, element), binder,
-                                      parentQualifiedName, configKeys)
-    if (currentLineKeyComponents.isNotEmpty()) {
-      result.addAllElements(currentLineKeyComponents)
-      hasAddedElements = true
+    if (rootQualifiedName == null) {
+      val currentLineKeyComponents =
+        getYamlCurrentLineKeyComponents(ObjectUtils.chooseNotNull(originalElement, element), binder,
+                                        parentQualifiedName, configKeys)
+      if (currentLineKeyComponents.isNotEmpty()) {
+        result.addAllElements(currentLineKeyComponents)
+        hasAddedElements = true
+      }
     }
 
     val invocationCount = parameters.invocationCount
     val parentConfigKeyName = if (invocationCount > 1) "" else parentQualifiedName
 
-    val keyLookupElements = ArrayList<LookupElement>()
+    val keyLookupElements = LinkedHashMap<String, LookupElement>()
     for (configKey in configKeys) {
       if (parentConfigKeyName.isNotEmpty() && !binder.matchesPrefix(configKey, parentConfigKeyName)) continue
 
       // filter existing keys incl. relaxed
       val configKeyName = configKey.name
-      if (accessor?.findExistingKey(configKey.name) != null) continue
+      val relativeKeyName = getRelativeConfigKeyName(configKeyName, parentQualifiedName, rootQualifiedName, binder)
+      val lookupKeyName = if (rootQualifiedName == null) configKeyName else relativeKeyName.substringBefore('.')
+      if (lookupKeyName.isBlank()) continue
+      val existingKey = accessor?.findExistingKey(lookupKeyName)
+      if (existingKey != null && !isSameKeyValue(existingKey, currentYamlKeyValue)) continue
 
-      val builder = configKey.presentation.lookupElement
-      builder.putCopyableUserData(CONFIG_KEY, configKeyName)
+      if (rootQualifiedName != null && relativeKeyName.contains('.')) {
+        keyLookupElements.putIfAbsent(lookupKeyName,
+                                      LookupElementBuilder.create(lookupKeyName)
+                                        .withIcon(PlatformIcons.PROPERTY_ICON)
+                                        .withInsertHandler(INSERT_COLON_AND_NEW_LINE_INSERT_HANDLER))
+        continue
+      }
+
+      var builder = configKey.presentation.lookupElement
+        .withBaseLookupString(lookupKeyName)
+        .withPresentableText(lookupKeyName)
+      builder.putCopyableUserData(CONFIG_KEY, lookupKeyName)
       builder.putCopyableUserData(ROOT_KEY, rootQualifiedName)
-      builder.withLookupString(configKeyName)
       val insertHandler = LookupElementDecorator.withInsertHandler(builder, INSERT_HANDLER)
       val lookupElement = configKey.presentation.tuneLookupElement(insertHandler)
-      keyLookupElements.add(lookupElement)
+      keyLookupElements[lookupKeyName] = lookupElement
     }
     if (keyLookupElements.isNotEmpty()) {
-      result.addAllElements(keyLookupElements)
+      result.addAllElements(keyLookupElements.values)
       hasAddedElements = true
     }
 
@@ -289,7 +307,10 @@ internal class HelidonYamlKeyCompletionProvider : CompletionProvider<CompletionP
     }
   }
 
-  private fun getParentKeyValue(element: PsiElement, originalElement: PsiElement?): YAMLKeyValue? {
+  private fun getParentKeyValue(element: PsiElement,
+                                originalElement: PsiElement?,
+                                offset: Int,
+                                currentKeyValue: YAMLKeyValue?): YAMLKeyValue? {
     var parentYamlKeyValue = PsiTreeUtil.getParentOfType(originalElement, YAMLKeyValue::class.java)
     if (parentYamlKeyValue == null) {  // with existing text
       parentYamlKeyValue = PsiTreeUtil.getParentOfType(element, YAMLKeyValue::class.java)
@@ -297,10 +318,107 @@ internal class HelidonYamlKeyCompletionProvider : CompletionProvider<CompletionP
         parentYamlKeyValue = CompletionUtil.getOriginalElement(parentYamlKeyValue) ?: parentYamlKeyValue
       }
     }
-    if (element.node.elementType === YAMLTokenTypes.SCALAR_KEY) {
+    if (isEditingKey(currentKeyValue, offset)) {
+      parentYamlKeyValue = PsiTreeUtil.getParentOfType(currentKeyValue, YAMLKeyValue::class.java)
+    }
+    else if (element.node.elementType === YAMLTokenTypes.SCALAR_KEY) {
       parentYamlKeyValue = PsiTreeUtil.getParentOfType(parentYamlKeyValue, YAMLKeyValue::class.java)
     }
+    val anchor = ObjectUtils.chooseNotNull(originalElement, element)
     return parentYamlKeyValue
+           ?: getContainingMappingParentKeyValue(anchor)
+           ?: getPreviousMappingKeyValue(anchor, offset)
+  }
+
+  private fun getCurrentKeyValue(element: PsiElement, originalElement: PsiElement?, offset: Int): YAMLKeyValue? {
+    val originalFile = element.containingFile.originalFile
+    val previousOffset = (offset - 1).coerceIn(0, (originalFile.textLength - 1).coerceAtLeast(0))
+    val offsetElement = originalFile.findElementAt(previousOffset)
+    val offsetKeyValue = PsiTreeUtil.getParentOfType(offsetElement, YAMLKeyValue::class.java)
+    if (offsetKeyValue?.key?.textRange?.containsOffset(previousOffset) == true) {
+      return offsetKeyValue
+    }
+
+    var currentKeyValue = PsiTreeUtil.getParentOfType(originalElement, YAMLKeyValue::class.java)
+    if (currentKeyValue == null) {
+      currentKeyValue = PsiTreeUtil.getParentOfType(element, YAMLKeyValue::class.java)
+      if (currentKeyValue != null) {
+        currentKeyValue = CompletionUtil.getOriginalElement(currentKeyValue) ?: currentKeyValue
+      }
+    }
+    return currentKeyValue
+  }
+
+  private fun isEditingKey(currentKeyValue: YAMLKeyValue?, offset: Int): Boolean {
+    val keyRange = currentKeyValue?.key?.textRange ?: return false
+    return keyRange.containsOffset(offset) || offset > 0 && keyRange.containsOffset(offset - 1)
+  }
+
+  private fun isSameKeyValue(first: YAMLKeyValue, second: YAMLKeyValue?): Boolean {
+    if (second == null) return false
+    return first == second ||
+           first.isEquivalentTo(second) ||
+           first.containingFile.originalFile == second.containingFile.originalFile && first.textRange == second.textRange
+  }
+
+  private fun getContainingMappingParentKeyValue(element: PsiElement): YAMLKeyValue? {
+    val parentMapping = PsiTreeUtil.getParentOfType(element, YAMLMapping::class.java) ?: return null
+    return PsiTreeUtil.getParentOfType(parentMapping, YAMLKeyValue::class.java)
+  }
+
+  private fun getPreviousMappingKeyValue(element: PsiElement, offset: Int): YAMLKeyValue? {
+    val file = element.containingFile.originalFile
+    val text = file.text
+    if (text.isEmpty()) return null
+
+    val safeOffset = offset.coerceIn(0, text.length)
+    val currentLineStart = text.lastIndexOf('\n', (safeOffset - 1).coerceAtLeast(0)) + 1
+    var previousLineEnd = currentLineStart - 1
+    while (previousLineEnd > 0) {
+      val previousLineStart = text.lastIndexOf('\n', previousLineEnd - 1) + 1
+      val lineText = text.substring(previousLineStart, previousLineEnd).trimEnd('\r')
+      val firstNonWhitespace = lineText.indexOfFirst { it != ' ' && it != '\t' }
+      if (firstNonWhitespace >= 0) {
+        if (lineText.substring(firstNonWhitespace).startsWith("#")) return null
+
+        val previousLineElement = file.findElementAt(previousLineStart + firstNonWhitespace) ?: return null
+        val previousKeyValue = PsiTreeUtil.getParentOfType(previousLineElement, YAMLKeyValue::class.java) ?: return null
+        val previousValue = previousKeyValue.value
+        return if (previousValue == null || previousValue is YAMLMapping || previousValue is YAMLSequence) previousKeyValue else null
+      }
+      previousLineEnd = previousLineStart - 1
+    }
+    return null
+  }
+
+  private fun getRelativeConfigKeyName(configKeyName: String,
+                                       parentQualifiedName: String,
+                                       rootQualifiedName: String?,
+                                       binder: ConfigKeyNameBinder): String {
+    val prefixCandidates = listOfNotNull(parentQualifiedName.takeIf { it.isNotBlank() },
+                                         rootQualifiedName?.takeIf { it.isNotBlank() })
+      .distinct()
+      .sortedByDescending { it.length }
+
+    for (prefix in prefixCandidates) {
+      getRelativeConfigKeyName(configKeyName, prefix, binder)?.let { return it }
+    }
+    return configKeyName
+  }
+
+  private fun getRelativeConfigKeyName(configKeyName: String,
+                                       prefix: String,
+                                       binder: ConfigKeyNameBinder): String? {
+    val configKeyParts = StringUtil.split(configKeyName, ".")
+    val prefixParts = StringUtil.split(prefix, ".")
+    if (prefixParts.size >= configKeyParts.size) return null
+
+    for (i in prefixParts.indices) {
+      if (!binder.matchesPart(configKeyParts[i], prefixParts[i])) {
+        return null
+      }
+    }
+    return configKeyParts.drop(prefixParts.size).joinToString(".")
   }
 
   private fun getParentSequenceItem(element: PsiElement): YAMLSequenceItem? {

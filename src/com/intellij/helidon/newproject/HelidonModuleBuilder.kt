@@ -15,6 +15,8 @@ import com.intellij.openapi.util.Key
 import com.intellij.pom.java.LanguageLevel
 import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.dsl.builder.Panel
+import com.intellij.ui.dsl.builder.Row
+import com.intellij.ui.dsl.builder.RowsRange
 import com.intellij.util.lang.JavaVersion
 import javax.swing.DefaultComboBoxModel
 import javax.swing.Icon
@@ -145,6 +147,7 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
       var jsonLibraryCombo: ComboBox<StarterOption>? = null
       var databaseCheckBox: JCheckBox? = null
       var databaseServerCombo: ComboBox<StarterOption>? = null
+      var mpDatabaseRows: RowsRange? = null
       var jpaCombo: ComboBox<StarterOption>? = null
       var connectionPoolCombo: ComboBox<StarterOption>? = null
       var autoDdlCheckBox: JCheckBox? = null
@@ -156,11 +159,13 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
       var googleCheckBox: JCheckBox? = null
       var httpSignatureCheckBox: JCheckBox? = null
       var abacCheckBox: JCheckBox? = null
+      var seExtrasRow: Row? = null
       var webClientCheckBox: JCheckBox? = null
       var faultToleranceCheckBox: JCheckBox? = null
       var corsCheckBox: JCheckBox? = null
       var coherenceCheckBox: JCheckBox? = null
       var metricsCheckBox: JCheckBox? = null
+      var mpMetricsProviderRow: Row? = null
       var metricsProviderCombo: ComboBox<StarterOption>? = null
       var metricsBuiltinCheckBox: JCheckBox? = null
       var healthCheckBox: JCheckBox? = null
@@ -225,6 +230,10 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
           kubernetesCheckBox?.isSelected = currentOptions.kubernetes
           jpmsCheckBox?.isSelected = currentOptions.jpms
 
+          mpDatabaseRows?.visible(mpDatabaseOptionsVisible)
+          seExtrasRow?.visible(custom && flavor == HELIDON_SE_FLAVOR)
+          mpMetricsProviderRow?.visible(custom && currentOptions.metrics && flavor == HELIDON_MP_FLAVOR)
+
           jsonCheckBox?.isEnabled = custom
           multipartCheckBox?.isEnabled = custom
           jsonLibraryCombo?.isEnabled = !oci && "json" in currentOptions.media
@@ -265,271 +274,297 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
       }
 
       layout.group("Helidon Starter") {
-        row("Flavor:") {
-          val flavorCell = comboBox(flavorOptions, starterOptionRenderer())
-          flavorCombo = flavorCell.component
-          flavorCell.component.addActionListener {
-            if (syncing) return@addActionListener
-            val selectedFlavor = flavorCell.component.selectedStarterValue() ?: return@addActionListener
-            val selectedAppType = currentOptions.appType.takeIf { it in helidonStarterAppTypes(selectedFlavor) }
-              ?: HELIDON_QUICKSTART_APP_TYPE
-            setOptions(currentOptions.withStarterPreset(selectedFlavor = selectedFlavor, selectedAppType = selectedAppType))
-          }
-        }
-        row("Application type:") {
-          val appTypeCell = comboBox(appTypeModel, starterOptionRenderer())
-          appTypeCombo = appTypeCell.component
-          appTypeCell.component.addActionListener {
-            if (syncing) return@addActionListener
-            val selectedAppType = appTypeCell.component.selectedStarterValue() ?: return@addActionListener
-            setOptions(currentOptions.withStarterPreset(selectedAppType = selectedAppType))
-          }
-        }
-
-        row("Media:") {
-          checkBox("JSON").component.apply {
-            jsonCheckBox = this
-            addActionListener {
+        groupRowsRange("Project") {
+          row("Flavor:") {
+            val flavorCell = comboBox(flavorOptions, starterOptionRenderer())
+            flavorCombo = flavorCell.component
+            flavorCell.component.addActionListener {
               if (syncing) return@addActionListener
-              setOptions(currentOptions.copy(media = currentOptions.media.toggle("json", isSelected)))
+              val selectedFlavor = flavorCell.component.selectedStarterValue() ?: return@addActionListener
+              val selectedAppType = currentOptions.appType.takeIf { it in helidonStarterAppTypes(selectedFlavor) }
+                ?: HELIDON_QUICKSTART_APP_TYPE
+              setOptions(currentOptions.withStarterPreset(selectedFlavor = selectedFlavor, selectedAppType = selectedAppType))
             }
           }
-          checkBox("MultiPart").component.apply {
-            multipartCheckBox = this
-            addActionListener {
+          row("Application type:") {
+            val appTypeCell = comboBox(appTypeModel, starterOptionRenderer())
+            appTypeCombo = appTypeCell.component
+            appTypeCell.component.addActionListener {
               if (syncing) return@addActionListener
-              setOptions(currentOptions.copy(media = currentOptions.media.toggle("multipart", isSelected)))
-            }
-          }
-          val jsonCell = comboBox(jsonLibraryModel, starterOptionRenderer())
-          jsonLibraryCombo = jsonCell.component
-          jsonCell.component.addActionListener {
-            if (syncing) return@addActionListener
-            setOptions(currentOptions.copy(jsonLibrary = jsonCell.component.selectedStarterValue() ?: currentOptions.jsonLibrary))
-          }
-        }
-
-        row {
-          checkBox("Database").component.apply {
-            databaseCheckBox = this
-            addActionListener {
-              if (syncing) return@addActionListener
-              setOptions(currentOptions.copy(database = isSelected))
-            }
-          }
-          val databaseCell = comboBox(databaseServerModel, starterOptionRenderer())
-          databaseServerCombo = databaseCell.component
-          databaseCell.component.addActionListener {
-            if (syncing) return@addActionListener
-            setOptions(currentOptions.copy(databaseServer = databaseCell.component.selectedStarterValue() ?: currentOptions.databaseServer))
-          }
-          checkBox("Auto DDL").component.apply {
-            autoDdlCheckBox = this
-            addActionListener {
-              if (syncing) return@addActionListener
-              setOptions(currentOptions.copy(autoDdl = isSelected))
-            }
-          }
-        }
-        row("MP Database:") {
-          val jpaCell = comboBox(jpaImplementations, starterOptionRenderer())
-          jpaCombo = jpaCell.component
-          jpaCell.component.addActionListener {
-            if (syncing) return@addActionListener
-            setOptions(currentOptions.copy(jpaImplementation = jpaCell.component.selectedStarterValue() ?: currentOptions.jpaImplementation))
-          }
-          val cpCell = comboBox(connectionPools, starterOptionRenderer())
-          connectionPoolCombo = cpCell.component
-          cpCell.component.addActionListener {
-            if (syncing) return@addActionListener
-            setOptions(currentOptions.copy(connectionPool = cpCell.component.selectedStarterValue() ?: currentOptions.connectionPool))
-          }
-          val puCell = textField()
-          persistenceUnitField = puCell.component
-          puCell.component.addTextChangeListener {
-            if (!syncing) {
-              setOptions(currentOptions.copy(persistenceUnitName = puCell.component.text.ifBlank { "pu1" }))
-            }
-          }
-          val dsCell = textField()
-          dataSourceField = dsCell.component
-          dsCell.component.addTextChangeListener {
-            if (!syncing) {
-              setOptions(currentOptions.copy(dataSourceName = dsCell.component.text.ifBlank { "ds1" }))
+              val selectedAppType = appTypeCell.component.selectedStarterValue() ?: return@addActionListener
+              setOptions(currentOptions.withStarterPreset(selectedAppType = selectedAppType))
             }
           }
         }
 
-        row("Security:") {
-          checkBox("Secure").component.apply {
-            secureCheckBox = this
-            addActionListener {
-              if (syncing) return@addActionListener
-              setOptions(currentOptions.copy(security = isSelected))
+        groupRowsRange("Media") {
+          row("Media:") {
+            checkBox("JSON").component.apply {
+              jsonCheckBox = this
+              addActionListener {
+                if (syncing) return@addActionListener
+                setOptions(currentOptions.copy(media = currentOptions.media.toggle("json", isSelected)))
+              }
             }
-          }
-          checkBox("OIDC").component.apply {
-            oidcCheckBox = this
-            addActionListener {
-              if (syncing) return@addActionListener
-              setOptions(currentOptions.copy(authenticationProviders = currentOptions.authenticationProviders.toggle("oidc", isSelected)))
+            checkBox("MultiPart").component.apply {
+              multipartCheckBox = this
+              addActionListener {
+                if (syncing) return@addActionListener
+                setOptions(currentOptions.copy(media = currentOptions.media.toggle("multipart", isSelected)))
+              }
             }
-          }
-          checkBox("JWT").component.apply {
-            jwtCheckBox = this
-            addActionListener {
+            val jsonCell = comboBox(jsonLibraryModel, starterOptionRenderer())
+            jsonLibraryCombo = jsonCell.component
+            jsonCell.component.addActionListener {
               if (syncing) return@addActionListener
-              setOptions(currentOptions.copy(authenticationProviders = currentOptions.authenticationProviders.toggle("jwt", isSelected)))
-            }
-          }
-        }
-        row {
-          checkBox("Google Login").component.apply {
-            googleCheckBox = this
-            addActionListener {
-              if (syncing) return@addActionListener
-              setOptions(currentOptions.copy(authenticationProviders = currentOptions.authenticationProviders.toggle("google", isSelected)))
-            }
-          }
-          checkBox("HTTP Signature").component.apply {
-            httpSignatureCheckBox = this
-            addActionListener {
-              if (syncing) return@addActionListener
-              setOptions(currentOptions.copy(
-                authenticationProviders = currentOptions.authenticationProviders.toggle("http-signature", isSelected)
-              ))
-            }
-          }
-          checkBox("ABAC").component.apply {
-            abacCheckBox = this
-            addActionListener {
-              if (syncing) return@addActionListener
-              setOptions(currentOptions.copy(authorizationProviders = currentOptions.authorizationProviders.toggle("abac", isSelected)))
+              setOptions(currentOptions.copy(jsonLibrary = jsonCell.component.selectedStarterValue() ?: currentOptions.jsonLibrary))
             }
           }
         }
 
-        row("Extra:") {
-          checkBox("WebClient").component.apply {
-            webClientCheckBox = this
-            addActionListener {
+        groupRowsRange("Data") {
+          row("Database:") {
+            checkBox("Database").component.apply {
+              databaseCheckBox = this
+              addActionListener {
+                if (syncing) return@addActionListener
+                setOptions(currentOptions.copy(database = isSelected))
+              }
+            }
+            label("Server")
+            val databaseCell = comboBox(databaseServerModel, starterOptionRenderer())
+            databaseServerCombo = databaseCell.component
+            databaseCell.component.addActionListener {
               if (syncing) return@addActionListener
-              setOptions(currentOptions.copy(extras = currentOptions.extras.toggle("webclient", isSelected)))
+              setOptions(currentOptions.copy(databaseServer = databaseCell.component.selectedStarterValue() ?: currentOptions.databaseServer))
             }
           }
-          checkBox("Fault Tolerance").component.apply {
-            faultToleranceCheckBox = this
-            addActionListener {
-              if (syncing) return@addActionListener
-              setOptions(currentOptions.copy(extras = currentOptions.extras.toggle("fault-tolerance", isSelected)))
+          mpDatabaseRows = rowsRange {
+            row("JPA:") {
+              val jpaCell = comboBox(jpaImplementations, starterOptionRenderer())
+              jpaCombo = jpaCell.component
+              jpaCell.component.addActionListener {
+                if (syncing) return@addActionListener
+                setOptions(currentOptions.copy(jpaImplementation = jpaCell.component.selectedStarterValue() ?: currentOptions.jpaImplementation))
+              }
+              label("Connection pool")
+              val cpCell = comboBox(connectionPools, starterOptionRenderer())
+              connectionPoolCombo = cpCell.component
+              cpCell.component.addActionListener {
+                if (syncing) return@addActionListener
+                setOptions(currentOptions.copy(connectionPool = cpCell.component.selectedStarterValue() ?: currentOptions.connectionPool))
+              }
+              checkBox("Auto DDL").component.apply {
+                autoDdlCheckBox = this
+                addActionListener {
+                  if (syncing) return@addActionListener
+                  setOptions(currentOptions.copy(autoDdl = isSelected))
+                }
+              }
             }
-          }
-        }
-        row {
-          checkBox("CORS").component.apply {
-            corsCheckBox = this
-            addActionListener {
-              if (syncing) return@addActionListener
-              setOptions(currentOptions.copy(extras = currentOptions.extras.toggle("cors", isSelected)))
+            row("Persistence unit:") {
+              val puCell = textField()
+              persistenceUnitField = puCell.component
+              puCell.component.addTextChangeListener {
+                if (!syncing) {
+                  setOptions(currentOptions.copy(persistenceUnitName = puCell.component.text.ifBlank { "pu1" }))
+                }
+              }
             }
-          }
-          checkBox("Coherence").component.apply {
-            coherenceCheckBox = this
-            addActionListener {
-              if (syncing) return@addActionListener
-              setOptions(currentOptions.copy(extras = currentOptions.extras.toggle("coherence", isSelected)))
+            row("Data source:") {
+              val dsCell = textField()
+              dataSourceField = dsCell.component
+              dsCell.component.addTextChangeListener {
+                if (!syncing) {
+                  setOptions(currentOptions.copy(dataSourceName = dsCell.component.text.ifBlank { "ds1" }))
+                }
+              }
             }
           }
         }
 
-        row("Observability:") {
-          checkBox("Metrics").component.apply {
-            metricsCheckBox = this
-            addActionListener {
-              if (syncing) return@addActionListener
-              setOptions(currentOptions.copy(metrics = isSelected))
+        groupRowsRange("Security") {
+          row("Security:") {
+            checkBox("Secure").component.apply {
+              secureCheckBox = this
+              addActionListener {
+                if (syncing) return@addActionListener
+                setOptions(currentOptions.copy(security = isSelected))
+              }
+            }
+            checkBox("OIDC").component.apply {
+              oidcCheckBox = this
+              addActionListener {
+                if (syncing) return@addActionListener
+                setOptions(currentOptions.copy(authenticationProviders = currentOptions.authenticationProviders.toggle("oidc", isSelected)))
+              }
+            }
+            checkBox("JWT").component.apply {
+              jwtCheckBox = this
+              addActionListener {
+                if (syncing) return@addActionListener
+                setOptions(currentOptions.copy(authenticationProviders = currentOptions.authenticationProviders.toggle("jwt", isSelected)))
+              }
             }
           }
-          val metricsCell = comboBox(metricsProviders, starterOptionRenderer())
-          metricsProviderCombo = metricsCell.component
-          metricsCell.component.addActionListener {
-            if (syncing) return@addActionListener
-            setOptions(currentOptions.copy(metricsProvider = metricsCell.component.selectedStarterValue() ?: currentOptions.metricsProvider))
-          }
-          checkBox("Built-in Metrics").component.apply {
-            metricsBuiltinCheckBox = this
-            addActionListener {
-              if (syncing) return@addActionListener
-              setOptions(currentOptions.copy(metricsBuiltin = isSelected))
+          row("Providers:") {
+            checkBox("Google Login").component.apply {
+              googleCheckBox = this
+              addActionListener {
+                if (syncing) return@addActionListener
+                setOptions(currentOptions.copy(authenticationProviders = currentOptions.authenticationProviders.toggle("google", isSelected)))
+              }
             }
-          }
-        }
-        row {
-          checkBox("Health").component.apply {
-            healthCheckBox = this
-            addActionListener {
-              if (syncing) return@addActionListener
-              setOptions(currentOptions.copy(health = isSelected))
+            checkBox("HTTP Signature").component.apply {
+              httpSignatureCheckBox = this
+              addActionListener {
+                if (syncing) return@addActionListener
+                setOptions(currentOptions.copy(
+                  authenticationProviders = currentOptions.authenticationProviders.toggle("http-signature", isSelected)
+                ))
+              }
             }
-          }
-          checkBox("Built-in Health").component.apply {
-            healthBuiltinCheckBox = this
-            addActionListener {
-              if (syncing) return@addActionListener
-              setOptions(currentOptions.copy(healthBuiltin = isSelected))
+            checkBox("ABAC").component.apply {
+              abacCheckBox = this
+              addActionListener {
+                if (syncing) return@addActionListener
+                setOptions(currentOptions.copy(authorizationProviders = currentOptions.authorizationProviders.toggle("abac", isSelected)))
+              }
             }
-          }
-          checkBox("Tracing").component.apply {
-            tracingCheckBox = this
-            addActionListener {
-              if (syncing) return@addActionListener
-              setOptions(currentOptions.copy(tracing = isSelected))
-            }
-          }
-          val tracingCell = comboBox(tracingProviders, starterOptionRenderer())
-          tracingProviderCombo = tracingCell.component
-          tracingCell.component.addActionListener {
-            if (syncing) return@addActionListener
-            setOptions(currentOptions.copy(tracingProvider = tracingCell.component.selectedStarterValue() ?: currentOptions.tracingProvider))
           }
         }
 
-        row("Packaging:") {
-          checkBox("Docker").component.apply {
-            dockerCheckBox = this
-            addActionListener {
-              if (syncing) return@addActionListener
-              setOptions(currentOptions.copy(docker = isSelected))
+        groupRowsRange("Extras") {
+          seExtrasRow = row("SE extras:") {
+            checkBox("WebClient").component.apply {
+              webClientCheckBox = this
+              addActionListener {
+                if (syncing) return@addActionListener
+                setOptions(currentOptions.copy(extras = currentOptions.extras.toggle("webclient", isSelected)))
+              }
             }
           }
-          checkBox("Native Image").component.apply {
-            nativeImageCheckBox = this
-            addActionListener {
-              if (syncing) return@addActionListener
-              setOptions(currentOptions.copy(dockerNativeImage = isSelected))
+          row("Common extras:") {
+            checkBox("Fault Tolerance").component.apply {
+              faultToleranceCheckBox = this
+              addActionListener {
+                if (syncing) return@addActionListener
+                setOptions(currentOptions.copy(extras = currentOptions.extras.toggle("fault-tolerance", isSelected)))
+              }
             }
-          }
-          checkBox("JLink").component.apply {
-            jlinkCheckBox = this
-            addActionListener {
-              if (syncing) return@addActionListener
-              setOptions(currentOptions.copy(dockerJlinkImage = isSelected))
+            checkBox("CORS").component.apply {
+              corsCheckBox = this
+              addActionListener {
+                if (syncing) return@addActionListener
+                setOptions(currentOptions.copy(extras = currentOptions.extras.toggle("cors", isSelected)))
+              }
+            }
+            checkBox("Coherence").component.apply {
+              coherenceCheckBox = this
+              addActionListener {
+                if (syncing) return@addActionListener
+                setOptions(currentOptions.copy(extras = currentOptions.extras.toggle("coherence", isSelected)))
+              }
             }
           }
         }
-        row {
-          checkBox("Kubernetes").component.apply {
-            kubernetesCheckBox = this
-            addActionListener {
-              if (syncing) return@addActionListener
-              setOptions(currentOptions.copy(kubernetes = isSelected))
+
+        groupRowsRange("Observability") {
+          row("Metrics:") {
+            checkBox("Metrics").component.apply {
+              metricsCheckBox = this
+              addActionListener {
+                if (syncing) return@addActionListener
+                setOptions(currentOptions.copy(metrics = isSelected))
+              }
+            }
+            checkBox("Built-in Metrics").component.apply {
+              metricsBuiltinCheckBox = this
+              addActionListener {
+                if (syncing) return@addActionListener
+                setOptions(currentOptions.copy(metricsBuiltin = isSelected))
+              }
             }
           }
-          checkBox("JPMS").component.apply {
-            jpmsCheckBox = this
-            addActionListener {
+          mpMetricsProviderRow = row("Metrics provider:") {
+            val metricsCell = comboBox(metricsProviders, starterOptionRenderer())
+            metricsProviderCombo = metricsCell.component
+            metricsCell.component.addActionListener {
               if (syncing) return@addActionListener
-              setOptions(currentOptions.copy(jpms = isSelected))
+              setOptions(currentOptions.copy(metricsProvider = metricsCell.component.selectedStarterValue() ?: currentOptions.metricsProvider))
+            }
+          }
+          row("Health:") {
+            checkBox("Health").component.apply {
+              healthCheckBox = this
+              addActionListener {
+                if (syncing) return@addActionListener
+                setOptions(currentOptions.copy(health = isSelected))
+              }
+            }
+            checkBox("Built-in Health").component.apply {
+              healthBuiltinCheckBox = this
+              addActionListener {
+                if (syncing) return@addActionListener
+                setOptions(currentOptions.copy(healthBuiltin = isSelected))
+              }
+            }
+          }
+          row("Tracing:") {
+            checkBox("Tracing").component.apply {
+              tracingCheckBox = this
+              addActionListener {
+                if (syncing) return@addActionListener
+                setOptions(currentOptions.copy(tracing = isSelected))
+              }
+            }
+            val tracingCell = comboBox(tracingProviders, starterOptionRenderer())
+            tracingProviderCombo = tracingCell.component
+            tracingCell.component.addActionListener {
+              if (syncing) return@addActionListener
+              setOptions(currentOptions.copy(tracingProvider = tracingCell.component.selectedStarterValue() ?: currentOptions.tracingProvider))
+            }
+          }
+        }
+
+        groupRowsRange("Packaging") {
+          row("Container:") {
+            checkBox("Docker").component.apply {
+              dockerCheckBox = this
+              addActionListener {
+                if (syncing) return@addActionListener
+                setOptions(currentOptions.copy(docker = isSelected))
+              }
+            }
+            checkBox("Native Image").component.apply {
+              nativeImageCheckBox = this
+              addActionListener {
+                if (syncing) return@addActionListener
+                setOptions(currentOptions.copy(dockerNativeImage = isSelected))
+              }
+            }
+            checkBox("JLink").component.apply {
+              jlinkCheckBox = this
+              addActionListener {
+                if (syncing) return@addActionListener
+                setOptions(currentOptions.copy(dockerJlinkImage = isSelected))
+              }
+            }
+          }
+          row("Deployment:") {
+            checkBox("Kubernetes").component.apply {
+              kubernetesCheckBox = this
+              addActionListener {
+                if (syncing) return@addActionListener
+                setOptions(currentOptions.copy(kubernetes = isSelected))
+              }
+            }
+            checkBox("JPMS").component.apply {
+              jpmsCheckBox = this
+              addActionListener {
+                if (syncing) return@addActionListener
+                setOptions(currentOptions.copy(jpms = isSelected))
+              }
             }
           }
         }

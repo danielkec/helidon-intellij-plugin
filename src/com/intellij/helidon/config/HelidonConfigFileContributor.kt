@@ -35,6 +35,31 @@ abstract class HelidonConfigFileContributor(val fileType: FileType) {
       }
       return result
     }
+
+    internal fun collectConfigDirectories(module: Module, testScope: Boolean): Set<VirtualFile> {
+      val configDirectories = LinkedHashSet<VirtualFile>()
+      collectConfigDirectories(module, configDirectories, testScope)
+      return configDirectories
+    }
+
+    private fun collectConfigDirectories(module: Module,
+                                         configDirectories: MutableSet<VirtualFile>,
+                                         testScope: Boolean,
+                                         visitedModules: MutableSet<in Module> = HashSet()) {
+      if (visitedModules.contains(module)) return
+
+      visitedModules.add(module)
+
+      val moduleRootManager = ModuleRootManager.getInstance(module)
+      configDirectories.addAll(moduleRootManager.getSourceRoots(JavaResourceRootType.RESOURCE))
+      if (testScope) {
+        configDirectories.addAll(moduleRootManager.getSourceRoots(JavaResourceRootType.TEST_RESOURCE))
+      }
+
+      for (dependentModule in moduleRootManager.getDependencies(testScope)) {
+        collectConfigDirectories(dependentModule, configDirectories, testScope, visitedModules)
+      }
+    }
   }
 
   abstract fun findKey(psiFile: PsiFile, key: String): PsiElement?
@@ -64,31 +89,11 @@ abstract class HelidonConfigFileContributor(val fileType: FileType) {
     if (ApplicationManager.getApplication().isUnitTestMode) {
       return module.getModuleScope(testScope)
     }
-    val configDirectories = LinkedHashSet<VirtualFile>()
-    collectConfigDirectories(module, configDirectories, testScope)
+    val configDirectories = collectConfigDirectories(module, testScope)
 
     return if (configDirectories.isEmpty()) {
       null
     }
-    else GlobalSearchScopesCore.directoriesScope(module.project, false, *configDirectories.toArray(VirtualFile.EMPTY_ARRAY))
-  }
-
-  private fun collectConfigDirectories(module: Module,
-                                       configDirectories: MutableSet<VirtualFile>,
-                                       testScope: Boolean,
-                                       visitedModules: MutableSet<in Module> = HashSet()) {
-    if (visitedModules.contains(module)) return
-
-    visitedModules.add(module)
-
-    val moduleRootManager = ModuleRootManager.getInstance(module)
-    configDirectories.addAll(moduleRootManager.getSourceRoots(JavaResourceRootType.RESOURCE))
-    if (testScope) {
-      configDirectories.addAll(moduleRootManager.getSourceRoots(JavaResourceRootType.TEST_RESOURCE))
-    }
-
-    for (dependentModule in moduleRootManager.getDependencies(testScope)) {
-      collectConfigDirectories(dependentModule, configDirectories, testScope, visitedModules)
-    }
+    else GlobalSearchScopesCore.directoriesScope(module.project, false, *configDirectories.toTypedArray())
   }
 }

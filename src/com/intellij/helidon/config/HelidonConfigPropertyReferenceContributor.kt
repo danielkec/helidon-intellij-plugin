@@ -55,9 +55,23 @@ internal class HelidonKotlinConfigPropertyReferenceContributor : PsiReferenceCon
     private val KOTLIN_CONFIG_GET_STRING_ARGUMENT = object : PatternCondition<PsiElement>("kotlinConfigGetStringArgument") {
       override fun accepts(element: PsiElement, context: ProcessingContext): Boolean {
         if (element.javaClass.name != "org.jetbrains.kotlin.psi.KtStringTemplateExpression") return false
+        if (!isPlainKotlinStringTemplate(element)) return false
         val callExpression = element.getUastParentOfType<UCallExpression>()
         return callExpression?.methodName == HELIDON_CONFIG_GET_METHOD &&
                callExpression.resolve()?.containingClass?.qualifiedName == HELIDON_CONFIG_FQN
+      }
+    }
+
+    private fun isPlainKotlinStringTemplate(element: PsiElement): Boolean {
+      val entries = (element.javaClass.methods
+        .singleOrNull { it.name == "getEntries" && it.parameterCount == 0 }
+        ?.invoke(element) as? Array<*>) ?: return false
+      return entries.all {
+        when (it?.javaClass?.name) {
+          "org.jetbrains.kotlin.psi.KtLiteralStringTemplateEntry",
+          "org.jetbrains.kotlin.psi.KtEscapeStringTemplateEntry" -> true
+          else -> false
+        }
       }
     }
   }

@@ -35,6 +35,20 @@ class HelidonConfigPropertyReferenceContributorTest : HelidonHighlightingTestCas
     """.trimMargin())
   }
 
+  fun testKotlinInterpolatedConfigGetDoesNotCreateConfigReference() {
+    addHelidonConfigClass()
+    configureApplicationProperties("server.host=localhost\n")
+    myFixture.configureByText("Main.kt", """
+      |import io.helidon.config.Config
+      |
+      |fun test(config: Config, name: String) {
+      |  config.get("server.<caret>${'$'}name")
+      |}
+    """.trimMargin())
+
+    assertNull(findConfigPlaceholderReferenceAtCaret())
+  }
+
   private fun assertConfigGetReferenceRange(fileName: String, text: String) {
     addHelidonConfigClass()
     configureApplicationProperties("server.host=localhost\n")
@@ -50,7 +64,13 @@ class HelidonConfigPropertyReferenceContributorTest : HelidonHighlightingTestCas
 
   private fun getConfigPlaceholderReference(reference: PsiReference): HelidonConfigPlaceholderReference {
     findConfigPlaceholderReference(reference)?.let { return it }
+    findConfigPlaceholderReferenceAtCaret()?.let { return it }
 
+    fail("Expected ${HelidonConfigPlaceholderReference::class.java.name} in ${reference.javaClass.name}")
+    error("unreachable")
+  }
+
+  private fun findConfigPlaceholderReferenceAtCaret(): HelidonConfigPlaceholderReference? {
     var element = myFixture.file.findElementAt(myFixture.caretOffset)
     while (element != null) {
       for (parentReference in element.references) {
@@ -58,9 +78,7 @@ class HelidonConfigPropertyReferenceContributorTest : HelidonHighlightingTestCas
       }
       element = element.parent
     }
-
-    fail("Expected ${HelidonConfigPlaceholderReference::class.java.name} in ${reference.javaClass.name}")
-    error("unreachable")
+    return null
   }
 
   private fun findConfigPlaceholderReference(reference: PsiReference): HelidonConfigPlaceholderReference? {

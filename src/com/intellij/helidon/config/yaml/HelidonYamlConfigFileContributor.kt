@@ -10,6 +10,7 @@ import com.intellij.helidon.config.HelidonMetaConfigKeyManager
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
+import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.util.Processor
 import org.jetbrains.yaml.YAMLFileType
 import org.jetbrains.yaml.psi.*
@@ -32,6 +33,9 @@ internal class HelidonYamlConfigFileContributor : HelidonConfigFileContributor(Y
     for (document in psiFile.documents) {
       val accessor = HelidonConfigYamlAccessor(document)
       for (yamlKeyValue in accessor.allKeys) {
+        if (PsiTreeUtil.getParentOfType(yamlKeyValue, YAMLSequenceItem::class.java) != null) {
+          continue
+        }
         val yamlValue = yamlKeyValue.value
         if (yamlValue !is YAMLScalar &&
             yamlValue !is YAMLSequence) {

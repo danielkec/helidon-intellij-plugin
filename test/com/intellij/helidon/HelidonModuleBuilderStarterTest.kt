@@ -2,6 +2,7 @@
 package com.intellij.helidon
 
 import com.intellij.helidon.newproject.HelidonModuleBuilder
+import com.intellij.helidon.newproject.HelidonStarterOptions
 import com.intellij.helidon.newproject.HelidonStarterProject
 import com.intellij.helidon.newproject.HelidonStarterProjectGeneratorProvider
 import com.intellij.helidon.newproject.HelidonStarterRequest
@@ -54,7 +55,8 @@ class HelidonModuleBuilderStarterTest : LightJavaCodeInsightFixtureTestCase4(Lig
         groupId = "com.example",
         artifactId = "demo",
         projectVersion = "1.0-SNAPSHOT",
-        packageName = "com.example.demo"
+        packageName = "com.example.demo",
+        options = HelidonStarterOptions()
       ),
       capturedRequest
     )

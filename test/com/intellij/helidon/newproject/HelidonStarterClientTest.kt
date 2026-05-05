@@ -22,10 +22,10 @@ class HelidonStarterClientTest {
   fun generateReadsMetadataAndStarterZip() {
     val starterUrl = "https://starter.test/starter"
     val metadataUrl = "https://starter.test/api/9.9.9"
-    val generateUrl = "https://starter.test/api/9.9.9/generate?flavor=mp&app-type=quickstart&build-system=maven&groupId=com.example&artifactId=demo&version=1.0-SNAPSHOT&package=com.example.demo"
+    val generateUrl = "https://starter.test/api/9.9.9/generate?flavor=se&app-type=quickstart&build-system=maven&groupId=com.example&artifactId=demo&version=1.0-SNAPSHOT&package=com.example.demo&media=json&media.json-lib=jsonp&db=false&security=false&metrics=true&metrics.builtin=true&health=true&health.builtin=true&tracing=false&docker=true&docker.native-image=true&docker.jlink-image=true&k8s=true&jpms=false"
     val responses = mapOf(
       starterUrl to Response.redirect("/starter/9.9.9"),
-      metadataUrl to Response(200, starterMetadata("maven").toByteArray(StandardCharsets.UTF_8)),
+      metadataUrl to Response(200, starterMetadata().toByteArray(StandardCharsets.UTF_8)),
       generateUrl to Response(200, starterZip())
     )
     val requestedUrls = mutableListOf<String>()
@@ -61,12 +61,156 @@ class HelidonStarterClientTest {
     assertEquals(listOf(starterUrl, metadataUrl, generateUrl), requestedUrls)
   }
 
+  @Test
+  fun generateAppliesDatabaseApplicationTypePreset() {
+    val starterUrl = "https://starter.test/starter"
+    val metadataUrl = "https://starter.test/api/9.9.9"
+    val generateUrl = "https://starter.test/api/9.9.9/generate?flavor=se&app-type=database&build-system=maven&groupId=com.example&artifactId=demo&version=1.0-SNAPSHOT&package=com.example.demo&media=json&media.json-lib=jackson&db=true&db.server=mysql&security=false&metrics=true&metrics.builtin=true&health=true&health.builtin=true&tracing=false&docker=true&docker.native-image=true&docker.jlink-image=true&k8s=true&jpms=false"
+    val responses = mapOf(
+      starterUrl to Response.redirect("/starter/9.9.9"),
+      metadataUrl to Response(200, starterMetadata().toByteArray(StandardCharsets.UTF_8)),
+      generateUrl to Response(200, starterZip())
+    )
+    val requestedUrls = mutableListOf<String>()
+    val client = HelidonStarterClient(
+      starterRoot = starterUrl,
+      apiRoot = "https://starter.test/api"
+    ) { url ->
+      requestedUrls.add(url.toString())
+      FakeHttpURLConnection(url, responses.getValue(url.toString()))
+    }
+
+    client.generate(
+      HelidonStarterRequest(
+        groupId = "com.example",
+        artifactId = "demo",
+        projectVersion = "1.0-SNAPSHOT",
+        packageName = "com.example.demo",
+        options = HelidonStarterOptions(
+          appType = HELIDON_DATABASE_APP_TYPE,
+          database = false,
+          databaseServer = "mysql",
+          jsonLibrary = "jackson"
+        )
+      )
+    )
+
+    assertEquals(listOf(starterUrl, metadataUrl, generateUrl), requestedUrls)
+  }
+
+  @Test
+  fun generateFiltersInvalidMpDatabaseOptions() {
+    val starterUrl = "https://starter.test/starter"
+    val metadataUrl = "https://starter.test/api/9.9.9"
+    val generateUrl = "https://starter.test/api/9.9.9/generate?flavor=mp&app-type=database&build-system=maven&groupId=com.example&artifactId=demo&version=1.0-SNAPSHOT&package=com.example.demo&media=json&media.json-lib=jsonb&db=true&db.jpa-impl=eclipselink&db.cp=ucp&db.server=h2&db.auto-ddl=true&db.pu-name=inventory&db.ds-name=inventoryDs&security=false&metrics=true&metrics.provider=microprofile&metrics.builtin=true&health=true&health.builtin=true&tracing=false&docker=true&docker.native-image=true&docker.jlink-image=true&k8s=true&jpms=false"
+    val responses = mapOf(
+      starterUrl to Response.redirect("/starter/9.9.9"),
+      metadataUrl to Response(200, starterMetadata().toByteArray(StandardCharsets.UTF_8)),
+      generateUrl to Response(200, starterZip())
+    )
+    val requestedUrls = mutableListOf<String>()
+    val client = HelidonStarterClient(
+      starterRoot = starterUrl,
+      apiRoot = "https://starter.test/api"
+    ) { url ->
+      requestedUrls.add(url.toString())
+      FakeHttpURLConnection(url, responses.getValue(url.toString()))
+    }
+
+    client.generate(
+      HelidonStarterRequest(
+        groupId = "com.example",
+        artifactId = "demo",
+        projectVersion = "1.0-SNAPSHOT",
+        packageName = "com.example.demo",
+        options = HelidonStarterOptions(
+          flavor = HELIDON_MP_FLAVOR,
+          appType = HELIDON_DATABASE_APP_TYPE,
+          jsonLibrary = "jsonp",
+          databaseServer = "mongodb",
+          jpaImplementation = "eclipselink",
+          connectionPool = "ucp",
+          autoDdl = true,
+          persistenceUnitName = "inventory",
+          dataSourceName = "inventoryDs",
+          extras = listOf("webclient", "cors")
+        )
+      )
+    )
+
+    assertEquals(listOf(starterUrl, metadataUrl, generateUrl), requestedUrls)
+  }
+
+  @Test
+  fun generateUsesOciApplicationTypePreset() {
+    val starterUrl = "https://starter.test/starter"
+    val metadataUrl = "https://starter.test/api/9.9.9"
+    val generateUrl = "https://starter.test/api/9.9.9/generate?flavor=mp&app-type=oci&build-system=maven&groupId=com.example&artifactId=demo&version=1.0-SNAPSHOT&package=com.example.demo&db=false&docker=true&docker.native-image=false&docker.jlink-image=false&k8s=true&jpms=false"
+    val responses = mapOf(
+      starterUrl to Response.redirect("/starter/9.9.9"),
+      metadataUrl to Response(200, starterMetadata().toByteArray(StandardCharsets.UTF_8)),
+      generateUrl to Response(200, starterZip())
+    )
+    val requestedUrls = mutableListOf<String>()
+    val client = HelidonStarterClient(
+      starterRoot = starterUrl,
+      apiRoot = "https://starter.test/api"
+    ) { url ->
+      requestedUrls.add(url.toString())
+      FakeHttpURLConnection(url, responses.getValue(url.toString()))
+    }
+
+    client.generate(
+      HelidonStarterRequest(
+        groupId = "com.example",
+        artifactId = "demo",
+        projectVersion = "1.0-SNAPSHOT",
+        packageName = "com.example.demo",
+        options = HelidonStarterOptions(
+          flavor = HELIDON_MP_FLAVOR,
+          appType = HELIDON_OCI_APP_TYPE,
+          media = listOf("json"),
+          security = true,
+          extras = listOf("cors"),
+          dockerNativeImage = true,
+          kubernetes = false
+        )
+      )
+    )
+
+    assertEquals(listOf(starterUrl, metadataUrl, generateUrl), requestedUrls)
+  }
+
   @Test(expected = HelidonStarterUnsupportedException::class)
   fun generateRejectsMetadataWithoutMavenSupport() {
     val starterUrl = "https://starter.test/starter"
     val responses = mapOf(
       starterUrl to Response.redirect("https://starter.test/starter/9.9.9"),
-      "https://starter.test/api/9.9.9" to Response(200, starterMetadata("gradle").toByteArray(StandardCharsets.UTF_8))
+      "https://starter.test/api/9.9.9" to Response(200, starterMetadata(buildSystem = "gradle").toByteArray(StandardCharsets.UTF_8))
+    )
+    val client = HelidonStarterClient(
+      starterRoot = starterUrl,
+      apiRoot = "https://starter.test/api"
+    ) { url ->
+      FakeHttpURLConnection(url, responses.getValue(url.toString()))
+    }
+
+    client.generate(
+      HelidonStarterRequest(
+        groupId = "com.example",
+        artifactId = "demo",
+        projectVersion = "1.0-SNAPSHOT",
+        packageName = "com.example.demo"
+      )
+    )
+  }
+
+  @Test(expected = HelidonStarterUnsupportedException::class)
+  fun generateRejectsMetadataWithoutSeSupport() {
+    val starterUrl = "https://starter.test/starter"
+    val responses = mapOf(
+      starterUrl to Response.redirect("https://starter.test/starter/9.9.9"),
+      "https://starter.test/api/9.9.9" to Response(200, starterMetadata(includeSe = false).toByteArray(StandardCharsets.UTF_8))
     )
     val client = HelidonStarterClient(
       starterRoot = starterUrl,
@@ -107,10 +251,98 @@ class HelidonStarterClientTest {
     assertEquals(listOf("pom.xml"), assets.map { it.relativePath })
   }
 
-  private fun starterMetadata(buildSystem: String): String =
-    """
+  private fun starterMetadata(buildSystem: String = "maven", includeSe: Boolean = true): String {
+    val seOption = if (includeSe) {
+      """
+      {
+        "kind": "option",
+        "name": "Helidon SE",
+        "value": "se",
+        "children": [
+          {
+            "kind": "inputs",
+            "children": [
+              {
+                "kind": "enum",
+                "id": "app-type",
+                "children": [
+                  {
+                    "kind": "option",
+                    "value": "quickstart"
+                  },
+                  {
+                    "kind": "option",
+                    "value": "database"
+                  },
+                  {
+                    "kind": "option",
+                    "value": "custom"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      """.trimIndent()
+    }
+    else {
+      ""
+    }
+    return """
     {
       "children": [
+        {
+          "kind": "step",
+          "children": [
+            {
+              "kind": "inputs",
+              "children": [
+                {
+                  "kind": "enum",
+                  "id": "flavor",
+                  "children": [
+                    $seOption
+                    {
+                      "kind": "option",
+                      "name": "Helidon MP",
+                      "value": "mp",
+                      "children": [
+                        {
+                          "kind": "inputs",
+                          "children": [
+                            {
+                              "kind": "enum",
+                              "id": "app-type",
+                              "children": [
+                                {
+                                  "kind": "option",
+                                  "value": "quickstart"
+                                },
+                                {
+                                  "kind": "option",
+                                  "value": "database"
+                                },
+                                {
+                                  "kind": "option",
+                                  "value": "custom"
+                                },
+                                {
+                                  "kind": "option",
+                                  "value": "oci"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
         {
           "kind": "step",
           "children": [
@@ -134,6 +366,7 @@ class HelidonStarterClientTest {
       ]
     }
     """.trimIndent()
+  }
 
   private fun starterZip(): ByteArray =
     zip {

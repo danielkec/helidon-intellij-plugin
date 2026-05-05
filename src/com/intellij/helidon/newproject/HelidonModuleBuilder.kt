@@ -13,20 +13,30 @@ import com.intellij.openapi.roots.ui.configuration.ModulesProvider
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.util.Key
 import com.intellij.pom.java.LanguageLevel
+import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.SimpleListCellRenderer
+import com.intellij.ui.dsl.builder.Align
 import com.intellij.ui.dsl.builder.Panel
 import com.intellij.ui.dsl.builder.Row
 import com.intellij.ui.dsl.builder.RowsRange
+import com.intellij.ui.dsl.builder.panel
 import com.intellij.util.lang.JavaVersion
+import com.intellij.util.ui.JBUI
+import java.awt.Dimension
 import javax.swing.DefaultComboBoxModel
 import javax.swing.Icon
 import javax.swing.JCheckBox
 import javax.swing.JComponent
+import javax.swing.ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
+import javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED
 import javax.swing.JTextField
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
 
 internal val NEW_HELIDON_PROJECT_KEY: Key<Boolean> = Key.create("helidon.new.project")
+
+private const val HELIDON_STARTER_OPTIONS_MIN_HEIGHT = 220
+private const val HELIDON_STARTER_OPTIONS_VISIBLE_HEIGHT = 420
 
 internal class HelidonModuleBuilder : StarterModuleBuilder() {
   private var generatedStarterFilesToOpen: List<String>? = null
@@ -273,7 +283,7 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
         refreshControls()
       }
 
-      layout.group("Helidon Starter") {
+      val starterOptionsPanel = panel {
         groupRowsRange("Project") {
           row("Flavor:") {
             val flavorCell = comboBox(flavorOptions, starterOptionRenderer())
@@ -569,11 +579,26 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
           }
         }
       }
+      layout.group("Helidon Starter") {
+        row {
+          cell(starterOptionsScrollPane(starterOptionsPanel)).align(Align.FILL).resizableColumn()
+        }.resizableRow()
+      }
       layout.row {
         hyperLink(HelidonBundle.message("helidon.se.overview"), "https://helidon.io/docs/v4/#/se/introduction")
       }
       refreshControls()
     }
+
+    private fun starterOptionsScrollPane(content: JComponent) =
+      ScrollPaneFactory.createScrollPane(content, VERTICAL_SCROLLBAR_AS_NEEDED, HORIZONTAL_SCROLLBAR_NEVER).apply {
+        border = null
+        viewport.border = null
+        viewport.isOpaque = false
+        isOpaque = false
+        preferredSize = Dimension(content.preferredSize.width, JBUI.scale(HELIDON_STARTER_OPTIONS_VISIBLE_HEIGHT))
+        minimumSize = Dimension(0, JBUI.scale(HELIDON_STARTER_OPTIONS_MIN_HEIGHT))
+      }
 
     private fun appTypes(flavor: String): List<StarterOption> =
       helidonStarterAppTypes(flavor).map(::starterOption)

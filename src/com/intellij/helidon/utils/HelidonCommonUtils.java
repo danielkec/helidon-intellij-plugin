@@ -38,8 +38,16 @@ import java.util.stream.Collectors;
 import static com.intellij.helidon.providers.HelidonReferenceContributorKt.*;
 
 public final class HelidonCommonUtils {
+  private static final String JAVA_UTIL_ARRAYS = "java.util.Arrays";
+  private static final String JAVA_UTIL_COLLECTIONS = "java.util.Collections";
+  private static final String JAVA_UTIL_ENUM_SET = "java.util.EnumSet";
   private static final String JAVA_UTIL_FUNCTION_SUPPLIER = "java.util.function.Supplier";
   private static final String JAVA_LANG_ITERABLE = "java.lang.Iterable";
+  private static final String JAVA_UTIL_LIST = "java.util.List";
+  private static final String JAVA_UTIL_SET = "java.util.Set";
+  private static final String HELIDON_COMMON_HTTP_REQUEST_METHOD = "io.helidon.common.http.Http.RequestMethod";
+  private static final String HELIDON_HTTP_METHOD = "io.helidon.http.Method";
+  private static final String HELIDON_HTTP_METHODS = "io.helidon.http.Methods";
   private static final Key<CachedValue<Map<SearchScope, Set<UCallExpression>>>> METHOD_INVOCATIONS_KEY =
     Key.create("METHOD_INVOCATIONS_KEY");
   private static final Key<CachedValue<List<ServiceRegistration>>> SERVICE_REGISTRATIONS_KEY =
@@ -478,6 +486,17 @@ public final class HelidonCommonUtils {
     if (expression instanceof PsiLiteralExpression) {
       return createMethodSet(((PsiLiteralExpression)expression).getValue());
     }
+    if (expression instanceof PsiReferenceExpression) {
+      PsiElement resolved = ((PsiReferenceExpression)expression).resolve();
+      if (resolved instanceof PsiVariable) {
+        PsiExpression initializer = ((PsiVariable)resolved).getInitializer();
+        if (initializer != null) {
+          return getExplicitMethods(initializer);
+        }
+      }
+      String method = getStaticMethodName(expression);
+      return method == null ? null : createMethodSet(method);
+    }
     if (expression instanceof PsiMethodCallExpression) {
       return getExplicitMethodCallMethods((PsiMethodCallExpression)expression);
     }
@@ -493,20 +512,35 @@ public final class HelidonCommonUtils {
 
   private static @Nullable Set<String> getExplicitMethodCallMethods(@NotNull PsiMethodCallExpression expression) {
     String methodName = expression.getMethodExpression().getReferenceName();
-    if (!"of".equals(methodName) &&
-        !"asList".equals(methodName) &&
-        !"singleton".equals(methodName) &&
-        !"singletonList".equals(methodName)) {
+    PsiMethod method = expression.resolveMethod();
+    PsiClass containingClass = method == null ? null : method.getContainingClass();
+    String containingClassName = containingClass == null ? null : containingClass.getQualifiedName();
+    if (!isSupportedMethodCollectionFactory(containingClassName, methodName)) {
       return null;
     }
 
     return getExplicitMethods(expression.getArgumentList().getExpressions());
   }
 
+  private static boolean isSupportedMethodCollectionFactory(@Nullable String className, @Nullable String methodName) {
+    if ("of".equals(methodName)) {
+      return JAVA_UTIL_LIST.equals(className) ||
+             JAVA_UTIL_SET.equals(className) ||
+             JAVA_UTIL_ENUM_SET.equals(className);
+    }
+    if ("asList".equals(methodName)) {
+      return JAVA_UTIL_ARRAYS.equals(className);
+    }
+    if ("singleton".equals(methodName) || "singletonList".equals(methodName)) {
+      return JAVA_UTIL_COLLECTIONS.equals(className);
+    }
+    return false;
+  }
+
   private static @Nullable Set<String> getExplicitMethods(@NotNull PsiExpression[] expressions) {
     Set<String> methods = new LinkedHashSet<>();
     for (PsiExpression expression : expressions) {
-      String method = getStaticString(expression);
+      String method = getStaticMethodName(expression);
       if (method == null) return null;
 
       method = method.trim();
@@ -524,22 +558,77 @@ public final class HelidonCommonUtils {
     return Collections.singleton(method.toUpperCase(Locale.ENGLISH));
   }
 
-  private static @Nullable String getStaticString(@NotNull PsiExpression expression) {
+  private static @Nullable String getStaticMethodName(@NotNull PsiExpression expression) {
     if (expression instanceof PsiParenthesizedExpression) {
       PsiExpression parenthesizedExpression = ((PsiParenthesizedExpression)expression).getExpression();
-      return parenthesizedExpression == null ? null : getStaticString(parenthesizedExpression);
+      return parenthesizedExpression == null ? null : getStaticMethodName(parenthesizedExpression);
     }
     if (expression instanceof PsiTypeCastExpression) {
       PsiExpression operand = ((PsiTypeCastExpression)expression).getOperand();
-      return operand == null ? null : getStaticString(operand);
+      return operand == null ? null : getStaticMethodName(operand);
     }
     if (expression instanceof PsiLiteralExpression) {
       Object value = ((PsiLiteralExpression)expression).getValue();
       return value instanceof String ? (String)value : null;
     }
+    if (expression instanceof PsiReferenceExpression) {
+      PsiElement resolved = ((PsiReferenceExpression)expression).resolve();
+      if (resolved instanceof PsiEnumConstant) {
+        return ((PsiEnumConstant)resolved).getName();
+      }
+      if (resolved instanceof PsiVariable) {
+        PsiExpression initializer = ((PsiVariable)resolved).getInitializer();
+        if (initializer != null) {
+          return getStaticMethodName(initializer);
+        }
+      }
+    }
+    if (expression instanceof PsiMethodCallExpression) {
+      String requestMethod = getStaticRequestMethodName((PsiMethodCallExpression)expression);
+      if (requestMethod != null) {
+        return requestMethod;
+      }
+    }
 
     Pair<PsiElement, String> pair = StringExpressionHelper.evaluateExpression(expression);
     return pair == null ? null : pair.second;
+  }
+
+  private static @Nullable String getStaticRequestMethodName(@NotNull PsiMethodCallExpression expression) {
+    PsiReferenceExpression methodExpression = expression.getMethodExpression();
+    String methodName = methodExpression.getReferenceName();
+    PsiExpression[] arguments = expression.getArgumentList().getExpressions();
+    if ("create".equals(methodName) && arguments.length == 1 && isRequestMethodType(expression.getType())) {
+      return getStaticMethodName(arguments[0]);
+    }
+    if ("name".equals(methodName) && arguments.length == 0) {
+      PsiExpression qualifier = methodExpression.getQualifierExpression();
+      if (qualifier != null && isRequestMethodType(qualifier.getType())) {
+        return getStaticMethodName(qualifier);
+      }
+    }
+    return null;
+  }
+
+  private static boolean isRequestMethodType(@Nullable PsiType type) {
+    if (!(type instanceof PsiClassType)) return false;
+    PsiClass resolved = ((PsiClassType)type).resolve();
+    String className = resolved == null ? null : resolved.getQualifiedName();
+    if (className == null) return false;
+    if (HELIDON_COMMON_HTTP_REQUEST_METHOD.equals(className) ||
+        HELIDON_HTTP_METHOD.equals(className) ||
+        HELIDON_HTTP_METHODS.equals(className)) {
+      return true;
+    }
+    for (PsiType superType : type.getSuperTypes()) {
+      if (superType instanceof PsiClassType) {
+        PsiClass superClass = ((PsiClassType)superType).resolve();
+        if (superClass != null && HELIDON_COMMON_HTTP_REQUEST_METHOD.equals(superClass.getQualifiedName())) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   private static @Nullable String getUExpressionText(UExpression expression) {

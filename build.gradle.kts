@@ -34,6 +34,7 @@ dependencies {
 
     testBundledPlugin("com.intellij.java-i18n")
     testBundledPlugin("com.intellij.javaee")
+    testBundledPlugin("org.jetbrains.kotlin")
     testBundledPlugin("tanvd.grazi")
 
     testFramework(TestFrameworkType.Plugin.Java)

@@ -34,6 +34,20 @@ class HelidonUrlResolverTest : HelidonHighlightingTestCase() {
     assertEquals("/items/{id}", (targets.single() as HelidonUrlTargetInfo).urlDefinition)
   }
 
+  fun testResolveMatchesRegisterTargetAsAnyMethod() {
+    val targets = resolve("/api", "GET")
+
+    assertSize(1, targets)
+    val target = targets.single() as HelidonUrlTargetInfo
+    assertEquals(HelidonRequestMethods.REGISTER, target.type)
+    assertEquals("/api", target.urlDefinition)
+  }
+
+  fun testResolveFiltersAnyOfTargetByExplicitMethods() {
+    assertSize(1, resolve("/multi", "POST"))
+    assertEmpty(resolve("/multi", "DELETE"))
+  }
+
   private fun resolve(path: String, method: String = "GET"): List<UrlTargetInfo> {
     val request = UrlResolveRequest("http", null, UrlPath.fromExactString(path), method)
     return HelidonUrlResolver(project, variants()).resolve(request).toList()
@@ -43,7 +57,11 @@ class HelidonUrlResolverTest : HelidonHighlightingTestCase() {
     val psiElement = myFixture.configureByText("Routes.java", "class Routes {}")
     return listOf(
       HelidonUrlTargetInfo.create("greet", psiElement).ofType(HelidonRequestMethods.GET),
-      HelidonUrlTargetInfo.create("/items/{id}", psiElement).ofType(HelidonRequestMethods.GET)
+      HelidonUrlTargetInfo.create("/items/{id}", psiElement).ofType(HelidonRequestMethods.GET),
+      HelidonUrlTargetInfo.create("/api", psiElement).ofType(HelidonRequestMethods.REGISTER),
+      HelidonUrlTargetInfo.create("/multi", psiElement)
+        .ofType(HelidonRequestMethods.ANY_OF)
+        .withMethods(setOf("GET", "POST"))
     )
   }
 }

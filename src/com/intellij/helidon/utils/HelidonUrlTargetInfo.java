@@ -28,6 +28,7 @@ public final class HelidonUrlTargetInfo implements UrlTargetInfo {
 
   private final SmartPsiElementPointer<PsiElement> myElementPointer;
   private HelidonRequestMethods myType = HelidonRequestMethods.UNKNOWN;
+  private Set<String> myMethods = null;
   private String myParentUrl = null;
   private final NotNullLazyValue<UrlPath> myUrlPath = NotNullLazyValue.createValue(() -> {
     return computeUrlPath();
@@ -42,9 +43,19 @@ public final class HelidonUrlTargetInfo implements UrlTargetInfo {
     return this;
   }
 
+  public HelidonUrlTargetInfo withMethods(@NotNull Collection<String> methods) {
+    myMethods = Collections.unmodifiableSet(new LinkedHashSet<>(methods));
+    return this;
+  }
+
   @Override
   public @NotNull Set<String> getMethods() {
-    if (myType == HelidonRequestMethods.UNKNOWN || myType == HelidonRequestMethods.ANY_OF) return Collections.emptySet();
+    if (myMethods != null) return myMethods;
+    if (myType == HelidonRequestMethods.UNKNOWN ||
+        myType == HelidonRequestMethods.REGISTER ||
+        myType == HelidonRequestMethods.ANY_OF) {
+      return Collections.emptySet();
+    }
 
     return Collections.singleton(myType.name().toUpperCase(Locale.ENGLISH));
   }

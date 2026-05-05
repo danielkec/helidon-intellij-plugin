@@ -59,7 +59,9 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
 
     val endpoints = collectBuilderEndpoints()
 
-    assertTrue(endpoints.any { it.type == HelidonRequestMethods.ANY_OF && it.urlDefinition == "/multi/{name}" })
+    val anyOfEndpoints = endpoints.filter { it.type == HelidonRequestMethods.ANY_OF && it.urlDefinition == "/multi/{name}" }
+    assertFalse(anyOfEndpoints.isEmpty())
+    assertTrue(anyOfEndpoints.all { it.methods == setOf("GET", "POST") })
   }
 
   fun testHelidon4AnyOfRulesRouteUsesPathArgument() {
@@ -77,7 +79,9 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
 
     val endpoints = collectServiceEndpoints(myFixture.findClass("GreetingService"))
 
-    assertTrue(endpoints.any { it.type == HelidonRequestMethods.ANY_OF && it.urlDefinition == "/multi/{name}" })
+    val anyOfEndpoints = endpoints.filter { it.type == HelidonRequestMethods.ANY_OF && it.urlDefinition == "/multi/{name}" }
+    assertFalse(anyOfEndpoints.isEmpty())
+    assertTrue(anyOfEndpoints.all { it.methods == setOf("GET", "POST") })
   }
 
   fun testRegisteredHelidon4ServiceEndpointsKeepParentPath() {

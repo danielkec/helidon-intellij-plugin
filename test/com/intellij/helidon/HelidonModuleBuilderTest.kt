@@ -2,15 +2,20 @@
 package com.intellij.helidon
 
 import com.intellij.helidon.newproject.HelidonModuleBuilder
+import com.intellij.helidon.newproject.HelidonStarterProjectGenerator
+import com.intellij.helidon.newproject.HelidonStarterProjectGeneratorProvider
 import com.intellij.ide.starters.local.StarterModuleBuilder.Companion.setupTestModule
 import com.intellij.ide.starters.shared.*
 import com.intellij.pom.java.LanguageLevel
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase4
 import com.intellij.util.lang.JavaVersion
+import java.io.IOException
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
@@ -46,6 +51,18 @@ class HelidonModuleBuilderTest : LightJavaCodeInsightFixtureTestCase4(LightJavaC
       "maven" to MAVEN_PROJECT,
       "gradle" to GRADLE_PROJECT
     )
+  }
+
+  @Before
+  fun blockLiveStarter() {
+    HelidonStarterProjectGeneratorProvider.generator = HelidonStarterProjectGenerator {
+      throw IOException("Network access is disabled in this test")
+    }
+  }
+
+  @After
+  fun resetStarterGenerator() {
+    HelidonStarterProjectGeneratorProvider.generator = com.intellij.helidon.newproject.HelidonStarterClient()
   }
 
   @Test

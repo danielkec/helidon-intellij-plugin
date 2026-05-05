@@ -9,6 +9,7 @@ import com.intellij.ide.starters.local.wizard.StarterInitialStep
 import com.intellij.ide.starters.shared.*
 import com.intellij.ide.util.projectWizard.ModuleWizardStep
 import com.intellij.ide.util.projectWizard.WizardContext
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.roots.ui.configuration.ModulesProvider
@@ -21,6 +22,8 @@ import javax.swing.Icon
 internal val NEW_HELIDON_PROJECT_KEY: Key<Boolean> = Key.create("helidon.new.project")
 
 internal class HelidonModuleBuilder : StarterModuleBuilder() {
+  private var generatedStarterFilesToOpen: List<String>? = null
+
   override fun getBuilderId(): String = "helidon"
   override fun getNodeIcon(): Icon = HelidonIcons.Helidon
   override fun getPresentableName(): String = HelidonBundle.HELIDON_LIBRARY
@@ -65,6 +68,38 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
   }
 
   override fun getAssets(starter: Starter): List<GeneratorAsset> {
+    generatedStarterFilesToOpen = null
+    loadStarterAssets()?.let { return it }
+    return getLocalAssets()
+  }
+
+  private fun loadStarterAssets(): List<GeneratorAsset>? {
+    if (!isHelidonStarterSupported()) {
+      return null
+    }
+
+    return try {
+      val project = HelidonStarterProjectGeneratorProvider.generator.generate(
+        HelidonStarterRequest(
+          groupId = starterContext.group,
+          artifactId = starterContext.artifact,
+          projectVersion = starterContext.version,
+          packageName = getPackagePath(starterContext.group, starterContext.artifact).replace('/', '.')
+        )
+      )
+      generatedStarterFilesToOpen = project.filesToOpen
+      project.assets
+    }
+    catch (e: Exception) {
+      LOG.warn("Failed to generate Helidon project from helidon.io/starter; falling back to bundled templates", e)
+      null
+    }
+  }
+
+  private fun isHelidonStarterSupported(): Boolean =
+    starterContext.projectType == MAVEN_PROJECT && starterContext.language == JAVA_STARTER_LANGUAGE
+
+  private fun getLocalAssets(): List<GeneratorAsset> {
     val ftManager = FileTemplateManager.getInstance(ProjectManager.getInstance().defaultProject)
     val standardAssetsProvider = StandardAssetsProvider()
     val assets = mutableListOf<GeneratorAsset>()
@@ -110,6 +145,8 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
   }
 
   override fun getFilePathsToOpen(): List<String> {
+    generatedStarterFilesToOpen?.let { return it }
+
     val files = mutableListOf<String>()
     if (starterContext.projectType == MAVEN_PROJECT) {
       files.add("pom.xml")
@@ -133,5 +170,9 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
         hyperLink(HelidonBundle.message("helidon.mp.overview"), "https://helidon.io/docs/v4/#/mp/introduction")
       }
     }
+  }
+
+  companion object {
+    private val LOG = Logger.getInstance(HelidonModuleBuilder::class.java)
   }
 }

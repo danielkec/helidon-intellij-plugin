@@ -117,6 +117,20 @@ class HelidonYamlConfigTest : HelidonHighlightingTestCase() {
                            "my.host",)
   }
 
+  fun testPlaceholderReferenceCompletionDoesNotOfferIndexedSequenceKeys() {
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      items:
+        - name: first
+      server:
+        host: ${'$'}{<caret>}
+    """.trimIndent())
+    myFixture.completeBasic()
+
+    val lookupStrings = myFixture.lookupElementStrings!!
+    assertContainsElements(lookupStrings, "items")
+    assertDoesntContain(lookupStrings, "items[0].name")
+  }
+
   fun testPlaceholderReferenceCompletionWithNestedPrefix() {
     myFixture.configureByText(HELIDON_APPLICATION_YAML, """
       server:

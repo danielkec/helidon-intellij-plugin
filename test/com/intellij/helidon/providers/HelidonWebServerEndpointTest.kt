@@ -59,7 +59,7 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
 
     val endpoints = collectBuilderEndpoints()
 
-    assertTrue(endpoints.any { it.type == HelidonRequestMethods.ANY_OF && it.urlDefinition == "/multi/{name}" })
+    assertAnyOfEndpointMethods(endpoints, "/multi/{name}", setOf("GET", "POST"))
   }
 
   fun testHelidon4AnyOfRulesRouteUsesPathArgument() {
@@ -77,7 +77,72 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
 
     val endpoints = collectServiceEndpoints(myFixture.findClass("GreetingService"))
 
-    assertTrue(endpoints.any { it.type == HelidonRequestMethods.ANY_OF && it.urlDefinition == "/multi/{name}" })
+    assertAnyOfEndpointMethods(endpoints, "/multi/{name}", setOf("GET", "POST"))
+  }
+
+  fun testLegacyAnyOfRouteUsesRequestMethodConstants() {
+    addLegacyAnyOfStubs()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.webserver.Routing;
+      import java.util.Set;
+
+      import static io.helidon.common.http.Http.Method.GET;
+      import static io.helidon.common.http.Http.Method.POST;
+
+      class Main {
+        static void routing(Routing.Builder routing) {
+          routing.anyOf(Set.of(GET, POST), "/legacy/{name}", (req, res) -> {});
+        }
+      }
+    """.trimIndent())
+
+    val endpoints = collectBuilderEndpoints()
+
+    assertAnyOfEndpointMethods(endpoints, "/legacy/{name}", setOf("GET", "POST"))
+  }
+
+  fun testAnyOfRouteUsesReferencedRequestMethodList() {
+    addLegacyAnyOfStubs()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.common.http.Http;
+      import io.helidon.webserver.Routing;
+      import java.util.List;
+
+      class Main {
+        private static final List<Http.RequestMethod> METHODS = List.of(Http.Method.POST, Http.RequestMethod.create("PROPFIND"));
+
+        static void routing(Routing.Builder routing) {
+          routing.anyOf(METHODS, "/custom/{name}", (req, res) -> {});
+        }
+      }
+    """.trimIndent())
+
+    val endpoints = collectBuilderEndpoints()
+
+    assertAnyOfEndpointMethods(endpoints, "/custom/{name}", setOf("POST", "PROPFIND"))
+  }
+
+  fun testAnyOfRouteDoesNotExtractMethodsFromUnrelatedFactory() {
+    addHelidon4AnyOfStubs()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.webserver.http.HttpRouting;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.anyOf(MethodFactory.of("GET"), "/factory/{name}", (req, res) -> {});
+        }
+      }
+
+      class MethodFactory {
+        static Iterable<String> of(String... methods) {
+          return null;
+        }
+      }
+    """.trimIndent())
+
+    val endpoints = collectBuilderEndpoints()
+
+    assertAnyOfEndpointMethods(endpoints, "/factory/{name}", emptySet())
   }
 
   fun testRegisteredHelidon4ServiceEndpointsKeepParentPath() {
@@ -487,6 +552,14 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     return processor.results
   }
 
+  private fun assertAnyOfEndpointMethods(endpoints: Collection<HelidonUrlTargetInfo>,
+                                         urlDefinition: String,
+                                         methods: Set<String>) {
+    val anyOfEndpoints = endpoints.filter { it.type == HelidonRequestMethods.ANY_OF && it.urlDefinition == urlDefinition }
+    assertFalse(anyOfEndpoints.isEmpty())
+    assertTrue(anyOfEndpoints.all { it.methods == methods })
+  }
+
   private fun addHelidon4AnyOfStubs(): Pair<PsiClass, PsiClass> {
     val handlerClass = myFixture.addClass("""
       package io.helidon.webserver.http;
@@ -513,5 +586,50 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     """.trimIndent())
     assertNotNull(handlerClass)
     return Pair(rulesClass, routingClass)
+  }
+
+  private fun addLegacyAnyOfStubs() {
+    myFixture.addClass("""
+      package io.helidon.common.http;
+
+      public final class Http {
+        private Http() {
+        }
+
+        public interface RequestMethod {
+          String name();
+
+          static RequestMethod create(String name) {
+            return null;
+          }
+        }
+
+        public enum Method implements RequestMethod {
+          GET,
+          POST,
+          DELETE
+        }
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package io.helidon.webserver;
+
+      public interface Handler {
+        void accept(Object request, Object response);
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package io.helidon.webserver;
+
+      public interface Routing {
+        interface Rules {
+          Rules anyOf(java.lang.Iterable<io.helidon.common.http.Http.RequestMethod> methods, String path, Handler... handlers);
+        }
+
+        interface Builder extends Rules {
+          Builder anyOf(java.lang.Iterable<io.helidon.common.http.Http.RequestMethod> methods, String path, Handler... handlers);
+        }
+      }
+    """.trimIndent())
   }
 }

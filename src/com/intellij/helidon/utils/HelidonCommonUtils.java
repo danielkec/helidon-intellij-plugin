@@ -38,8 +38,16 @@ import java.util.stream.Collectors;
 import static com.intellij.helidon.providers.HelidonReferenceContributorKt.*;
 
 public final class HelidonCommonUtils {
+  private static final String JAVA_UTIL_ARRAYS = "java.util.Arrays";
+  private static final String JAVA_UTIL_COLLECTIONS = "java.util.Collections";
+  private static final String JAVA_UTIL_ENUM_SET = "java.util.EnumSet";
   private static final String JAVA_UTIL_FUNCTION_SUPPLIER = "java.util.function.Supplier";
   private static final String JAVA_LANG_ITERABLE = "java.lang.Iterable";
+  private static final String JAVA_UTIL_LIST = "java.util.List";
+  private static final String JAVA_UTIL_SET = "java.util.Set";
+  private static final String HELIDON_COMMON_HTTP_REQUEST_METHOD = "io.helidon.common.http.Http.RequestMethod";
+  private static final String HELIDON_HTTP_METHOD = "io.helidon.http.Method";
+  private static final String HELIDON_HTTP_METHODS = "io.helidon.http.Methods";
   private static final Key<CachedValue<Map<SearchScope, Set<UCallExpression>>>> METHOD_INVOCATIONS_KEY =
     Key.create("METHOD_INVOCATIONS_KEY");
   private static final Key<CachedValue<List<ServiceRegistration>>> SERVICE_REGISTRATIONS_KEY =
@@ -422,28 +430,205 @@ public final class HelidonCommonUtils {
       if (skipServiceClasses && isInsideHttpServiceClass(callExpression)) continue;
       UExpression expression = callExpression.getArgumentForParameter(expressionNum);
       if (expression == null) continue;
-      if (!processExpressions(processor, requestMethods, expression)) return false;
+      if (!processExpressions(processor, requestMethods, expression, getExplicitMethods(requestMethods, callExpression))) return false;
     }
     return true;
   }
 
   private static boolean processExpressions(@NotNull Processor<? super HelidonUrlTargetInfo> processor,
                                             @NotNull HelidonRequestMethods requestMethods,
-                                            @NotNull UExpression expression) {
+                                            @NotNull UExpression expression,
+                                            @Nullable Collection<String> explicitMethods) {
     String expressionText = getUExpressionText(expression);
     if (expressionText != null) {
-      if (!processTargets(processor, expression, expressionText, requestMethods, getParentUrlPaths(expression.getSourcePsi()))) {
+      if (!processTargets(processor, expression, expressionText, requestMethods, explicitMethods, getParentUrlPaths(expression.getSourcePsi()))) {
         return false;
       }
     }
     else {
       // if UStringConcatenationsFacade failed to process)))
       PsiElement javaPsi = expression.getJavaPsi();
-      if (javaPsi instanceof PsiExpression && !processJavaStringExpressions(processor, requestMethods, (PsiExpression)javaPsi)) {
+      if (javaPsi instanceof PsiExpression && !processJavaStringExpressions(processor, requestMethods, explicitMethods, (PsiExpression)javaPsi)) {
         return false;
       }
     }
     return true;
+  }
+
+  private static @Nullable Collection<String> getExplicitMethods(@NotNull HelidonRequestMethods requestMethods,
+                                                                 @NotNull UCallExpression callExpression) {
+    if (requestMethods != HelidonRequestMethods.ANY_OF) return null;
+
+    UExpression methodsExpression = callExpression.getArgumentForParameter(0);
+    if (methodsExpression == null) return null;
+
+    PsiElement sourcePsi = methodsExpression.getSourcePsi();
+    if (sourcePsi instanceof PsiExpression) {
+      return getExplicitMethods((PsiExpression)sourcePsi);
+    }
+
+    String expressionText = getUExpressionText(methodsExpression);
+    if (expressionText != null) {
+      return createMethodSet(expressionText);
+    }
+    return null;
+  }
+
+  private static @Nullable Set<String> getExplicitMethods(@NotNull PsiExpression expression) {
+    if (expression instanceof PsiParenthesizedExpression) {
+      PsiExpression parenthesizedExpression = ((PsiParenthesizedExpression)expression).getExpression();
+      return parenthesizedExpression == null ? null : getExplicitMethods(parenthesizedExpression);
+    }
+    if (expression instanceof PsiTypeCastExpression) {
+      PsiExpression operand = ((PsiTypeCastExpression)expression).getOperand();
+      return operand == null ? null : getExplicitMethods(operand);
+    }
+    if (expression instanceof PsiLiteralExpression) {
+      return createMethodSet(((PsiLiteralExpression)expression).getValue());
+    }
+    if (expression instanceof PsiReferenceExpression) {
+      PsiElement resolved = ((PsiReferenceExpression)expression).resolve();
+      if (resolved instanceof PsiVariable) {
+        PsiExpression initializer = ((PsiVariable)resolved).getInitializer();
+        if (initializer != null) {
+          return getExplicitMethods(initializer);
+        }
+      }
+      String method = getStaticMethodName(expression);
+      return method == null ? null : createMethodSet(method);
+    }
+    if (expression instanceof PsiMethodCallExpression) {
+      return getExplicitMethodCallMethods((PsiMethodCallExpression)expression);
+    }
+    if (expression instanceof PsiArrayInitializerExpression) {
+      return getExplicitMethods(((PsiArrayInitializerExpression)expression).getInitializers());
+    }
+    if (expression instanceof PsiNewExpression) {
+      PsiArrayInitializerExpression arrayInitializer = ((PsiNewExpression)expression).getArrayInitializer();
+      return arrayInitializer == null ? null : getExplicitMethods(arrayInitializer.getInitializers());
+    }
+    return null;
+  }
+
+  private static @Nullable Set<String> getExplicitMethodCallMethods(@NotNull PsiMethodCallExpression expression) {
+    String methodName = expression.getMethodExpression().getReferenceName();
+    PsiMethod method = expression.resolveMethod();
+    PsiClass containingClass = method == null ? null : method.getContainingClass();
+    String containingClassName = containingClass == null ? null : containingClass.getQualifiedName();
+    if (!isSupportedMethodCollectionFactory(containingClassName, methodName)) {
+      return null;
+    }
+
+    return getExplicitMethods(expression.getArgumentList().getExpressions());
+  }
+
+  private static boolean isSupportedMethodCollectionFactory(@Nullable String className, @Nullable String methodName) {
+    if ("of".equals(methodName)) {
+      return JAVA_UTIL_LIST.equals(className) ||
+             JAVA_UTIL_SET.equals(className) ||
+             JAVA_UTIL_ENUM_SET.equals(className);
+    }
+    if ("asList".equals(methodName)) {
+      return JAVA_UTIL_ARRAYS.equals(className);
+    }
+    if ("singleton".equals(methodName) || "singletonList".equals(methodName)) {
+      return JAVA_UTIL_COLLECTIONS.equals(className);
+    }
+    return false;
+  }
+
+  private static @Nullable Set<String> getExplicitMethods(@NotNull PsiExpression[] expressions) {
+    Set<String> methods = new LinkedHashSet<>();
+    for (PsiExpression expression : expressions) {
+      String method = getStaticMethodName(expression);
+      if (method == null) return null;
+
+      method = method.trim();
+      if (method.isEmpty()) return null;
+      methods.add(method.toUpperCase(Locale.ENGLISH));
+    }
+    return methods.isEmpty() ? null : methods;
+  }
+
+  private static @Nullable Set<String> createMethodSet(@Nullable Object value) {
+    if (!(value instanceof String)) return null;
+
+    String method = ((String)value).trim();
+    if (method.isEmpty()) return null;
+    return Collections.singleton(method.toUpperCase(Locale.ENGLISH));
+  }
+
+  private static @Nullable String getStaticMethodName(@NotNull PsiExpression expression) {
+    if (expression instanceof PsiParenthesizedExpression) {
+      PsiExpression parenthesizedExpression = ((PsiParenthesizedExpression)expression).getExpression();
+      return parenthesizedExpression == null ? null : getStaticMethodName(parenthesizedExpression);
+    }
+    if (expression instanceof PsiTypeCastExpression) {
+      PsiExpression operand = ((PsiTypeCastExpression)expression).getOperand();
+      return operand == null ? null : getStaticMethodName(operand);
+    }
+    if (expression instanceof PsiLiteralExpression) {
+      Object value = ((PsiLiteralExpression)expression).getValue();
+      return value instanceof String ? (String)value : null;
+    }
+    if (expression instanceof PsiReferenceExpression) {
+      PsiElement resolved = ((PsiReferenceExpression)expression).resolve();
+      if (resolved instanceof PsiEnumConstant) {
+        return ((PsiEnumConstant)resolved).getName();
+      }
+      if (resolved instanceof PsiVariable) {
+        PsiExpression initializer = ((PsiVariable)resolved).getInitializer();
+        if (initializer != null) {
+          return getStaticMethodName(initializer);
+        }
+      }
+    }
+    if (expression instanceof PsiMethodCallExpression) {
+      String requestMethod = getStaticRequestMethodName((PsiMethodCallExpression)expression);
+      if (requestMethod != null) {
+        return requestMethod;
+      }
+    }
+
+    Pair<PsiElement, String> pair = StringExpressionHelper.evaluateExpression(expression);
+    return pair == null ? null : pair.second;
+  }
+
+  private static @Nullable String getStaticRequestMethodName(@NotNull PsiMethodCallExpression expression) {
+    PsiReferenceExpression methodExpression = expression.getMethodExpression();
+    String methodName = methodExpression.getReferenceName();
+    PsiExpression[] arguments = expression.getArgumentList().getExpressions();
+    if ("create".equals(methodName) && arguments.length == 1 && isRequestMethodType(expression.getType())) {
+      return getStaticMethodName(arguments[0]);
+    }
+    if ("name".equals(methodName) && arguments.length == 0) {
+      PsiExpression qualifier = methodExpression.getQualifierExpression();
+      if (qualifier != null && isRequestMethodType(qualifier.getType())) {
+        return getStaticMethodName(qualifier);
+      }
+    }
+    return null;
+  }
+
+  private static boolean isRequestMethodType(@Nullable PsiType type) {
+    if (!(type instanceof PsiClassType)) return false;
+    PsiClass resolved = ((PsiClassType)type).resolve();
+    String className = resolved == null ? null : resolved.getQualifiedName();
+    if (className == null) return false;
+    if (HELIDON_COMMON_HTTP_REQUEST_METHOD.equals(className) ||
+        HELIDON_HTTP_METHOD.equals(className) ||
+        HELIDON_HTTP_METHODS.equals(className)) {
+      return true;
+    }
+    for (PsiType superType : type.getSuperTypes()) {
+      if (superType instanceof PsiClassType) {
+        PsiClass superClass = ((PsiClassType)superType).resolve();
+        if (superClass != null && HELIDON_COMMON_HTTP_REQUEST_METHOD.equals(superClass.getQualifiedName())) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   private static @Nullable String getUExpressionText(UExpression expression) {
@@ -452,12 +637,13 @@ public final class HelidonCommonUtils {
 
   private static boolean processJavaStringExpressions(@NotNull Processor<? super HelidonUrlTargetInfo> processor,
                                                       @NotNull HelidonRequestMethods requestMethods,
+                                                      @Nullable Collection<String> explicitMethods,
                                                       @NotNull PsiExpression expression) {
     Pair<PsiElement, String> pair = StringExpressionHelper.evaluateExpression(expression);
     if (pair != null) {
       UElement uElement = UastContextKt.toUElement(pair.first);
       if (uElement instanceof UExpression &&
-          !processTargets(processor, (UExpression)uElement, pair.second, requestMethods, getParentUrlPaths(pair.first))) {
+          !processTargets(processor, (UExpression)uElement, pair.second, requestMethods, explicitMethods, getParentUrlPaths(pair.first))) {
         return false;
       }
     }
@@ -477,21 +663,31 @@ public final class HelidonCommonUtils {
                                         @NotNull UExpression resolveTo,
                                         @NotNull String url,
                                         HelidonRequestMethods requestMethods,
+                                        @Nullable Collection<String> explicitMethods,
                                         @NotNull Set<String> parentUrlPaths) {
 
     PsiElement psiElement = resolveTo.getSourcePsi();
     if (psiElement == null) return true;
     if (parentUrlPaths.isEmpty()) {
-      return processor.process(HelidonUrlTargetInfo.create(url, psiElement).ofType(requestMethods));
+      return processor.process(createTargetInfo(url, psiElement, requestMethods, explicitMethods));
     }
     for (String parentUrl : parentUrlPaths) {
-      if (!processor.process(HelidonUrlTargetInfo.create(url, psiElement)
-                               .withParentUrl(parentUrl)
-                               .ofType(requestMethods))) {
+      if (!processor.process(createTargetInfo(url, psiElement, requestMethods, explicitMethods).withParentUrl(parentUrl))) {
         return false;
       }
     }
     return true;
+  }
+
+  private static @NotNull HelidonUrlTargetInfo createTargetInfo(@NotNull String url,
+                                                                @NotNull PsiElement psiElement,
+                                                                @NotNull HelidonRequestMethods requestMethods,
+                                                                @Nullable Collection<String> explicitMethods) {
+    HelidonUrlTargetInfo targetInfo = HelidonUrlTargetInfo.create(url, psiElement).ofType(requestMethods);
+    if (explicitMethods != null) {
+      targetInfo.withMethods(explicitMethods);
+    }
+    return targetInfo;
   }
 
   private static @NotNull Collection<Pair<PsiMethod, HelidonRequestMethods>> getRulesHttpMethods(@NotNull Module module) {

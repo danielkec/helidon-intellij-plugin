@@ -35,8 +35,8 @@ internal class HelidonConfigMetadataParser {
         return JsonParser.parseReader(reader).asJsonArraySafe()
       }
     }
-    catch (ignored: ProcessCanceledException) {
-      return null
+    catch (e: ProcessCanceledException) {
+      throw e
     }
     catch (e: Throwable) {
       // Do not log as an error since user may work with invalid metadata file.

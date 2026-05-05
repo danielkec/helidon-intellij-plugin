@@ -36,14 +36,14 @@ class HelidonConfigMetadataParserTest : HelidonHighlightingTestCase() {
     return Proxy.newProxyInstance(
       PsiFile::class.java.classLoader,
       arrayOf(PsiFile::class.java)
-    ) { _, method, args ->
+    ) { proxy, method, args ->
       when (method.name) {
         "getVirtualFile" -> virtualFile
         "getResolveScope" -> resolveScope
         "getProject" -> project
         "toString" -> "PsiFile proxy for ${virtualFile.path}"
-        "hashCode" -> System.identityHashCode(virtualFile)
-        "equals" -> args?.singleOrNull() === virtualFile
+        "hashCode" -> System.identityHashCode(proxy)
+        "equals" -> args?.singleOrNull() === proxy
         else -> throw UnsupportedOperationException("Unexpected PsiFile method ${method.name}")
       }
     } as PsiFile

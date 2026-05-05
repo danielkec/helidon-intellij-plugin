@@ -384,6 +384,29 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     assertNotNull(reference.resolve())
   }
 
+  fun testHelidon4PathParameterReferenceFromConstantRoutePath() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.ServerRequest;
+      import io.helidon.webserver.http.ServerResponse;
+
+      class Main {
+        private static final String PATH = "/hello/{name}";
+
+        static void routing(HttpRouting.Builder routing) {
+          routing.get(PATH, Main::hello);
+        }
+
+        static void hello(ServerRequest request, ServerResponse response) {
+          request.path().pathParameters().get("na<caret>me");
+        }
+      }
+    """.trimIndent())
+
+    val reference = myFixture.getReferenceAtCaretPositionWithAssertion()
+    assertNotNull(reference.resolve())
+  }
+
   fun testObjectTypedMethodReferenceDoesNotResolveHelidon4PathParameterReference() {
     myFixture.configureByText("Main.java", """
       import io.helidon.webserver.http.HttpRouting;

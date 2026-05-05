@@ -1,11 +1,13 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.helidon.providers;
 
+import com.intellij.codeInspection.dataFlow.StringExpressionHelper;
 import com.intellij.helidon.constants.HelidonConstants;
 import com.intellij.helidon.utils.HelidonCommonUtils;
 import com.intellij.microservices.jvm.pathvars.usages.PathVariableUsageUastReferenceProvider;
 import com.intellij.microservices.url.parameters.PathVariableDefinitionsSearcher;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.Pair;
 import com.intellij.pom.PomTargetPsiElement;
 import com.intellij.psi.*;
 import com.intellij.psi.search.GlobalSearchScope;
@@ -128,6 +130,14 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
     }
     for (PsiLiteralExpression literalExpression : PsiTreeUtil.findChildrenOfType(expression, PsiLiteralExpression.class)) {
       if (!processPathVariables(literalExpression, processor)) return false;
+    }
+    if (expression instanceof PsiExpression) {
+      Pair<PsiElement, String> evaluatedExpression = StringExpressionHelper.evaluateExpression((PsiExpression)expression);
+      if (evaluatedExpression != null &&
+          evaluatedExpression.first != expression &&
+          !processPathVariableDefinitions(evaluatedExpression.first, processor)) {
+        return false;
+      }
     }
     return true;
   }

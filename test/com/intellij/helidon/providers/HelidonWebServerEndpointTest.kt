@@ -4,8 +4,10 @@ package com.intellij.helidon.providers
 import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.utils.HelidonCommonUtils
 import com.intellij.helidon.utils.HelidonUrlTargetInfo
+import com.intellij.microservices.url.parameters.PathVariablePomTarget
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.module.ModuleUtilCore
+import com.intellij.pom.PomTargetPsiElement
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
@@ -393,9 +395,10 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
       class Main {
         private static final String PREFIX = "/hello";
         private static final String PARAM = "name";
+        private static final String PATH = PREFIX + "/{" + PARAM + "}";
 
         static void routing(HttpRouting.Builder routing) {
-          routing.get(PREFIX + "/{" + PARAM + "}", Main::hello);
+          routing.get(PATH, Main::hello);
         }
 
         static void hello(ServerRequest request, ServerResponse response) {
@@ -405,7 +408,10 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     """.trimIndent())
 
     val reference = myFixture.getReferenceAtCaretPositionWithAssertion()
-    assertNotNull(reference.resolve())
+    val target = assertInstanceOf(assertInstanceOf(reference.resolve(), PomTargetPsiElement::class.java).target,
+                                  PathVariablePomTarget::class.java)
+    assertTrue(target.scope.isPhysical)
+    assertEquals("name", target.textRange.substring(target.scope.text))
   }
 
   fun testObjectTypedMethodReferenceDoesNotResolveHelidon4PathParameterReference() {

@@ -5,13 +5,17 @@ import com.intellij.codeInspection.dataFlow.StringExpressionHelper;
 import com.intellij.helidon.constants.HelidonConstants;
 import com.intellij.helidon.utils.HelidonCommonUtils;
 import com.intellij.microservices.jvm.pathvars.usages.PathVariableUsageUastReferenceProvider;
+import com.intellij.microservices.url.parameters.DefaultPathVariableUsagesProvider;
+import com.intellij.microservices.url.parameters.PathVariableDeclarationUtils;
 import com.intellij.microservices.url.parameters.PathVariableDefinitionsSearcher;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Pair;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.pom.PomTargetPsiElement;
 import com.intellij.psi.*;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.searches.MethodReferencesSearch;
+import com.intellij.psi.util.PartiallyKnownString;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.util.Processor;
 import org.jetbrains.annotations.NotNull;
@@ -23,6 +27,7 @@ import static com.intellij.microservices.jvm.pathvars.usages.AnnotationParamSear
 
 public final class HelidonHttpRequestPathParamReferenceProvider extends PathVariableUsageUastReferenceProvider {
   public static final HelidonHttpRequestPathParamReferenceProvider INSTANCE = new HelidonHttpRequestPathParamReferenceProvider();
+  private static final DefaultPathVariableUsagesProvider PATH_VARIABLE_USAGES_PROVIDER = new DefaultPathVariableUsagesProvider();
 
   private HelidonHttpRequestPathParamReferenceProvider() {}
 
@@ -128,18 +133,27 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
     if (expression instanceof PsiLiteralExpression) {
       return processPathVariables(expression, processor);
     }
+    if (expression instanceof PsiExpression) {
+      Pair<PsiElement, String> evaluatedExpression = StringExpressionHelper.evaluateExpression((PsiExpression)expression);
+      if (evaluatedExpression != null) {
+        return processEvaluatedPathVariableDefinitions(expression, evaluatedExpression.second, processor);
+      }
+    }
     for (PsiLiteralExpression literalExpression : PsiTreeUtil.findChildrenOfType(expression, PsiLiteralExpression.class)) {
       if (!processPathVariables(literalExpression, processor)) return false;
     }
-    if (expression instanceof PsiExpression) {
-      Pair<PsiElement, String> evaluatedExpression = StringExpressionHelper.evaluateExpression((PsiExpression)expression);
-      if (evaluatedExpression != null &&
-          evaluatedExpression.first != expression &&
-          !processPathVariableDefinitions(evaluatedExpression.first, processor)) {
-        return false;
-      }
-    }
     return true;
+  }
+
+  private static boolean processEvaluatedPathVariableDefinitions(@NotNull PsiElement context,
+                                                                 @NotNull String path,
+                                                                 @NotNull Processor<? super PomTargetPsiElement> processor) {
+    PsiExpression literal = JavaPsiFacade.getElementFactory(context.getProject())
+      .createExpressionFromText("\"" + StringUtil.escapeStringCharacters(path) + "\"", context);
+    PartiallyKnownString knownPath = new PartiallyKnownString(path, literal, ElementManipulators.getValueTextRange(literal));
+    PsiReference[] references = PathVariableDeclarationUtils.createPathVariableReferencesForPks(
+      literal, knownPath, HelidonUrlPathSpecification.INSTANCE.getParser(), PATH_VARIABLE_USAGES_PROVIDER);
+    return processPathVariables(references, processor);
   }
 
   private static boolean isHandlerMethodCandidate(@Nullable PsiMethod declaration) {

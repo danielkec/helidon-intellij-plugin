@@ -391,10 +391,11 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
       import io.helidon.webserver.http.ServerResponse;
 
       class Main {
-        private static final String PATH = "/hello/{name}";
+        private static final String PREFIX = "/hello";
+        private static final String PARAM = "name";
 
         static void routing(HttpRouting.Builder routing) {
-          routing.get(PATH, Main::hello);
+          routing.get(PREFIX + "/{" + PARAM + "}", Main::hello);
         }
 
         static void hello(ServerRequest request, ServerResponse response) {

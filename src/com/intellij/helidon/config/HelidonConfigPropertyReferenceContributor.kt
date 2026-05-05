@@ -3,11 +3,16 @@ package com.intellij.helidon.config
 
 import com.intellij.patterns.ElementPattern
 import com.intellij.patterns.PsiJavaPatterns.psiClass
+import com.intellij.patterns.PlatformPatterns
+import com.intellij.patterns.PatternCondition
 import com.intellij.patterns.uast.callExpression
 import com.intellij.patterns.uast.literalExpression
 import com.intellij.psi.ElementManipulators
 import com.intellij.psi.*
+import com.intellij.util.ProcessingContext
+import org.jetbrains.uast.UCallExpression
 import org.jetbrains.uast.ULiteralExpression
+import org.jetbrains.uast.getUastParentOfType
 
 internal class HelidonConfigPropertyReferenceContributor : PsiReferenceContributor() {
 
@@ -29,5 +34,31 @@ internal class HelidonConfigPropertyReferenceContributor : PsiReferenceContribut
         else
           PsiReference.EMPTY_ARRAY
       })
+  }
+}
+
+internal class HelidonKotlinConfigPropertyReferenceContributor : PsiReferenceContributor() {
+  override fun registerReferenceProviders(registrar: PsiReferenceRegistrar) {
+    registrar.registerReferenceProvider(
+      PlatformPatterns.psiElement().with(KOTLIN_CONFIG_GET_STRING_ARGUMENT),
+      object : PsiReferenceProvider() {
+        override fun getReferencesByElement(element: PsiElement, context: ProcessingContext): Array<PsiReference> {
+          return arrayOf(HelidonConfigPlaceholderReference.Builder(element,
+                                                                  ElementManipulators.getValueTextRange(element),
+                                                                  false)
+                           .build())
+        }
+      })
+  }
+
+  companion object {
+    private val KOTLIN_CONFIG_GET_STRING_ARGUMENT = object : PatternCondition<PsiElement>("kotlinConfigGetStringArgument") {
+      override fun accepts(element: PsiElement, context: ProcessingContext): Boolean {
+        if (element.javaClass.name != "org.jetbrains.kotlin.psi.KtStringTemplateExpression") return false
+        val callExpression = element.getUastParentOfType<UCallExpression>()
+        return callExpression?.methodName == HELIDON_CONFIG_GET_METHOD &&
+               callExpression.resolve()?.containingClass?.qualifiedName == HELIDON_CONFIG_FQN
+      }
+    }
   }
 }

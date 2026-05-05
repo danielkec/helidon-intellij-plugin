@@ -78,6 +78,29 @@ class HelidonPropertiesConfigTest : HelidonHighlightingTestCase() {
     assertEquals("my.key", property.key)
   }
 
+  fun testPlaceholderReferenceInTestResourcesResolvesMainResources() {
+    val mainResources = myFixture.tempDirFixture.findOrCreateDir("src/main/resources")
+    val testResources = myFixture.tempDirFixture.findOrCreateDir("src/test/resources")
+    PsiTestUtil.addResourceContentToRoots(module, mainResources, false)
+    PsiTestUtil.addResourceContentToRoots(module, testResources, true)
+    Disposer.register(myFixture.testRootDisposable,
+                      Disposable {
+                        PsiTestUtil.removeContentEntry(module, mainResources)
+                        PsiTestUtil.removeContentEntry(module, testResources)
+                      })
+
+    val mainPropertiesFile = myFixture.addFileToProject("src/main/resources/$HELIDON_APPLICATION_PROPERTIES", "main.key=main")
+    val testPropertiesFile = myFixture.addFileToProject("src/test/resources/$HELIDON_APPLICATION_PROPERTIES",
+                                                        "test.key=${'$'}{main.<caret>key}")
+    myFixture.configureFromExistingVirtualFile(testPropertiesFile.virtualFile)
+
+    val resolve = resolvePlaceholderReference()
+    val result = assertOneElement(resolve)
+    val property = assertInstanceOf(result!!.element, PropertyImpl::class.java)
+    assertEquals("main.key", property.key)
+    assertEquals(mainPropertiesFile, property.propertiesFile.containingFile)
+  }
+
   @Throws(IOException::class)
   fun testPlaceholderReferenceResolveToKeyInAnyPropertiesFile() {
     val filters = myFixture.tempDirFixture.findOrCreateDir("filters")

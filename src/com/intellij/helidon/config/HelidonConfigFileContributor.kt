@@ -82,8 +82,10 @@ abstract class HelidonConfigFileContributor(val fileType: FileType) {
     visitedModules.add(module)
 
     val moduleRootManager = ModuleRootManager.getInstance(module)
-    configDirectories.addAll(
-      moduleRootManager.getSourceRoots(if (testScope) JavaResourceRootType.TEST_RESOURCE else JavaResourceRootType.RESOURCE))
+    configDirectories.addAll(moduleRootManager.getSourceRoots(JavaResourceRootType.RESOURCE))
+    if (testScope) {
+      configDirectories.addAll(moduleRootManager.getSourceRoots(JavaResourceRootType.TEST_RESOURCE))
+    }
 
     for (dependentModule in moduleRootManager.getDependencies(testScope)) {
       collectConfigDirectories(dependentModule, configDirectories, testScope, visitedModules)

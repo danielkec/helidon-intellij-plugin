@@ -12,10 +12,19 @@ import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import java.lang.reflect.Proxy
 
 class HelidonRunConfigurationServiceTest : LightJavaCodeInsightFixtureTestCase4(LightJavaCodeInsightFixtureTestCase.JAVA_21) {
+  @Before
+  fun clearRunConfigurations() {
+    runWriteAction {
+      val runManager = RunManager.getInstance(fixture.project)
+      runManager.allSettings.forEach { runManager.removeConfiguration(it) }
+    }
+  }
+
   @Test
   fun createMicroProfileRunConfigurationIsIdempotentForModule() {
     val service = HelidonRunConfigurationService()
@@ -52,6 +61,38 @@ class HelidonRunConfigurationServiceTest : LightJavaCodeInsightFixtureTestCase4(
     assertEquals(2, settings.size)
     assertTrue(moduleNames.containsAll(listOf(fixture.module.name, secondModule.name)))
     assertTrue(settings.all { (it.configuration as ApplicationConfiguration).mainClassName == HelidonConstants.MP_MAIN })
+  }
+
+  @Test
+  fun createRunConfigurationUsesRequestedMainClass() {
+    val service = HelidonRunConfigurationService()
+
+    runWriteAction {
+      service.createRunConfiguration(fixture.module, "com.example.demo.Main")
+    }
+
+    val settings = RunManager.getInstance(fixture.project)
+      .getConfigurationSettingsList(ApplicationConfigurationType::class.java)
+
+    assertEquals(1, settings.size)
+    val configuration = settings.single().configuration as ApplicationConfiguration
+    assertSame(fixture.module, configuration.configurationModule.module)
+    assertEquals("com.example.demo.Main", configuration.mainClassName)
+  }
+
+  @Test
+  fun createRunConfigurationTreatsHelidonMainAndLegacyMpMainAsAliases() {
+    val service = HelidonRunConfigurationService()
+
+    runWriteAction {
+      service.createRunConfiguration(fixture.module, HelidonConstants.MP_MAIN)
+      service.createRunConfiguration(fixture.module, HelidonConstants.HELIDON_MAIN)
+    }
+
+    val settings = RunManager.getInstance(fixture.project)
+      .getConfigurationSettingsList(ApplicationConfigurationType::class.java)
+
+    assertEquals(1, settings.size)
   }
 
   private fun moduleNamed(name: String): Module {

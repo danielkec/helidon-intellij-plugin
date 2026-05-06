@@ -7,6 +7,9 @@ import com.google.gson.JsonParser
 import com.intellij.ide.starters.local.GeneratorAsset
 import com.intellij.ide.starters.local.GeneratorEmptyDirectory
 import com.intellij.ide.starters.local.GeneratorFile
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
+import com.intellij.util.concurrency.AppExecutorUtil
 import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -28,6 +31,220 @@ internal const val HELIDON_QUICKSTART_APP_TYPE = "quickstart"
 internal const val HELIDON_DATABASE_APP_TYPE = "database"
 internal const val HELIDON_CUSTOM_APP_TYPE = "custom"
 internal const val HELIDON_OCI_APP_TYPE = "oci"
+
+internal data class HelidonStarterOption(val value: String, val label: String)
+
+internal data class HelidonStarterMetadataModel(
+  val buildSystems: List<HelidonStarterOption>,
+  val flavors: List<HelidonStarterOption>,
+  val appTypesByFlavor: Map<String, List<HelidonStarterOption>>,
+  val mediaByFlavor: Map<String, List<HelidonStarterOption>>,
+  val jsonLibrariesByFlavor: Map<String, List<HelidonStarterOption>>,
+  val databaseServersByFlavor: Map<String, List<HelidonStarterOption>>,
+  val jpaImplementations: List<HelidonStarterOption>,
+  val connectionPools: List<HelidonStarterOption>,
+  val authenticationProviders: List<HelidonStarterOption>,
+  val authorizationProviders: List<HelidonStarterOption>,
+  val extrasByFlavor: Map<String, List<HelidonStarterOption>>,
+  val metricsProviders: List<HelidonStarterOption>,
+  val tracingProviders: List<HelidonStarterOption>
+) {
+  fun appTypes(flavor: String): List<HelidonStarterOption> = appTypesByFlavor[flavor].orEmpty()
+  fun media(flavor: String): List<HelidonStarterOption> = mediaByFlavor[flavor].orEmpty()
+  fun jsonLibraries(flavor: String): List<HelidonStarterOption> = jsonLibrariesByFlavor[flavor].orEmpty()
+  fun databaseServers(flavor: String): List<HelidonStarterOption> = databaseServersByFlavor[flavor].orEmpty()
+  fun extras(flavor: String): List<HelidonStarterOption> = extrasByFlavor[flavor].orEmpty()
+
+  fun supportsBuildSystem(buildSystem: String): Boolean = buildSystem in buildSystems.values()
+  fun supportsFlavor(flavor: String): Boolean = flavor in flavors.values()
+  fun supportsApplicationType(flavor: String, appType: String): Boolean = appType in appTypes(flavor).values()
+
+  fun normalize(options: HelidonStarterOptions): HelidonStarterOptions {
+    val normalizedFlavor = normalizeRequiredValue(options.flavor, flavors, HELIDON_SE_FLAVOR)
+    val normalizedAppType = normalizeRequiredValue(options.appType, appTypes(normalizedFlavor), HELIDON_QUICKSTART_APP_TYPE)
+    val base = options.copy(
+      flavor = normalizedFlavor,
+      appType = normalizedAppType,
+      media = options.media.filterValues(media(normalizedFlavor)),
+      jsonLibrary = normalizeValue(options.jsonLibrary, jsonLibraries(normalizedFlavor), helidonStarterDefaultJsonLibrary(normalizedFlavor, this)),
+      databaseServer = normalizeValue(options.databaseServer, databaseServers(normalizedFlavor), "h2"),
+      jpaImplementation = normalizeValue(options.jpaImplementation, jpaImplementations, "hibernate"),
+      connectionPool = normalizeValue(options.connectionPool, connectionPools, "hikaricp"),
+      authenticationProviders = options.authenticationProviders.filterValues(authenticationProviders),
+      authorizationProviders = options.authorizationProviders.filterValues(authorizationProviders),
+      extras = options.extras.filterValues(extras(normalizedFlavor)),
+      metricsProvider = normalizeValue(options.metricsProvider, metricsProviders, "microprofile"),
+      tracingProvider = normalizeValue(options.tracingProvider, tracingProviders, "jaeger")
+    )
+
+    val preset = when (normalizedAppType) {
+      HELIDON_QUICKSTART_APP_TYPE -> base.starterSamplePreset(database = false)
+      HELIDON_DATABASE_APP_TYPE -> base.starterSamplePreset(database = true)
+      HELIDON_OCI_APP_TYPE -> base.copy(
+        media = emptyList(),
+        database = false,
+        security = false,
+        authenticationProviders = emptyList(),
+        authorizationProviders = emptyList(),
+        extras = emptyList(),
+        metrics = true,
+        metricsBuiltin = true,
+        health = true,
+        healthBuiltin = true,
+        tracing = false,
+        docker = true,
+        dockerNativeImage = false,
+        dockerJlinkImage = false,
+        kubernetes = true,
+        jpms = false
+      )
+      else -> base
+    }
+
+    return preset.copy(
+      media = preset.media.filterValues(media(normalizedFlavor)),
+      jsonLibrary = normalizeValue(preset.jsonLibrary, jsonLibraries(normalizedFlavor), helidonStarterDefaultJsonLibrary(normalizedFlavor, this)),
+      databaseServer = normalizeValue(preset.databaseServer, databaseServers(normalizedFlavor), "h2"),
+      jpaImplementation = normalizeValue(preset.jpaImplementation, jpaImplementations, "hibernate"),
+      connectionPool = normalizeValue(preset.connectionPool, connectionPools, "hikaricp"),
+      authenticationProviders = preset.authenticationProviders.filterValues(authenticationProviders),
+      authorizationProviders = preset.authorizationProviders.filterValues(authorizationProviders),
+      extras = preset.extras.filterValues(extras(normalizedFlavor)),
+      metricsProvider = normalizeValue(preset.metricsProvider, metricsProviders, "microprofile"),
+      tracingProvider = normalizeValue(preset.tracingProvider, tracingProviders, "jaeger")
+    )
+  }
+
+  private fun normalizeValue(value: String, options: List<HelidonStarterOption>, preferred: String): String {
+    val values = options.values()
+    return when {
+      value in values -> value
+      preferred in values -> preferred
+      else -> values.firstOrNull() ?: value
+    }
+  }
+
+  private fun normalizeRequiredValue(value: String, options: List<HelidonStarterOption>, preferred: String): String {
+    val values = options.values()
+    return when {
+      value in values -> value
+      preferred in values -> preferred
+      else -> value
+    }
+  }
+
+  private fun List<String>.filterValues(options: List<HelidonStarterOption>): List<String> {
+    val values = options.values()
+    if (values.isEmpty()) {
+      return emptyList()
+    }
+    return filter { it in values }
+  }
+}
+
+private val DEFAULT_OPTION_LABELS = mapOf(
+  HELIDON_SE_FLAVOR to "Helidon SE",
+  HELIDON_MP_FLAVOR to "Helidon MP",
+  HELIDON_QUICKSTART_APP_TYPE to "Quickstart",
+  HELIDON_DATABASE_APP_TYPE to "Database",
+  HELIDON_CUSTOM_APP_TYPE to "Custom",
+  HELIDON_OCI_APP_TYPE to "OCI",
+  "json" to "JSON",
+  "multipart" to "MultiPart",
+  "jsonp" to "JSON-P",
+  "jackson" to "Jackson",
+  "jsonb" to "JSON-B",
+  "h2" to "H2",
+  "mysql" to "MySQL",
+  "oracledb" to "Oracle DB",
+  "mongodb" to "MongoDB",
+  "hibernate" to "Hibernate",
+  "eclipselink" to "EclipseLink",
+  "hikaricp" to "HikariCP",
+  "ucp" to "UCP",
+  "oidc" to "OIDC",
+  "jwt" to "JWT",
+  "google" to "Google Login",
+  "http-signature" to "HTTP Signature",
+  "abac" to "ABAC",
+  "webclient" to "WebClient",
+  "fault-tolerance" to "Fault Tolerance",
+  "cors" to "CORS",
+  "coherence" to "Coherence",
+  "microprofile" to "MicroProfile",
+  "micrometer" to "Micrometer",
+  "jaeger" to "Jaeger",
+  "zipkin" to "Zipkin"
+)
+
+internal val DEFAULT_HELIDON_STARTER_METADATA_MODEL = HelidonStarterMetadataModel(
+  buildSystems = listOf(option("maven")),
+  flavors = listOf(option(HELIDON_SE_FLAVOR), option(HELIDON_MP_FLAVOR)),
+  appTypesByFlavor = mapOf(
+    HELIDON_SE_FLAVOR to listOf(option(HELIDON_QUICKSTART_APP_TYPE), option(HELIDON_DATABASE_APP_TYPE), option(HELIDON_CUSTOM_APP_TYPE)),
+    HELIDON_MP_FLAVOR to listOf(
+      option(HELIDON_QUICKSTART_APP_TYPE),
+      option(HELIDON_DATABASE_APP_TYPE),
+      option(HELIDON_CUSTOM_APP_TYPE),
+      option(HELIDON_OCI_APP_TYPE)
+    )
+  ),
+  mediaByFlavor = mapOf(
+    HELIDON_SE_FLAVOR to listOf(option("json"), option("multipart")),
+    HELIDON_MP_FLAVOR to listOf(option("json"), option("multipart"))
+  ),
+  jsonLibrariesByFlavor = mapOf(
+    HELIDON_SE_FLAVOR to listOf(option("jsonp"), option("jackson"), option("jsonb")),
+    HELIDON_MP_FLAVOR to listOf(option("jackson"), option("jsonb"))
+  ),
+  databaseServersByFlavor = mapOf(
+    HELIDON_SE_FLAVOR to listOf(option("h2"), option("mysql"), option("oracledb"), option("mongodb")),
+    HELIDON_MP_FLAVOR to listOf(option("h2"), option("mysql"), option("oracledb"))
+  ),
+  jpaImplementations = listOf(option("hibernate"), option("eclipselink")),
+  connectionPools = listOf(option("hikaricp"), option("ucp")),
+  authenticationProviders = listOf(option("oidc"), option("jwt"), option("google"), option("http-signature")),
+  authorizationProviders = listOf(option("abac")),
+  extrasByFlavor = mapOf(
+    HELIDON_SE_FLAVOR to listOf(option("webclient"), option("fault-tolerance"), option("cors"), option("coherence")),
+    HELIDON_MP_FLAVOR to listOf(option("fault-tolerance"), option("cors"), option("coherence"))
+  ),
+  metricsProviders = listOf(option("microprofile"), option("micrometer")),
+  tracingProviders = listOf(option("jaeger"), option("zipkin"))
+)
+
+internal object HelidonStarterMetadataModelProvider {
+  @Volatile
+  private var cachedModel: HelidonStarterMetadataModel = DEFAULT_HELIDON_STARTER_METADATA_MODEL
+
+  var provider: () -> HelidonStarterMetadataModel = { HelidonStarterClient().metadataModel() }
+    set(value) {
+      field = value
+      cachedModel = DEFAULT_HELIDON_STARTER_METADATA_MODEL
+    }
+
+  fun current(): HelidonStarterMetadataModel = cachedModel
+
+  fun refresh(onLoaded: (HelidonStarterMetadataModel) -> Unit) {
+    AppExecutorUtil.getAppExecutorService().submit {
+      val model = try {
+        provider()
+      }
+      catch (_: Exception) {
+        DEFAULT_HELIDON_STARTER_METADATA_MODEL
+      }
+      cachedModel = model
+      ApplicationManager.getApplication().invokeLater({
+        onLoaded(model)
+      }, ModalityState.any())
+    }
+  }
+}
+
+private fun option(value: String, label: String = DEFAULT_OPTION_LABELS[value] ?: value): HelidonStarterOption =
+  HelidonStarterOption(value, label)
+
+private fun List<HelidonStarterOption>.values(): List<String> = map { it.value }
 
 internal data class HelidonStarterRequest(
   val groupId: String,
@@ -68,53 +285,44 @@ internal data class HelidonStarterOptions(
 )
 
 internal fun helidonStarterAppTypes(flavor: String): List<String> =
-  if (flavor == HELIDON_MP_FLAVOR) {
-    listOf(HELIDON_QUICKSTART_APP_TYPE, HELIDON_DATABASE_APP_TYPE, HELIDON_CUSTOM_APP_TYPE, HELIDON_OCI_APP_TYPE)
-  }
-  else {
-    listOf(HELIDON_QUICKSTART_APP_TYPE, HELIDON_DATABASE_APP_TYPE, HELIDON_CUSTOM_APP_TYPE)
-  }
+  DEFAULT_HELIDON_STARTER_METADATA_MODEL.appTypes(flavor).values()
 
 internal fun helidonStarterJsonLibraries(flavor: String): List<String> =
-  if (flavor == HELIDON_MP_FLAVOR) {
-    listOf("jackson", "jsonb")
-  }
-  else {
-    listOf("jsonp", "jackson", "jsonb")
-  }
+  DEFAULT_HELIDON_STARTER_METADATA_MODEL.jsonLibraries(flavor).values()
 
-internal fun helidonStarterDefaultJsonLibrary(flavor: String): String =
-  if (flavor == HELIDON_MP_FLAVOR) "jsonb" else "jsonp"
+internal fun helidonStarterDefaultJsonLibrary(
+  flavor: String,
+  model: HelidonStarterMetadataModel = DEFAULT_HELIDON_STARTER_METADATA_MODEL
+): String {
+  val preferred = if (flavor == HELIDON_MP_FLAVOR) "jsonb" else "jsonp"
+  val values = model.jsonLibraries(flavor).values()
+  return when {
+    preferred in values -> preferred
+    values.isNotEmpty() -> values.first()
+    else -> preferred
+  }
+}
 
 internal fun helidonStarterDatabaseServers(flavor: String): List<String> =
-  if (flavor == HELIDON_MP_FLAVOR) {
-    listOf("h2", "mysql", "oracledb")
-  }
-  else {
-    listOf("h2", "mysql", "oracledb", "mongodb")
-  }
+  DEFAULT_HELIDON_STARTER_METADATA_MODEL.databaseServers(flavor).values()
 
 internal fun helidonStarterExtras(flavor: String): List<String> =
-  if (flavor == HELIDON_MP_FLAVOR) {
-    listOf("fault-tolerance", "cors", "coherence")
-  }
-  else {
-    listOf("webclient", "fault-tolerance", "cors", "coherence")
-  }
+  DEFAULT_HELIDON_STARTER_METADATA_MODEL.extras(flavor).values()
 
 internal fun HelidonStarterOptions.withStarterPreset(
   selectedFlavor: String = flavor,
-  selectedAppType: String = appType
+  selectedAppType: String = appType,
+  model: HelidonStarterMetadataModel = DEFAULT_HELIDON_STARTER_METADATA_MODEL
 ): HelidonStarterOptions {
-  val normalizedFlavor = if (selectedFlavor == HELIDON_MP_FLAVOR) HELIDON_MP_FLAVOR else HELIDON_SE_FLAVOR
-  val normalizedAppType = selectedAppType.takeIf { it in helidonStarterAppTypes(normalizedFlavor) } ?: HELIDON_QUICKSTART_APP_TYPE
+  val normalizedFlavor = selectedFlavor.takeIf { model.supportsFlavor(it) } ?: HELIDON_SE_FLAVOR
+  val normalizedAppType = selectedAppType.takeIf { model.supportsApplicationType(normalizedFlavor, it) } ?: HELIDON_QUICKSTART_APP_TYPE
   val base = copy(
     flavor = normalizedFlavor,
     appType = normalizedAppType,
-    jsonLibrary = jsonLibrary.takeIf { it in helidonStarterJsonLibraries(normalizedFlavor) }
-      ?: helidonStarterDefaultJsonLibrary(normalizedFlavor),
-    databaseServer = databaseServer.takeIf { it in helidonStarterDatabaseServers(normalizedFlavor) } ?: "h2",
-    extras = extras.filter { it in helidonStarterExtras(normalizedFlavor) }
+    jsonLibrary = jsonLibrary.takeIf { it in model.jsonLibraries(normalizedFlavor).values() }
+      ?: helidonStarterDefaultJsonLibrary(normalizedFlavor, model),
+    databaseServer = databaseServer.takeIf { it in model.databaseServers(normalizedFlavor).values() } ?: "h2",
+    extras = extras.filter { it in model.extras(normalizedFlavor).values() }
   )
 
   return when (normalizedAppType) {
@@ -155,49 +363,12 @@ internal fun HelidonStarterOptions.withStarterPreset(
       jpms = false
     )
     else -> base
-  }.normalizedForStarter()
+  }.normalizedForStarter(model)
 }
 
-internal fun HelidonStarterOptions.normalizedForStarter(): HelidonStarterOptions {
-  val normalizedFlavor = if (flavor == HELIDON_MP_FLAVOR) HELIDON_MP_FLAVOR else HELIDON_SE_FLAVOR
-  val normalizedAppType = appType.takeIf { it in helidonStarterAppTypes(normalizedFlavor) } ?: HELIDON_QUICKSTART_APP_TYPE
-  val normalizedJsonLibrary = jsonLibrary.takeIf { it in helidonStarterJsonLibraries(normalizedFlavor) }
-    ?: helidonStarterDefaultJsonLibrary(normalizedFlavor)
-  val normalizedDatabaseServer = databaseServer.takeIf { it in helidonStarterDatabaseServers(normalizedFlavor) } ?: "h2"
-  val normalizedExtras = extras.filter { it in helidonStarterExtras(normalizedFlavor) }
-
-  val normalized = copy(
-    flavor = normalizedFlavor,
-    appType = normalizedAppType,
-    jsonLibrary = normalizedJsonLibrary,
-    databaseServer = normalizedDatabaseServer,
-    extras = normalizedExtras
-  )
-
-  return when (normalizedAppType) {
-    HELIDON_QUICKSTART_APP_TYPE -> normalized.starterSamplePreset(database = false)
-    HELIDON_DATABASE_APP_TYPE -> normalized.starterSamplePreset(database = true)
-    HELIDON_OCI_APP_TYPE -> normalized.copy(
-      media = emptyList(),
-      database = false,
-      security = false,
-      authenticationProviders = emptyList(),
-      authorizationProviders = emptyList(),
-      extras = emptyList(),
-      metrics = true,
-      metricsBuiltin = true,
-      health = true,
-      healthBuiltin = true,
-      tracing = false,
-      docker = true,
-      dockerNativeImage = false,
-      dockerJlinkImage = false,
-      kubernetes = true,
-      jpms = false
-    )
-    else -> normalized
-  }
-}
+internal fun HelidonStarterOptions.normalizedForStarter(
+  model: HelidonStarterMetadataModel = DEFAULT_HELIDON_STARTER_METADATA_MODEL
+): HelidonStarterOptions = model.normalize(this)
 
 private fun HelidonStarterOptions.starterSamplePreset(database: Boolean): HelidonStarterOptions =
   copy(
@@ -241,12 +412,20 @@ internal class HelidonStarterClient(
   override fun generate(request: HelidonStarterRequest): HelidonStarterProject {
     val starterVersion = resolveStarterVersion()
     val metadata = readText(metadataUrl(starterVersion))
-    val normalizedRequest = request.copy(options = request.options.normalizedForStarter())
-    HelidonStarterMetadata(metadata).validate(normalizedRequest.options, starterVersion)
+    val starterMetadata = HelidonStarterMetadata(metadata)
+    val model = starterMetadata.model()
+    val normalizedRequest = request.copy(options = request.options.normalizedForStarter(model))
+    starterMetadata.validate(normalizedRequest.options, starterVersion, model)
 
     val zipBytes = readBytes(generateUrl(starterVersion, normalizedRequest))
     val assets = HelidonStarterZipAssets.toAssets(zipBytes)
     return HelidonStarterProject(assets, filesToOpen(assets))
+  }
+
+  fun metadataModel(): HelidonStarterMetadataModel {
+    val starterVersion = resolveStarterVersion()
+    val metadata = readText(metadataUrl(starterVersion))
+    return HelidonStarterMetadata(metadata).model()
   }
 
   private fun resolveStarterVersion(): String {
@@ -410,14 +589,51 @@ internal class HelidonStarterUnsupportedException(message: String) : IOException
 internal class HelidonStarterMetadata(metadata: String) {
   private val root: JsonObject = JsonParser.parseString(metadata).asJsonObject
 
-  fun validate(options: HelidonStarterOptions, starterVersion: String) {
-    if (!supportsBuildSystem("maven")) {
+  fun model(): HelidonStarterMetadataModel {
+    val flavors = optionsFor(root, "flavor", null)
+    val flavorValues = flavors.values()
+    val appTypesByFlavor = flavorValues.associateWith { flavor ->
+      val flavorOption = findOptionObject(root, "flavor", flavor)
+      optionsFor(flavorOption, "app-type", flavor)
+    }
+    val mediaByFlavor = flavorValues.associateWith { flavor ->
+      optionsFor(findOptionObject(root, "flavor", flavor), "media", flavor)
+    }
+    val jsonLibrariesByFlavor = flavorValues.associateWith { flavor ->
+      optionsFor(findOptionObject(root, "flavor", flavor), "json-lib", flavor)
+    }
+    val databaseServersByFlavor = flavorValues.associateWith { flavor ->
+      optionsFor(findOptionObject(root, "flavor", flavor), "server", flavor)
+    }
+    val extrasByFlavor = flavorValues.associateWith { flavor ->
+      optionsFor(findOptionObject(root, "flavor", flavor), "extra", flavor)
+    }
+    val mpRoot = findOptionObject(root, "flavor", HELIDON_MP_FLAVOR)
+    return HelidonStarterMetadataModel(
+      buildSystems = optionsFor(root, "build-system", null),
+      flavors = flavors,
+      appTypesByFlavor = appTypesByFlavor,
+      mediaByFlavor = mediaByFlavor,
+      jsonLibrariesByFlavor = jsonLibrariesByFlavor,
+      databaseServersByFlavor = databaseServersByFlavor,
+      jpaImplementations = optionsFor(mpRoot ?: root, "jpa-impl", HELIDON_MP_FLAVOR),
+      connectionPools = optionsFor(mpRoot ?: root, "cp", HELIDON_MP_FLAVOR),
+      authenticationProviders = optionsFor(root, "atn", null),
+      authorizationProviders = optionsFor(root, "atz", null),
+      extrasByFlavor = extrasByFlavor,
+      metricsProviders = optionsForNestedInput(root, "metrics", "provider", HELIDON_MP_FLAVOR),
+      tracingProviders = optionsForNestedInput(root, "tracing", "provider", null)
+    )
+  }
+
+  fun validate(options: HelidonStarterOptions, starterVersion: String, model: HelidonStarterMetadataModel = model()) {
+    if (!model.supportsBuildSystem("maven")) {
       throw HelidonStarterUnsupportedException("Helidon Starter $starterVersion does not expose Maven generation")
     }
-    if (!findOption(root, "flavor", options.flavor)) {
+    if (!model.supportsFlavor(options.flavor)) {
       throw HelidonStarterUnsupportedException("Helidon Starter $starterVersion does not expose Helidon ${options.flavor.uppercase()}")
     }
-    if (!supportsApplicationType(options.flavor, options.appType)) {
+    if (!model.supportsApplicationType(options.flavor, options.appType)) {
       throw HelidonStarterUnsupportedException(
         "Helidon Starter $starterVersion does not expose ${options.appType} application type for ${options.flavor.uppercase()}"
       )
@@ -426,6 +642,98 @@ internal class HelidonStarterMetadata(metadata: String) {
 
   fun supportsBuildSystem(buildSystem: String): Boolean =
     findOption(root, "build-system", buildSystem)
+
+  private fun optionsFor(element: JsonElement?, id: String, flavor: String?): List<HelidonStarterOption> {
+    val options = mutableListOf<HelidonStarterOption>()
+    traverse(element, flavor) { obj ->
+      if (obj.get("id")?.asStringSafe() == id) {
+        obj.getAsJsonArray("children")?.forEach { child ->
+          if (child.isJsonObject && child.asJsonObject.get("kind")?.asStringSafe() == "option" && isVisible(child.asJsonObject, flavor)) {
+            val value = child.asJsonObject.get("value")?.asStringSafe() ?: return@forEach
+            val label = child.asJsonObject.get("name")?.asStringSafe() ?: DEFAULT_OPTION_LABELS[value] ?: value
+            options.add(HelidonStarterOption(value, label))
+          }
+        }
+      }
+    }
+    return options.distinctBy { it.value }
+  }
+
+  private fun optionsForNestedInput(element: JsonElement?, parentId: String, id: String, flavor: String?): List<HelidonStarterOption> {
+    val options = mutableListOf<HelidonStarterOption>()
+    traverse(element, flavor) { obj ->
+      if (obj.get("id")?.asStringSafe() == parentId) {
+        options.addAll(optionsFor(obj, id, flavor))
+      }
+    }
+    return options.distinctBy { it.value }
+  }
+
+  private fun traverse(element: JsonElement?, flavor: String?, visit: (JsonObject) -> Unit) {
+    traverse(element, flavor, mutableSetOf(), visit)
+  }
+
+  private fun traverse(element: JsonElement?, flavor: String?, visitedMethods: MutableSet<String>, visit: (JsonObject) -> Unit) {
+    if (element == null || element.isJsonNull) {
+      return
+    }
+    if (element.isJsonArray) {
+      element.asJsonArray.forEach { traverse(it, flavor, visitedMethods, visit) }
+      return
+    }
+    if (!element.isJsonObject) {
+      return
+    }
+
+    val obj = element.asJsonObject
+    if (!isVisible(obj, flavor)) {
+      return
+    }
+    if (obj.get("kind")?.asStringSafe() == "call") {
+      val method = obj.get("method")?.asStringSafe() ?: return
+      if (visitedMethods.add(method)) {
+        root.getAsJsonObject("methods")?.getAsJsonArray(method)?.forEach {
+          traverse(it, flavor, visitedMethods, visit)
+        }
+        visitedMethods.remove(method)
+      }
+      return
+    }
+
+    visit(obj)
+    obj.getAsJsonArray("children")?.forEach { traverse(it, flavor, visitedMethods, visit) }
+  }
+
+  private fun isVisible(obj: JsonObject, flavor: String?): Boolean {
+    val condition = obj.get("if")?.asStringSafe() ?: return true
+    val conditionFlavor = conditionFlavor(condition) ?: return true
+    return flavor == null || flavor == conditionFlavor
+  }
+
+  private fun conditionFlavor(condition: String): String? {
+    val expression = root.getAsJsonObject("expressions")?.getAsJsonArray(condition) ?: return null
+    val hasFlavorVariable = expression.any {
+      it.isJsonObject &&
+        it.asJsonObject.get("kind")?.asStringSafe() == "variable" &&
+        it.asJsonObject.get("value")?.asStringSafe() == "flavor"
+    }
+    val hasEquals = expression.any {
+      it.isJsonObject &&
+        it.asJsonObject.get("kind")?.asStringSafe() == "operator" &&
+        it.asJsonObject.get("value")?.asStringSafe() == "=="
+    }
+    if (!hasFlavorVariable || !hasEquals) {
+      return null
+    }
+    return expression.firstNotNullOfOrNull {
+      if (it.isJsonObject && it.asJsonObject.get("kind")?.asStringSafe() == "literal") {
+        it.asJsonObject.get("value")?.asStringSafe()
+      }
+      else {
+        null
+      }
+    }
+  }
 
   private fun supportsApplicationType(flavor: String, appType: String): Boolean {
     val flavorOption = findOptionObject(root, "flavor", flavor) ?: return false

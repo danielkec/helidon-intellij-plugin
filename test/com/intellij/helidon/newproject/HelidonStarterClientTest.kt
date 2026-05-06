@@ -181,6 +181,18 @@ class HelidonStarterClientTest {
     assertEquals(listOf(starterUrl, metadataUrl, generateUrl), requestedUrls)
   }
 
+  @Test
+  fun metadataModelDerivesFlavorSpecificOptions() {
+    val model = HelidonStarterMetadata(starterMetadata()).model()
+
+    assertEquals(listOf("quickstart", "database", "custom"), model.appTypes(HELIDON_SE_FLAVOR).map { it.value })
+    assertEquals(listOf("quickstart", "database", "custom", "oci"), model.appTypes(HELIDON_MP_FLAVOR).map { it.value })
+    assertEquals(listOf("jsonp", "jackson", "jsonb"), model.jsonLibraries(HELIDON_SE_FLAVOR).map { it.value })
+    assertEquals(listOf("jackson", "jsonb"), model.jsonLibraries(HELIDON_MP_FLAVOR).map { it.value })
+    assertEquals(listOf("h2", "mysql", "oracledb", "mongodb"), model.databaseServers(HELIDON_SE_FLAVOR).map { it.value })
+    assertEquals(listOf("h2", "mysql", "oracledb"), model.databaseServers(HELIDON_MP_FLAVOR).map { it.value })
+  }
+
   @Test(expected = HelidonStarterUnsupportedException::class)
   fun generateRejectsMetadataWithoutMavenSupport() {
     val starterUrl = "https://starter.test/starter"
@@ -279,6 +291,83 @@ class HelidonStarterClientTest {
                     "value": "custom"
                   }
                 ]
+              },
+              {
+                "kind": "list",
+                "id": "media",
+                "children": [
+                  {
+                    "kind": "option",
+                    "name": "JSON",
+                    "value": "json",
+                    "children": [
+                      {
+                        "kind": "inputs",
+                        "children": [
+                          {
+                            "kind": "enum",
+                            "id": "json-lib",
+                            "children": [
+                              {
+                                "kind": "option",
+                                "name": "JSON-P",
+                                "value": "jsonp"
+                              },
+                              {
+                                "kind": "option",
+                                "name": "Jackson",
+                                "value": "jackson"
+                              },
+                              {
+                                "kind": "option",
+                                "name": "JSON-B",
+                                "value": "jsonb"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "option",
+                    "name": "MultiPart",
+                    "value": "multipart"
+                  }
+                ]
+              },
+              {
+                "kind": "boolean",
+                "id": "db",
+                "children": [
+                  {
+                    "kind": "inputs",
+                    "children": [
+                      {
+                        "kind": "enum",
+                        "id": "server",
+                        "children": [
+                          {
+                            "kind": "option",
+                            "value": "h2"
+                          },
+                          {
+                            "kind": "option",
+                            "value": "mysql"
+                          },
+                          {
+                            "kind": "option",
+                            "value": "oracledb"
+                          },
+                          {
+                            "kind": "option",
+                            "value": "mongodb"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
               }
             ]
           }
@@ -330,6 +419,102 @@ class HelidonStarterClientTest {
                                 {
                                   "kind": "option",
                                   "value": "oci"
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "list",
+                              "id": "media",
+                              "children": [
+                                {
+                                  "kind": "option",
+                                  "name": "JSON",
+                                  "value": "json",
+                                  "children": [
+                                    {
+                                      "kind": "inputs",
+                                      "children": [
+                                        {
+                                          "kind": "enum",
+                                          "id": "json-lib",
+                                          "children": [
+                                            {
+                                              "kind": "option",
+                                              "name": "Jackson",
+                                              "value": "jackson"
+                                            },
+                                            {
+                                              "kind": "option",
+                                              "name": "JSON-B",
+                                              "value": "jsonb"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "option",
+                                  "name": "MultiPart",
+                                  "value": "multipart"
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "boolean",
+                              "id": "db",
+                              "children": [
+                                {
+                                  "kind": "inputs",
+                                  "children": [
+                                    {
+                                      "kind": "enum",
+                                      "id": "jpa-impl",
+                                      "children": [
+                                        {
+                                          "kind": "option",
+                                          "value": "hibernate"
+                                        },
+                                        {
+                                          "kind": "option",
+                                          "value": "eclipselink"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "kind": "enum",
+                                      "id": "cp",
+                                      "children": [
+                                        {
+                                          "kind": "option",
+                                          "value": "hikaricp"
+                                        },
+                                        {
+                                          "kind": "option",
+                                          "value": "ucp"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "kind": "enum",
+                                      "id": "server",
+                                      "children": [
+                                        {
+                                          "kind": "option",
+                                          "value": "h2"
+                                        },
+                                        {
+                                          "kind": "option",
+                                          "value": "mysql"
+                                        },
+                                        {
+                                          "kind": "option",
+                                          "value": "oracledb"
+                                        }
+                                      ]
+                                    }
+                                  ]
                                 }
                               ]
                             }

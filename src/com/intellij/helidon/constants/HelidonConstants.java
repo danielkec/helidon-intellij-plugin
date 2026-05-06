@@ -28,4 +28,5 @@ public interface HelidonConstants {
   @NonNls String LEGACY_HTTP_SERVER_RESPONSE = "io.helidon.webserver.ServerResponse";
 
   @NonNls String MP_MAIN = "io.helidon.microprofile.cdi.Main";
+  @NonNls String HELIDON_MAIN = "io.helidon.Main";
 }

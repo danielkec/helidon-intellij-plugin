@@ -38,6 +38,8 @@ internal val NEW_HELIDON_PROJECT_KEY: Key<Boolean> = Key.create("helidon.new.pro
 private const val HELIDON_STARTER_OPTIONS_MIN_HEIGHT = 220
 private const val HELIDON_STARTER_OPTIONS_VISIBLE_HEIGHT = 420
 
+private typealias StarterOption = HelidonStarterOption
+
 internal class HelidonModuleBuilder : StarterModuleBuilder() {
   private var generatedStarterFilesToOpen: List<String>? = null
   private var starterOptions: HelidonStarterOptions = HelidonStarterOptions()
@@ -107,48 +109,51 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
     private val options: () -> HelidonStarterOptions,
     private val updateOptions: (HelidonStarterOptions) -> Unit
   ) : StarterInitialStep(contextProvider) {
-    private val flavorOptions = listOf(
-      StarterOption(HELIDON_SE_FLAVOR, "Helidon SE"),
-      StarterOption(HELIDON_MP_FLAVOR, "Helidon MP")
-    )
-    private val metricsProviders = listOf(
-      StarterOption("microprofile", "MicroProfile"),
-      StarterOption("micrometer", "Micrometer")
-    )
-    private val tracingProviders = listOf(
-      StarterOption("jaeger", "Jaeger"),
-      StarterOption("zipkin", "Zipkin")
-    )
-    private val jpaImplementations = listOf(
-      StarterOption("hibernate", "Hibernate"),
-      StarterOption("eclipselink", "EclipseLink")
-    )
-    private val connectionPools = listOf(
-      StarterOption("hikaricp", "HikariCP"),
-      StarterOption("ucp", "UCP")
-    )
-    private val optionLabels = mapOf(
-      HELIDON_QUICKSTART_APP_TYPE to "Quickstart",
-      HELIDON_DATABASE_APP_TYPE to "Database",
-      HELIDON_CUSTOM_APP_TYPE to "Custom",
-      HELIDON_OCI_APP_TYPE to "OCI",
-      "jsonp" to "JSON-P",
-      "jackson" to "Jackson",
-      "jsonb" to "JSON-B",
-      "h2" to "H2",
-      "mysql" to "MySQL",
-      "oracledb" to "Oracle DB",
-      "mongodb" to "MongoDB"
-    )
-
     override fun addFieldsAfter(layout: Panel) {
-      var currentOptions = options().normalizedForStarter()
+      var metadataModel = HelidonStarterMetadataModelProvider.current()
+
+      fun flavorOptions(): List<StarterOption> =
+        metadataModel.flavors
+
+      fun metricsProviders(): List<StarterOption> =
+        metadataModel.metricsProviders
+
+      fun tracingProviders(): List<StarterOption> =
+        metadataModel.tracingProviders
+
+      fun jpaImplementations(): List<StarterOption> =
+        metadataModel.jpaImplementations
+
+      fun connectionPools(): List<StarterOption> =
+        metadataModel.connectionPools
+
+      fun appTypes(flavor: String): List<StarterOption> =
+        metadataModel.appTypes(flavor)
+
+      fun metadataMediaOptions(flavor: String): List<StarterOption> =
+        metadataModel.media(flavor)
+
+      fun jsonLibraries(flavor: String): List<StarterOption> =
+        metadataModel.jsonLibraries(flavor)
+
+      fun databaseServers(flavor: String): List<StarterOption> =
+        metadataModel.databaseServers(flavor)
+
+      fun extras(flavor: String): List<StarterOption> =
+        metadataModel.extras(flavor)
+
+      var currentOptions = options().normalizedForStarter(metadataModel)
       updateOptions(currentOptions)
       var syncing = false
 
+      val flavorModel = DefaultComboBoxModel(flavorOptions().toTypedArray())
       val appTypeModel = DefaultComboBoxModel(appTypes(currentOptions.flavor).toTypedArray())
       val jsonLibraryModel = DefaultComboBoxModel(jsonLibraries(currentOptions.flavor).toTypedArray())
       val databaseServerModel = DefaultComboBoxModel(databaseServers(currentOptions.flavor).toTypedArray())
+      val jpaModel = DefaultComboBoxModel(jpaImplementations().toTypedArray())
+      val connectionPoolModel = DefaultComboBoxModel(connectionPools().toTypedArray())
+      val metricsProviderModel = DefaultComboBoxModel(metricsProviders().toTypedArray())
+      val tracingProviderModel = DefaultComboBoxModel(tracingProviders().toTypedArray())
 
       var flavorCombo: ComboBox<StarterOption>? = null
       var appTypeCombo: ComboBox<StarterOption>? = null
@@ -200,20 +205,27 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
           val databaseOptionsVisible = appType == HELIDON_DATABASE_APP_TYPE || (custom && currentOptions.database)
           val mpDatabaseOptionsVisible = databaseOptionsVisible && flavor == HELIDON_MP_FLAVOR
           val oci = appType == HELIDON_OCI_APP_TYPE
+          val mediaOptions = metadataMediaOptions(flavor)
+          val extraOptions = extras(flavor)
 
+          flavorModel.replaceWith(flavorOptions())
           appTypeModel.replaceWith(appTypes(flavor))
           jsonLibraryModel.replaceWith(jsonLibraries(flavor))
           databaseServerModel.replaceWith(databaseServers(flavor))
+          jpaModel.replaceWith(jpaImplementations())
+          connectionPoolModel.replaceWith(connectionPools())
+          metricsProviderModel.replaceWith(metricsProviders())
+          tracingProviderModel.replaceWith(tracingProviders())
 
-          flavorCombo?.selectedItem = selectedOption(flavorOptions, flavor)
+          flavorCombo?.selectedItem = selectedOption(flavorOptions(), flavor)
           appTypeCombo?.selectedItem = selectedOption(appTypes(flavor), appType)
           jsonCheckBox?.isSelected = "json" in currentOptions.media
           multipartCheckBox?.isSelected = "multipart" in currentOptions.media
           jsonLibraryCombo?.selectedItem = selectedOption(jsonLibraries(flavor), currentOptions.jsonLibrary)
           databaseCheckBox?.isSelected = currentOptions.database
           databaseServerCombo?.selectedItem = selectedOption(databaseServers(flavor), currentOptions.databaseServer)
-          jpaCombo?.selectedItem = selectedOption(jpaImplementations, currentOptions.jpaImplementation)
-          connectionPoolCombo?.selectedItem = selectedOption(connectionPools, currentOptions.connectionPool)
+          jpaCombo?.selectedItem = selectedOption(jpaImplementations(), currentOptions.jpaImplementation)
+          connectionPoolCombo?.selectedItem = selectedOption(connectionPools(), currentOptions.connectionPool)
           autoDdlCheckBox?.isSelected = currentOptions.autoDdl
           persistenceUnitField?.setTextIfDifferent(currentOptions.persistenceUnitName)
           dataSourceField?.setTextIfDifferent(currentOptions.dataSourceName)
@@ -228,12 +240,12 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
           corsCheckBox?.isSelected = "cors" in currentOptions.extras
           coherenceCheckBox?.isSelected = "coherence" in currentOptions.extras
           metricsCheckBox?.isSelected = currentOptions.metrics
-          metricsProviderCombo?.selectedItem = selectedOption(metricsProviders, currentOptions.metricsProvider)
+          metricsProviderCombo?.selectedItem = selectedOption(metricsProviders(), currentOptions.metricsProvider)
           metricsBuiltinCheckBox?.isSelected = currentOptions.metricsBuiltin
           healthCheckBox?.isSelected = currentOptions.health
           healthBuiltinCheckBox?.isSelected = currentOptions.healthBuiltin
           tracingCheckBox?.isSelected = currentOptions.tracing
-          tracingProviderCombo?.selectedItem = selectedOption(tracingProviders, currentOptions.tracingProvider)
+          tracingProviderCombo?.selectedItem = selectedOption(tracingProviders(), currentOptions.tracingProvider)
           dockerCheckBox?.isSelected = currentOptions.docker
           nativeImageCheckBox?.isSelected = currentOptions.dockerNativeImage
           jlinkCheckBox?.isSelected = currentOptions.dockerJlinkImage
@@ -243,6 +255,24 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
           mpDatabaseRows?.visible(mpDatabaseOptionsVisible)
           seExtrasRow?.visible(custom && flavor == HELIDON_SE_FLAVOR)
           mpMetricsProviderRow?.visible(custom && currentOptions.metrics && flavor == HELIDON_MP_FLAVOR)
+
+          jsonCheckBox?.isVisible = mediaOptions.hasValue("json")
+          multipartCheckBox?.isVisible = mediaOptions.hasValue("multipart")
+          jsonLibraryCombo?.isVisible = jsonLibraries(flavor).isNotEmpty()
+          databaseServerCombo?.isVisible = databaseServers(flavor).isNotEmpty()
+          jpaCombo?.isVisible = jpaImplementations().isNotEmpty()
+          connectionPoolCombo?.isVisible = connectionPools().isNotEmpty()
+          oidcCheckBox?.isVisible = metadataModel.authenticationProviders.hasValue("oidc")
+          jwtCheckBox?.isVisible = metadataModel.authenticationProviders.hasValue("jwt")
+          googleCheckBox?.isVisible = metadataModel.authenticationProviders.hasValue("google")
+          httpSignatureCheckBox?.isVisible = metadataModel.authenticationProviders.hasValue("http-signature")
+          abacCheckBox?.isVisible = metadataModel.authorizationProviders.hasValue("abac")
+          webClientCheckBox?.isVisible = extraOptions.hasValue("webclient")
+          faultToleranceCheckBox?.isVisible = extraOptions.hasValue("fault-tolerance")
+          corsCheckBox?.isVisible = extraOptions.hasValue("cors")
+          coherenceCheckBox?.isVisible = extraOptions.hasValue("coherence")
+          metricsProviderCombo?.isVisible = metricsProviders().isNotEmpty()
+          tracingProviderCombo?.isVisible = tracingProviders().isNotEmpty()
 
           jsonCheckBox?.isEnabled = custom
           multipartCheckBox?.isEnabled = custom
@@ -278,7 +308,7 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
       }
 
       fun setOptions(newOptions: HelidonStarterOptions) {
-        currentOptions = newOptions.normalizedForStarter()
+        currentOptions = newOptions.normalizedForStarter(metadataModel)
         updateOptions(currentOptions)
         refreshControls()
       }
@@ -286,14 +316,18 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
       val starterOptionsPanel = panel {
         groupRowsRange("Project") {
           row("Flavor:") {
-            val flavorCell = comboBox(flavorOptions, starterOptionRenderer())
+            val flavorCell = comboBox(flavorModel, starterOptionRenderer())
             flavorCombo = flavorCell.component
             flavorCell.component.addActionListener {
               if (syncing) return@addActionListener
               val selectedFlavor = flavorCell.component.selectedStarterValue() ?: return@addActionListener
-              val selectedAppType = currentOptions.appType.takeIf { it in helidonStarterAppTypes(selectedFlavor) }
+              val selectedAppType = currentOptions.appType.takeIf { appTypes(selectedFlavor).hasValue(it) }
                 ?: HELIDON_QUICKSTART_APP_TYPE
-              setOptions(currentOptions.withStarterPreset(selectedFlavor = selectedFlavor, selectedAppType = selectedAppType))
+              setOptions(currentOptions.withStarterPreset(
+                selectedFlavor = selectedFlavor,
+                selectedAppType = selectedAppType,
+                model = metadataModel
+              ))
             }
           }
           row("Application type:") {
@@ -302,7 +336,7 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
             appTypeCell.component.addActionListener {
               if (syncing) return@addActionListener
               val selectedAppType = appTypeCell.component.selectedStarterValue() ?: return@addActionListener
-              setOptions(currentOptions.withStarterPreset(selectedAppType = selectedAppType))
+              setOptions(currentOptions.withStarterPreset(selectedAppType = selectedAppType, model = metadataModel))
             }
           }
         }
@@ -351,14 +385,14 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
           }
           mpDatabaseRows = rowsRange {
             row("JPA:") {
-              val jpaCell = comboBox(jpaImplementations, starterOptionRenderer())
+              val jpaCell = comboBox(jpaModel, starterOptionRenderer())
               jpaCombo = jpaCell.component
               jpaCell.component.addActionListener {
                 if (syncing) return@addActionListener
                 setOptions(currentOptions.copy(jpaImplementation = jpaCell.component.selectedStarterValue() ?: currentOptions.jpaImplementation))
               }
               label("Connection pool")
-              val cpCell = comboBox(connectionPools, starterOptionRenderer())
+              val cpCell = comboBox(connectionPoolModel, starterOptionRenderer())
               connectionPoolCombo = cpCell.component
               cpCell.component.addActionListener {
                 if (syncing) return@addActionListener
@@ -497,7 +531,7 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
             }
           }
           mpMetricsProviderRow = row("Metrics provider:") {
-            val metricsCell = comboBox(metricsProviders, starterOptionRenderer())
+            val metricsCell = comboBox(metricsProviderModel, starterOptionRenderer())
             metricsProviderCombo = metricsCell.component
             metricsCell.component.addActionListener {
               if (syncing) return@addActionListener
@@ -528,7 +562,7 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
                 setOptions(currentOptions.copy(tracing = isSelected))
               }
             }
-            val tracingCell = comboBox(tracingProviders, starterOptionRenderer())
+            val tracingCell = comboBox(tracingProviderModel, starterOptionRenderer())
             tracingProviderCombo = tracingCell.component
             tracingCell.component.addActionListener {
               if (syncing) return@addActionListener
@@ -588,6 +622,13 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
         hyperLink(HelidonBundle.message("helidon.se.overview"), "https://helidon.io/docs/v4/#/se/introduction")
       }
       refreshControls()
+      HelidonStarterMetadataModelProvider.refresh { refreshedMetadataModel ->
+        if (metadataModel == refreshedMetadataModel) {
+          return@refresh
+        }
+        metadataModel = refreshedMetadataModel
+        setOptions(currentOptions.normalizedForStarter(metadataModel))
+      }
     }
 
     private fun starterOptionsScrollPane(content: JComponent) =
@@ -599,18 +640,6 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
         preferredSize = Dimension(content.preferredSize.width, JBUI.scale(HELIDON_STARTER_OPTIONS_VISIBLE_HEIGHT))
         minimumSize = Dimension(0, JBUI.scale(HELIDON_STARTER_OPTIONS_MIN_HEIGHT))
       }
-
-    private fun appTypes(flavor: String): List<StarterOption> =
-      helidonStarterAppTypes(flavor).map(::starterOption)
-
-    private fun jsonLibraries(flavor: String): List<StarterOption> =
-      helidonStarterJsonLibraries(flavor).map(::starterOption)
-
-    private fun databaseServers(flavor: String): List<StarterOption> =
-      helidonStarterDatabaseServers(flavor).map(::starterOption)
-
-    private fun starterOption(value: String): StarterOption =
-      StarterOption(value, optionLabels[value] ?: value)
 
     private fun selectedOption(options: List<StarterOption>, value: String): StarterOption? =
       options.firstOrNull { it.value == value }
@@ -644,6 +673,9 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
       forEach { it?.isEnabled = enabled }
     }
 
+    private fun List<StarterOption>.hasValue(value: String): Boolean =
+      any { it.value == value }
+
     private fun JTextField.addTextChangeListener(listener: () -> Unit) {
       document.addDocumentListener(object : DocumentListener {
         override fun insertUpdate(e: DocumentEvent) = listener()
@@ -652,6 +684,4 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
       })
     }
   }
-
-  private data class StarterOption(val value: String, val label: String)
 }

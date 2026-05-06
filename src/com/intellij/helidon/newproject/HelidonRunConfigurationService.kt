@@ -6,6 +6,7 @@ import com.intellij.execution.application.ApplicationConfiguration
 import com.intellij.execution.application.ApplicationConfigurationType
 import com.intellij.helidon.constants.HelidonConstants
 import com.intellij.helidon.utils.HelidonCommonUtils
+import com.intellij.java.library.JavaLibraryUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
@@ -20,16 +21,15 @@ import com.intellij.util.concurrency.AppExecutorUtil
 import java.util.concurrent.Callable
 import java.util.function.Consumer
 
+internal data class HelidonRunConfigurationTarget(
+  val module: Module,
+  val mainClassName: String
+)
+
 @Service(Service.Level.PROJECT)
 class HelidonRunConfigurationService {
   fun createRunConfigurations(project: Project, onlyForNewProjects: Boolean = true) {
-    val application = ApplicationManager.getApplication()
-    if (application.isHeadlessEnvironment || application.isUnitTestMode) {
-      return
-    }
-
-    if (onlyForNewProjects && !isNewProject(project)) {
-      // By default, create run configurations only for newly created projects.
+    if (shouldSkipRunConfigurationCreation(project, onlyForNewProjects)) {
       return
     }
 
@@ -38,51 +38,109 @@ class HelidonRunConfigurationService {
     })
       .coalesceBy(this)
       .inSmartMode(project)
-      .finishOnUiThread(ModalityState.nonModal(), Consumer { modules ->
+      .finishOnUiThread(ModalityState.nonModal(), Consumer { targets ->
         runWriteAction {
-          val moduleNamesWithMicroProfileRunConfigurations = existingMicroProfileRunConfigurationModuleNames(project).toMutableSet()
-          for (module in modules) {
-            if (module.isDisposed) continue
-
-            createMicroProfileRunConfiguration(module, moduleNamesWithMicroProfileRunConfigurations)
-          }
+          createRunConfigurations(project, targets)
         }
       })
       .submit(AppExecutorUtil.getAppExecutorService())
   }
 
-  internal fun modulesForRunConfigurations(project: Project): List<Module> {
-    val moduleNamesWithMicroProfileRunConfigurations = existingMicroProfileRunConfigurationModuleNames(project)
+  internal fun createRunConfigurations(project: Project,
+                                       targets: Collection<HelidonRunConfigurationTarget>,
+                                       onlyForNewProjects: Boolean = true) {
+    if (shouldSkipRunConfigurationCreation(project, onlyForNewProjects)) {
+      return
+    }
+
+    ReadAction.nonBlocking(Callable {
+      targets.filter { !it.module.isDisposed && !it.module.name.endsWith(".test") }
+    })
+      .coalesceBy(this)
+      .inSmartMode(project)
+      .finishOnUiThread(ModalityState.nonModal(), Consumer { validTargets ->
+        runWriteAction {
+          createRunConfigurations(project, validTargets)
+        }
+      })
+      .submit(AppExecutorUtil.getAppExecutorService())
+  }
+
+  internal fun modulesForRunConfigurations(project: Project): List<HelidonRunConfigurationTarget> {
+    val existingRunConfigurations = existingRunConfigurationKeys(project)
 
     return ModuleManager.getInstance(project).modules.asSequence()
       .filter { !it.name.endsWith(".test") }
-      .filter { HelidonCommonUtils.hasHelidonMPLibrary(it) }
-      .filterNot { it.name in moduleNamesWithMicroProfileRunConfigurations }
+      .mapNotNull(::defaultRunConfigurationTarget)
+      .filterNot { it.key() in existingRunConfigurations }
       .toList()
   }
 
-  private fun existingMicroProfileRunConfigurationModuleNames(project: Project): Set<String> =
+  private fun createRunConfigurations(project: Project, targets: Collection<HelidonRunConfigurationTarget>) {
+    ApplicationManager.getApplication().assertWriteAccessAllowed()
+    val existingRunConfigurations = existingRunConfigurationKeys(project).toMutableSet()
+    for (target in targets) {
+      createRunConfiguration(target, existingRunConfigurations)
+    }
+  }
+
+  private fun existingRunConfigurationKeys(project: Project): Set<RunConfigurationKey> =
     RunManager.getInstance(project)
       .getConfigurationSettingsList(ApplicationConfigurationType::class.java)
       .asSequence()
       .map { it.configuration }
       .filterIsInstance<ApplicationConfiguration>()
-      .filter { it.mainClassName == HelidonConstants.MP_MAIN }
-      .mapNotNull { it.configurationModule.moduleName }
+      .mapNotNull {
+        val moduleName = it.configurationModule.moduleName
+        val mainClassName = it.mainClassName ?: return@mapNotNull null
+        RunConfigurationKey(moduleName, normalizedMainClassName(mainClassName))
+      }
       .toSet()
+
+  private fun defaultRunConfigurationTarget(module: Module): HelidonRunConfigurationTarget? {
+    if (JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.HELIDON_MAIN)) {
+      return HelidonRunConfigurationTarget(module, HelidonConstants.HELIDON_MAIN)
+    }
+    if (HelidonCommonUtils.hasHelidonMPLibrary(module)) {
+      return HelidonRunConfigurationTarget(module, HelidonConstants.MP_MAIN)
+    }
+    return null
+  }
 
   private fun isNewProject(project: Project): Boolean {
     return project.getUserData(NEW_HELIDON_PROJECT_KEY) == java.lang.Boolean.TRUE
   }
 
-  internal fun createMicroProfileRunConfiguration(module: Module) {
-    ApplicationManager.getApplication().assertWriteAccessAllowed()
-    createMicroProfileRunConfiguration(module, existingMicroProfileRunConfigurationModuleNames(module.project).toMutableSet())
+  private fun shouldSkipRunConfigurationCreation(project: Project, onlyForNewProjects: Boolean): Boolean {
+    val application = ApplicationManager.getApplication()
+    if (application.isHeadlessEnvironment || application.isUnitTestMode) {
+      return true
+    }
+
+    if (onlyForNewProjects && !isNewProject(project)) {
+      // By default, create run configurations only for newly created projects.
+      return true
+    }
+
+    return false
   }
 
-  private fun createMicroProfileRunConfiguration(module: Module,
-                                                 moduleNamesWithMicroProfileRunConfigurations: MutableSet<String>) {
-    if (!moduleNamesWithMicroProfileRunConfigurations.add(module.name)) {
+  internal fun createMicroProfileRunConfiguration(module: Module) {
+    createRunConfiguration(module, HelidonConstants.MP_MAIN)
+  }
+
+  internal fun createRunConfiguration(module: Module, mainClassName: String) {
+    ApplicationManager.getApplication().assertWriteAccessAllowed()
+    createRunConfiguration(
+      HelidonRunConfigurationTarget(module, mainClassName),
+      existingRunConfigurationKeys(module.project).toMutableSet()
+    )
+  }
+
+  private fun createRunConfiguration(target: HelidonRunConfigurationTarget,
+                                     existingRunConfigurations: MutableSet<RunConfigurationKey>) {
+    val module = target.module
+    if (!existingRunConfigurations.add(target.key())) {
       return
     }
 
@@ -91,7 +149,7 @@ class HelidonRunConfigurationService {
       val settings = runManager.createConfiguration("", ApplicationConfigurationType.getInstance().configurationFactories[0])
       val newRunConfig = settings.configuration as ApplicationConfiguration
       newRunConfig.setModule(module)
-      newRunConfig.mainClassName = HelidonConstants.MP_MAIN
+      newRunConfig.mainClassName = target.mainClassName
       settings.name = module.name
       newRunConfig.setGeneratedName()
       runManager.setUniqueNameIfNeeded(settings)
@@ -108,4 +166,20 @@ class HelidonRunConfigurationService {
       logger<HelidonRunConfigurationService>().error("Error creating Helidon run configuration for module ${module.name}", t)
     }
   }
+
+  private fun HelidonRunConfigurationTarget.key(): RunConfigurationKey =
+    RunConfigurationKey(module.name, normalizedMainClassName(mainClassName))
+
+  private fun normalizedMainClassName(mainClassName: String): String =
+    if (mainClassName == HelidonConstants.HELIDON_MAIN || mainClassName == HelidonConstants.MP_MAIN) {
+      HelidonConstants.HELIDON_MAIN
+    }
+    else {
+      mainClassName
+    }
+
+  private data class RunConfigurationKey(
+    val moduleName: String,
+    val mainClassName: String
+  )
 }

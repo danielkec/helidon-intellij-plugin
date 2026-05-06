@@ -17,6 +17,18 @@ public interface HelidonConstants {
   @NonNls String HTTP_SERVER_REQUEST = "io.helidon.webserver.http.ServerRequest";
   @NonNls String HTTP_SERVER_RESPONSE = "io.helidon.webserver.http.ServerResponse";
   @NonNls String HTTP_PARAMETERS = "io.helidon.common.parameters.Parameters";
+  @NonNls String REST_SERVER_ENDPOINT = "io.helidon.webserver.http.RestServer.Endpoint";
+
+  @NonNls String HTTP_PATH = "io.helidon.http.Http.Path";
+  @NonNls String HTTP_HTTP_METHOD = "io.helidon.http.Http.HttpMethod";
+  @NonNls String HTTP_PATH_PARAM = "io.helidon.http.Http.PathParam";
+  @NonNls String HTTP_GET = "io.helidon.http.Http.GET";
+  @NonNls String HTTP_HEAD = "io.helidon.http.Http.HEAD";
+  @NonNls String HTTP_POST = "io.helidon.http.Http.POST";
+  @NonNls String HTTP_PUT = "io.helidon.http.Http.PUT";
+  @NonNls String HTTP_PATCH = "io.helidon.http.Http.PATCH";
+  @NonNls String HTTP_DELETE = "io.helidon.http.Http.DELETE";
+  @NonNls String HTTP_OPTIONS = "io.helidon.http.Http.OPTIONS";
 
   @NonNls String ROUTING = "io.helidon.webserver.Routing";
   @NonNls String ROUTING_BUILDER = "io.helidon.webserver.Routing.Builder";
@@ -29,4 +41,15 @@ public interface HelidonConstants {
 
   @NonNls String MP_MAIN = "io.helidon.microprofile.cdi.Main";
   @NonNls String HELIDON_MAIN = "io.helidon.Main";
+
+  @NonNls String SERVICE_REGISTRY_SERVICE = "io.helidon.service.registry.Service";
+  @NonNls String SERVICE_SINGLETON = "io.helidon.service.registry.Service.Singleton";
+  @NonNls String SERVICE_PROVIDER = "io.helidon.service.registry.Service.Provider";
+  @NonNls String SERVICE_PER_LOOKUP = "io.helidon.service.registry.Service.PerLookup";
+  @NonNls String SERVICE_PER_REQUEST = "io.helidon.service.registry.Service.PerRequest";
+  @NonNls String SERVICE_INJECT = "io.helidon.service.registry.Service.Inject";
+  @NonNls String SERVICE_CONTRACT = "io.helidon.service.registry.Service.Contract";
+  @NonNls String SERVICE_EXTERNAL_CONTRACTS = "io.helidon.service.registry.Service.ExternalContracts";
+  @NonNls String SERVICE_REGISTRY_SERVICES = "io.helidon.service.registry.Services";
+  @NonNls String SERVICE_REGISTRY = "io.helidon.service.registry.ServiceRegistry";
 }

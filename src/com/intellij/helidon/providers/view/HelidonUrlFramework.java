@@ -79,6 +79,7 @@ final class HelidonUrlFramework implements EndpointsUrlTargetProvider<HelidonUrl
 
     HelidonCommonUtils.processBuilderRegisterMethodsWithProgress(collectProcessor, classReferencesScope, module);
     HelidonCommonUtils.processBuilderHttpMethods(collectProcessor, classReferencesScope, module);
+    HelidonCommonUtils.processRestServerEndpointMethods(collectProcessor, filterScope, module);
 
     return collectProcessor.getResults();
   }

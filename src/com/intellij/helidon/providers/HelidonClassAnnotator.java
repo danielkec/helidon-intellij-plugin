@@ -4,17 +4,16 @@ package com.intellij.helidon.providers;
 import com.intellij.codeInsight.daemon.RelatedItemLineMarkerInfo;
 import com.intellij.codeInsight.daemon.RelatedItemLineMarkerProvider;
 import com.intellij.codeInsight.navigation.NavigationGutterIconBuilder;
+import com.intellij.codeInsight.navigation.impl.PsiTargetPresentationRenderer;
 import com.intellij.helidon.HelidonIcons;
 import com.intellij.helidon.constants.HelidonConstants;
 import com.intellij.helidon.utils.HelidonBundle;
 import com.intellij.helidon.utils.HelidonCommonUtils;
-import com.intellij.ide.util.DefaultPsiElementCellRenderer;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleUtilCore;
 import com.intellij.openapi.util.Pair;
 import com.intellij.psi.*;
 import com.intellij.psi.presentation.java.SymbolPresentationUtil;
-import com.intellij.psi.util.InheritanceUtil;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.uast.UastSmartPointer;
 import com.intellij.util.containers.ContainerUtil;
@@ -28,15 +27,15 @@ import java.util.stream.Collectors;
 
 public final class HelidonClassAnnotator extends RelatedItemLineMarkerProvider {
 
-  private static DefaultPsiElementCellRenderer getMethodCallRendered() {
-    return new DefaultPsiElementCellRenderer() {
+  private static PsiTargetPresentationRenderer<PsiElement> getMethodCallRenderer() {
+    return new PsiTargetPresentationRenderer<>() {
       @Override
-      protected Icon getIcon(PsiElement element) {
+      protected Icon getIcon(@NotNull PsiElement element) {
         return HelidonIcons.HelidonGutter;
       }
 
       @Override
-      public String getContainerText(PsiElement element, String name) {
+      public String getContainerText(@NotNull PsiElement element) {
         PsiClass psiClass = PsiTreeUtil.getParentOfType(element, PsiClass.class);
         if (psiClass != null) {
           return SymbolPresentationUtil.getSymbolPresentableText(psiClass);
@@ -66,11 +65,11 @@ public final class HelidonClassAnnotator extends RelatedItemLineMarkerProvider {
     if (psiElement instanceof PsiIdentifier) {
       final PsiElement parent = psiElement.getParent();
       if (parent instanceof PsiClass) {
-        if (InheritanceUtil.isInheritor((PsiClass)parent, HelidonConstants.HTTP_SERVICE) ||
-            InheritanceUtil.isInheritor((PsiClass)parent, HelidonConstants.SERVICE)) {
+        PsiClass psiClass = (PsiClass)parent;
+        if (HelidonCommonUtils.isHelidonHttpServiceClass(psiClass)) {
           Set<UExpression> calls =
             getServiceRegisterExpressions(module, JavaPsiFacade.getInstance(module.getProject()).getElementFactory()
-              .createType((PsiClass)parent));
+              .createType(psiClass));
 
           Set<PsiElement> targets =
             calls.stream().map(expression -> expression.getSourcePsi()).filter(Objects::nonNull).collect(Collectors.toSet());
@@ -80,9 +79,23 @@ public final class HelidonClassAnnotator extends RelatedItemLineMarkerProvider {
                 setTargets(targets).
                 setPopupTitle(HelidonBundle.message("gutter.choose.service.registration")).
                 setTooltipText(HelidonBundle.message("gutter.navigate.to.service.registration")).
-                setCellRenderer(HelidonClassAnnotator::getMethodCallRendered);
+                setTargetRenderer(HelidonClassAnnotator::getMethodCallRenderer);
             result.add(builder.createLineMarkerInfo(psiElement));
+            return;
           }
+        }
+        if (HelidonCommonUtils.isHelidonServiceRegistryClass(psiClass)) {
+          Set<PsiElement> targets = HelidonCommonUtils.getHelidonServiceUsageTargets(module, psiClass);
+          if (targets.isEmpty()) {
+            targets = Collections.singleton(psiElement);
+          }
+          NavigationGutterIconBuilder<PsiElement> builder =
+            NavigationGutterIconBuilder.create(HelidonIcons.HelidonBeanGutter, HelidonBundle.HELIDON_LIBRARY).
+              setTargets(targets).
+              setPopupTitle(HelidonBundle.message("gutter.choose.service.usage")).
+              setTooltipText(HelidonBundle.message("gutter.navigate.to.service.usage")).
+              setTargetRenderer(HelidonClassAnnotator::getMethodCallRenderer);
+          result.add(builder.createLineMarkerInfo(psiElement));
         }
       }
     }

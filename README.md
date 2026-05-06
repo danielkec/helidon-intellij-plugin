@@ -43,20 +43,19 @@ the new target IDE build and update both `build.gradle.kts` and
 
 ## Distribution Identity
 
-This fork intentionally keeps the inherited plugin id `com.intellij.helidon` and
-vendor metadata from the extracted JetBrains plugin. Keeping the id preserves the
-same plugin identity for users installing from the custom update repository and
-avoids creating a separate Helidon plugin lineage.
+This fork intentionally keeps the inherited plugin id `com.intellij.helidon`
+while publishing Helidon team as the plugin vendor. Keeping the id preserves the
+same plugin identity for users installing from the custom update repository.
 
 Do not publish this fork to JetBrains Marketplace under the inherited
 `com.intellij` id. `verifyPluginStructure` can warn that this prefix is reserved
 for JetBrains-owned plugins. The supported distribution channel for this fork is
 the custom plugin repository listed in the install section.
 
-Changing the id or vendor would be a new plugin identity migration. If that
-becomes necessary, update `resources/META-INF/plugin.xml`,
-`docs/updatePlugins.xml`, Gradle metadata, release notes, and install
-instructions together so users understand the migration path.
+Changing the id would be a new plugin identity migration. If that becomes
+necessary, update `resources/META-INF/plugin.xml`, `docs/updatePlugins.xml`,
+Gradle metadata, release notes, and install instructions together so users
+understand the migration path.
 
 ## Tests
 

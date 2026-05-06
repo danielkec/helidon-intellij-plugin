@@ -3,40 +3,4 @@
   <groupId>com.intellij</groupId>
   <artifactId>helidon-starter</artifactId>
   <version>1.0</version>
-
-  <properties>
-    <helidon.version>4.4.1</helidon.version>
-    <gradle.version>9.2.0</gradle.version>
-    <maven.version>3.9.15</maven.version>
-    <maven.wrapper.version>3.3.4</maven.wrapper.version>
-    <kotlin.version>2.3.21</kotlin.version>
-    <gradle.jandex.version>2.3.0</gradle.jandex.version>
-  </properties>
-
-  <dependencyManagement>
-    <dependencies>
-      <dependency>
-        <groupId>io.helidon.applications</groupId>
-        <artifactId>helidon-mp</artifactId>
-        <version>${helidon.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>io.helidon</groupId>
-        <artifactId>helidon-dependencies</artifactId>
-        <version>${helidon.version}</version>
-      </dependency>
-
-      <dependency>
-        <groupId>org.jetbrains.kotlin</groupId>
-        <artifactId>kotlin-maven-plugin</artifactId>
-        <version>${kotlin.version}</version>
-      </dependency>
-
-      <dependency>
-        <groupId>org.jetbrains.kotlin</groupId>
-        <artifactId>kotlin-gradle-plugin</artifactId>
-        <version>${kotlin.version}</version>
-      </dependency>
-    </dependencies>
-  </dependencyManagement>
 </project>

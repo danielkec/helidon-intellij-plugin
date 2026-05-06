@@ -96,7 +96,6 @@
       implementationClass="com.intellij.helidon.config.properties.HelidonPropertiesConfigInspection"/>
 
     <moduleBuilder builderClass="com.intellij.helidon.newproject.HelidonModuleBuilder"/>
-    <fileTemplateGroup implementation="com.intellij.helidon.newproject.HelidonFileTemplateGroup"/>
 
     <externalProjectDataService implementation="com.intellij.helidon.newproject.HelidonExternalSystemDataService"/>
 

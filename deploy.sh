@@ -40,10 +40,11 @@ require_command() {
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$repo_root"
 
-export GIT_EDITOR=true
-export GIT_SEQUENCE_EDITOR=true
+export GIT_EDITOR=:
+export GIT_SEQUENCE_EDITOR=:
 export GIT_MERGE_AUTOEDIT=no
 export GIT_TERMINAL_PROMPT=0
+export GH_PROMPT_DISABLED=1
 export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o BatchMode=yes}"
 
 dry_run=false
@@ -254,8 +255,8 @@ Artifact:         $asset
 
 Commands that would run:
   ./gradlew clean buildPlugin
-  git -c commit.gpgsign=false commit -m "Release $tag"
-  git -c tag.gpgSign=false tag -a "$tag" -m "Release $tag"
+  git -c core.editor=: -c commit.gpgsign=false commit --no-verify -F <release-message-file>
+  git -c core.editor=: -c tag.gpgSign=false tag --no-sign -a "$tag" -F <release-message-file>
   git push origin "$branch"
   git push origin "$tag"
   gh release create "$tag" "$asset" --repo "$github_repo" --title "Helidon $new_version" --notes "Helidon IntelliJ Plugin $new_version" --verify-tag
@@ -344,9 +345,13 @@ echo "Building Helidon plugin $new_version..."
 
 git diff --check
 
+release_message_file="$(mktemp)"
+printf 'Release %s\n' "$tag" > "$release_message_file"
+trap 'rm -f "$release_message_file"' EXIT
+
 git add build.gradle.kts README.md docs/updatePlugins.xml
-git -c commit.gpgsign=false commit -m "Release $tag"
-git -c tag.gpgSign=false tag -a "$tag" -m "Release $tag"
+git -c core.editor=: -c commit.gpgsign=false commit --no-verify -F "$release_message_file"
+git -c core.editor=: -c tag.gpgSign=false tag --no-sign -a "$tag" -F "$release_message_file"
 
 git push origin "$branch"
 git push origin "$tag"

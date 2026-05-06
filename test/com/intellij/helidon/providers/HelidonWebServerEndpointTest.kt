@@ -563,6 +563,100 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     })
   }
 
+  fun testRestServerEndpointMethodsAreDiscovered() {
+    addHelidonDeclarativeStubs()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Http;
+      import io.helidon.service.registry.Service;
+      import io.helidon.webserver.http.RestServer;
+
+      @RestServer.Endpoint
+      @Http.Path("/greet")
+      @Service.Singleton
+      class GreetingEndpoint {
+        @Http.GET
+        @Http.Path("/{name}")
+        String get(@Http.PathParam("name") String name) {
+          return name;
+        }
+
+        @Http.POST
+        String create() {
+          return "created";
+        }
+      }
+    """.trimIndent())
+
+    val endpoints = collectRestServerEndpoints()
+
+    assertTrue(endpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/greet" && it.urlDefinition == "/{name}"
+    })
+    assertTrue(endpoints.any {
+      it.type == HelidonRequestMethods.POST && it.parentUrl == "/greet" && it.urlDefinition == "/"
+    })
+  }
+
+  fun testRestServerEndpointUsesInterfacePathsAndMethods() {
+    addHelidonDeclarativeStubs()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Http;
+      import io.helidon.service.registry.Service;
+      import io.helidon.webserver.http.RestServer;
+
+      @Http.Path("/greet")
+      interface GreetingResource {
+        @Http.PUT
+        @Http.Path("/greeting")
+        void update(String greeting);
+      }
+
+      @RestServer.Endpoint
+      @Service.Singleton
+      class GreetingEndpoint implements GreetingResource {
+        public void update(String greeting) {
+        }
+      }
+    """.trimIndent())
+
+    val endpoints = collectRestServerEndpoints()
+
+    assertTrue(endpoints.any {
+      it.type == HelidonRequestMethods.PUT && it.parentUrl == "/greet" && it.urlDefinition == "/greeting"
+    })
+  }
+
+  fun testRestServerEndpointUsesCustomHttpMethodMetaAnnotation() {
+    addHelidonDeclarativeStubs()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Http;
+      import io.helidon.webserver.http.RestServer;
+
+      @Http.HttpMethod("PROPFIND")
+      @interface PROPFIND {
+      }
+
+      @RestServer.Endpoint
+      @Http.Path("/files")
+      class FileEndpoint {
+        @PROPFIND
+        @Http.Path("/{path}")
+        String properties(@Http.PathParam("path") String path) {
+          return path;
+        }
+      }
+    """.trimIndent())
+
+    val endpoints = collectRestServerEndpoints()
+
+    assertTrue(endpoints.any {
+      it.type == HelidonRequestMethods.UNKNOWN &&
+      it.methods == setOf("PROPFIND") &&
+      it.parentUrl == "/files" &&
+      it.urlDefinition == "/{path}"
+    })
+  }
+
   private fun collectBuilderEndpoints(): Collection<HelidonUrlTargetInfo> {
     return collectBuilderEndpoints(GlobalSearchScope.fileScope(myFixture.file), myFixture.file)
   }
@@ -579,6 +673,13 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     val processor = CollectProcessor<HelidonUrlTargetInfo>()
     val module = ModuleUtilCore.findModuleForPsiElement(myFixture.file)!!
     assertTrue(HelidonCommonUtils.processRulesHttpMethods(processor, LocalSearchScope(serviceClass), module))
+    return processor.results
+  }
+
+  private fun collectRestServerEndpoints(): Collection<HelidonUrlTargetInfo> {
+    val processor = CollectProcessor<HelidonUrlTargetInfo>()
+    val module = ModuleUtilCore.findModuleForPsiElement(myFixture.file)!!
+    assertTrue(HelidonCommonUtils.processRestServerEndpointMethods(processor, GlobalSearchScope.fileScope(myFixture.file), module))
     return processor.results
   }
 
@@ -658,6 +759,128 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
 
         interface Builder extends Rules {
           Builder anyOf(java.lang.Iterable<io.helidon.common.http.Http.RequestMethod> methods, String path, Handler... handlers);
+        }
+      }
+    """.trimIndent())
+  }
+
+  private fun addHelidonDeclarativeStubs() {
+    myFixture.addClass("""
+      package io.helidon.service.registry;
+
+      import java.lang.annotation.ElementType;
+      import java.lang.annotation.Retention;
+      import java.lang.annotation.RetentionPolicy;
+      import java.lang.annotation.Target;
+
+      public final class Service {
+        private Service() {
+        }
+
+        @Retention(RetentionPolicy.CLASS)
+        @Target({ElementType.TYPE, ElementType.ANNOTATION_TYPE})
+        public @interface Singleton {
+        }
+
+        @Retention(RetentionPolicy.CLASS)
+        @Target({ElementType.METHOD, ElementType.CONSTRUCTOR, ElementType.FIELD})
+        public @interface Inject {
+        }
+
+        @Retention(RetentionPolicy.CLASS)
+        @Target(ElementType.TYPE)
+        public @interface Contract {
+        }
+
+        @Retention(RetentionPolicy.CLASS)
+        @Target(ElementType.TYPE)
+        public @interface ExternalContracts {
+          Class<?>[] value();
+        }
+
+        @Retention(RetentionPolicy.CLASS)
+        @Target({ElementType.METHOD, ElementType.ANNOTATION_TYPE})
+        public @interface EntryPoint {
+        }
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package io.helidon.http;
+
+      import java.lang.annotation.ElementType;
+      import java.lang.annotation.Retention;
+      import java.lang.annotation.RetentionPolicy;
+      import java.lang.annotation.Target;
+
+      public final class Http {
+        private Http() {
+        }
+
+        @Retention(RetentionPolicy.CLASS)
+        @Target({ElementType.TYPE, ElementType.METHOD})
+        public @interface Path {
+          String value() default "/";
+        }
+
+        @Retention(RetentionPolicy.CLASS)
+        @Target({ElementType.METHOD, ElementType.ANNOTATION_TYPE})
+        public @interface HttpMethod {
+          String value();
+        }
+
+        @HttpMethod("GET")
+        public @interface GET {
+        }
+
+        @HttpMethod("POST")
+        public @interface POST {
+        }
+
+        @HttpMethod("PUT")
+        public @interface PUT {
+        }
+
+        @HttpMethod("DELETE")
+        public @interface DELETE {
+        }
+
+        @HttpMethod("HEAD")
+        public @interface HEAD {
+        }
+
+        @HttpMethod("PATCH")
+        public @interface PATCH {
+        }
+
+        @HttpMethod("OPTIONS")
+        public @interface OPTIONS {
+        }
+
+        @Retention(RetentionPolicy.CLASS)
+        @Target(ElementType.PARAMETER)
+        public @interface PathParam {
+          String value();
+        }
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package io.helidon.webserver.http;
+
+      import java.lang.annotation.ElementType;
+      import java.lang.annotation.Retention;
+      import java.lang.annotation.RetentionPolicy;
+      import java.lang.annotation.Target;
+
+      import io.helidon.service.registry.Service;
+
+      public final class RestServer {
+        private RestServer() {
+        }
+
+        @Retention(RetentionPolicy.CLASS)
+        @Target(ElementType.TYPE)
+        @Service.Singleton
+        public @interface Endpoint {
         }
       }
     """.trimIndent())

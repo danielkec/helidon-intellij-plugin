@@ -82,6 +82,7 @@ public final class HelidonUrlResolver extends HttpUrlResolver {
       if (!HelidonCommonUtils.processBuilderRegisterMethods(collectProcessor, scope, module)) break;
       if (!HelidonCommonUtils.processBuilderHttpMethods(collectProcessor, scope, module)) break;
       if (!HelidonCommonUtils.processRulesHttpMethods(collectProcessor, scope, module)) break;
+      if (!HelidonCommonUtils.processRestServerEndpointMethods(collectProcessor, module.getModuleWithDependenciesScope(), module)) break;
     }
     return new ArrayList<>(collectProcessor.getResults());
   }

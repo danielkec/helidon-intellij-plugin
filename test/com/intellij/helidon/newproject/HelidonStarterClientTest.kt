@@ -331,7 +331,7 @@ class HelidonStarterClientTest {
                   },
                   {
                     "kind": "option",
-                    "name": "MultiPart",
+                    "name": "Multipart",
                     "value": "multipart"
                   }
                 ]
@@ -456,7 +456,7 @@ class HelidonStarterClientTest {
                                 },
                                 {
                                   "kind": "option",
-                                  "name": "MultiPart",
+                                  "name": "Multipart",
                                   "value": "multipart"
                                 }
                               ]

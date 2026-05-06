@@ -150,7 +150,7 @@ private val DEFAULT_OPTION_LABELS = mapOf(
   HELIDON_CUSTOM_APP_TYPE to "Custom",
   HELIDON_OCI_APP_TYPE to "OCI",
   "json" to "JSON",
-  "multipart" to "MultiPart",
+  "multipart" to "Multipart",
   "jsonp" to "JSON-P",
   "jackson" to "Jackson",
   "jsonb" to "JSON-B",

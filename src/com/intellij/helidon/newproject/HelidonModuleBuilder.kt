@@ -210,7 +210,7 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
                 setOptions(currentOptions.copy(media = currentOptions.media.toggle("json", isSelected)))
               }
             }
-            checkBox("MultiPart").component.apply {
+            checkBox("Multipart").component.apply {
               multipartCheckBox = this
               addActionListener {
                 if (syncing) return@addActionListener
@@ -503,27 +503,37 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
         val databaseOptionsVisible = appType == HELIDON_DATABASE_APP_TYPE || (custom && currentOptions.database)
         val mpDatabaseOptionsVisible = databaseOptionsVisible && flavor == HELIDON_MP_FLAVOR
         val oci = appType == HELIDON_OCI_APP_TYPE
-        val mediaOptions = metadataMediaOptions(flavor)
-        val extraOptions = extras(flavor)
+        val availableFlavorOptions = flavorOptions()
+        val availableAppTypeOptions = appTypes(flavor)
+        val availableMediaOptions = metadataMediaOptions(flavor)
+        val availableJsonLibraryOptions = jsonLibraries(flavor)
+        val availableDatabaseServerOptions = databaseServers(flavor)
+        val availableJpaOptions = jpaImplementations()
+        val availableConnectionPoolOptions = connectionPools()
+        val availableAuthenticationProviderOptions = metadataModel.authenticationProviders
+        val availableAuthorizationProviderOptions = metadataModel.authorizationProviders
+        val availableExtraOptions = extras(flavor)
+        val availableMetricsProviderOptions = metricsProviders()
+        val availableTracingProviderOptions = tracingProviders()
 
-        flavorSegmentedButton?.items = flavorOptions()
-        appTypeModel.replaceWith(appTypes(flavor))
-        jsonLibraryModel.replaceWith(jsonLibraries(flavor))
-        databaseServerModel.replaceWith(databaseServers(flavor))
-        jpaModel.replaceWith(jpaImplementations())
-        connectionPoolModel.replaceWith(connectionPools())
-        metricsProviderModel.replaceWith(metricsProviders())
-        tracingProviderModel.replaceWith(tracingProviders())
+        flavorSegmentedButton?.items = availableFlavorOptions
+        appTypeModel.replaceWith(availableAppTypeOptions)
+        jsonLibraryModel.replaceWith(availableJsonLibraryOptions)
+        databaseServerModel.replaceWith(availableDatabaseServerOptions)
+        jpaModel.replaceWith(availableJpaOptions)
+        connectionPoolModel.replaceWith(availableConnectionPoolOptions)
+        metricsProviderModel.replaceWith(availableMetricsProviderOptions)
+        tracingProviderModel.replaceWith(availableTracingProviderOptions)
 
-        selectedOption(flavorOptions(), flavor)?.let { flavorSegmentedButton?.selectedItem = it }
-        appTypeCombo?.selectedItem = selectedOption(appTypes(flavor), appType)
+        selectedOption(availableFlavorOptions, flavor)?.let { flavorSegmentedButton?.selectedItem = it }
+        appTypeCombo?.selectedItem = selectedOption(availableAppTypeOptions, appType)
         jsonCheckBox?.isSelected = "json" in currentOptions.media
         multipartCheckBox?.isSelected = "multipart" in currentOptions.media
-        jsonLibraryCombo?.selectedItem = selectedOption(jsonLibraries(flavor), currentOptions.jsonLibrary)
+        jsonLibraryCombo?.selectedItem = selectedOption(availableJsonLibraryOptions, currentOptions.jsonLibrary)
         databaseCheckBox?.isSelected = currentOptions.database
-        databaseServerCombo?.selectedItem = selectedOption(databaseServers(flavor), currentOptions.databaseServer)
-        jpaCombo?.selectedItem = selectedOption(jpaImplementations(), currentOptions.jpaImplementation)
-        connectionPoolCombo?.selectedItem = selectedOption(connectionPools(), currentOptions.connectionPool)
+        databaseServerCombo?.selectedItem = selectedOption(availableDatabaseServerOptions, currentOptions.databaseServer)
+        jpaCombo?.selectedItem = selectedOption(availableJpaOptions, currentOptions.jpaImplementation)
+        connectionPoolCombo?.selectedItem = selectedOption(availableConnectionPoolOptions, currentOptions.connectionPool)
         autoDdlCheckBox?.isSelected = currentOptions.autoDdl
         persistenceUnitField?.setTextIfDifferent(currentOptions.persistenceUnitName)
         dataSourceField?.setTextIfDifferent(currentOptions.dataSourceName)
@@ -538,12 +548,12 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
         corsCheckBox?.isSelected = "cors" in currentOptions.extras
         coherenceCheckBox?.isSelected = "coherence" in currentOptions.extras
         metricsCheckBox?.isSelected = currentOptions.metrics
-        metricsProviderCombo?.selectedItem = selectedOption(metricsProviders(), currentOptions.metricsProvider)
+        metricsProviderCombo?.selectedItem = selectedOption(availableMetricsProviderOptions, currentOptions.metricsProvider)
         metricsBuiltinCheckBox?.isSelected = currentOptions.metricsBuiltin
         healthCheckBox?.isSelected = currentOptions.health
         healthBuiltinCheckBox?.isSelected = currentOptions.healthBuiltin
         tracingCheckBox?.isSelected = currentOptions.tracing
-        tracingProviderCombo?.selectedItem = selectedOption(tracingProviders(), currentOptions.tracingProvider)
+        tracingProviderCombo?.selectedItem = selectedOption(availableTracingProviderOptions, currentOptions.tracingProvider)
         dockerCheckBox?.isSelected = currentOptions.docker
         nativeImageCheckBox?.isSelected = currentOptions.dockerNativeImage
         jlinkCheckBox?.isSelected = currentOptions.dockerJlinkImage
@@ -554,23 +564,23 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
         seExtrasRow?.visible(custom && flavor == HELIDON_SE_FLAVOR)
         mpMetricsProviderRow?.visible(custom && currentOptions.metrics && flavor == HELIDON_MP_FLAVOR)
 
-        jsonCheckBox?.isVisible = mediaOptions.hasValue("json")
-        multipartCheckBox?.isVisible = mediaOptions.hasValue("multipart")
-        jsonLibraryCombo?.isVisible = jsonLibraries(flavor).isNotEmpty()
-        databaseServerCombo?.isVisible = databaseServers(flavor).isNotEmpty()
-        jpaCombo?.isVisible = jpaImplementations().isNotEmpty()
-        connectionPoolCombo?.isVisible = connectionPools().isNotEmpty()
-        oidcCheckBox?.isVisible = metadataModel.authenticationProviders.hasValue("oidc")
-        jwtCheckBox?.isVisible = metadataModel.authenticationProviders.hasValue("jwt")
-        googleCheckBox?.isVisible = metadataModel.authenticationProviders.hasValue("google")
-        httpSignatureCheckBox?.isVisible = metadataModel.authenticationProviders.hasValue("http-signature")
-        abacCheckBox?.isVisible = metadataModel.authorizationProviders.hasValue("abac")
-        webClientCheckBox?.isVisible = extraOptions.hasValue("webclient")
-        faultToleranceCheckBox?.isVisible = extraOptions.hasValue("fault-tolerance")
-        corsCheckBox?.isVisible = extraOptions.hasValue("cors")
-        coherenceCheckBox?.isVisible = extraOptions.hasValue("coherence")
-        metricsProviderCombo?.isVisible = metricsProviders().isNotEmpty()
-        tracingProviderCombo?.isVisible = tracingProviders().isNotEmpty()
+        jsonCheckBox?.isVisible = availableMediaOptions.hasValue("json")
+        multipartCheckBox?.isVisible = availableMediaOptions.hasValue("multipart")
+        jsonLibraryCombo?.isVisible = availableJsonLibraryOptions.isNotEmpty()
+        databaseServerCombo?.isVisible = availableDatabaseServerOptions.isNotEmpty()
+        jpaCombo?.isVisible = availableJpaOptions.isNotEmpty()
+        connectionPoolCombo?.isVisible = availableConnectionPoolOptions.isNotEmpty()
+        oidcCheckBox?.isVisible = availableAuthenticationProviderOptions.hasValue("oidc")
+        jwtCheckBox?.isVisible = availableAuthenticationProviderOptions.hasValue("jwt")
+        googleCheckBox?.isVisible = availableAuthenticationProviderOptions.hasValue("google")
+        httpSignatureCheckBox?.isVisible = availableAuthenticationProviderOptions.hasValue("http-signature")
+        abacCheckBox?.isVisible = availableAuthorizationProviderOptions.hasValue("abac")
+        webClientCheckBox?.isVisible = availableExtraOptions.hasValue("webclient")
+        faultToleranceCheckBox?.isVisible = availableExtraOptions.hasValue("fault-tolerance")
+        corsCheckBox?.isVisible = availableExtraOptions.hasValue("cors")
+        coherenceCheckBox?.isVisible = availableExtraOptions.hasValue("coherence")
+        metricsProviderCombo?.isVisible = availableMetricsProviderOptions.isNotEmpty()
+        tracingProviderCombo?.isVisible = availableTracingProviderOptions.isNotEmpty()
 
         jsonCheckBox?.isEnabled = custom
         multipartCheckBox?.isEnabled = custom

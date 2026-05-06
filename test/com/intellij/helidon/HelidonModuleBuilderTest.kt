@@ -13,12 +13,12 @@ import org.junit.Test
 
 class HelidonModuleBuilderTest : LightJavaCodeInsightFixtureTestCase4(LightJavaCodeInsightFixtureTestCase.JAVA_21) {
   @Test
-  fun wizardSupportsOnlyJavaMaven() {
+  fun wizardSupportsOnlyJavaAndHidesBuildSystem() {
     val moduleBuilder = HelidonModuleBuilder()
 
     assertEquals(LanguageLevel.JDK_21.toJavaVersion(), getMinJavaVersion(moduleBuilder))
     assertEquals(listOf("java"), getLanguages(moduleBuilder).map { it.id })
-    assertEquals(listOf("maven"), getProjectTypes(moduleBuilder).map { it.id })
+    assertEquals(emptyList<String>(), getProjectTypes(moduleBuilder).map { it.id })
   }
 
   @Suppress("UNCHECKED_CAST")

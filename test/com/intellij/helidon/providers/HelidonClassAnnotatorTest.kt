@@ -2,6 +2,7 @@
 package com.intellij.helidon.providers
 
 import com.intellij.codeInsight.daemon.RelatedItemLineMarkerInfo
+import com.intellij.helidon.HelidonIcons
 import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.utils.HelidonCommonUtils
 import com.intellij.openapi.module.ModuleUtilCore
@@ -24,6 +25,7 @@ class HelidonClassAnnotatorTest : HelidonHighlightingTestCase() {
     HelidonClassAnnotator().collectNavigationMarkers(listOf(serviceClass.nameIdentifier!!), result, true)
 
     assertSize(1, result)
+    assertSame(HelidonIcons.HelidonBeanGutter, result.single().icon)
   }
 
   fun testServiceSingletonUsageTargetsIncludeInjectionAndLookup() {

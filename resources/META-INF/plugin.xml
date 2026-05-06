@@ -2,17 +2,18 @@
 <idea-plugin package="com.intellij.helidon">
   <id>com.intellij.helidon</id>
   <name>Helidon</name>
-  <vendor>JetBrains</vendor>
+  <vendor>Helidon team</vendor>
   <category>JVM Frameworks</category>
 
   <description><![CDATA[
-    <p>Adds support for the <a href="https://helidon.io/">Helidon</a> framework for writing microservices in Java.</p>
+    <p>Adds support for the <a href="https://helidon.io/">Helidon</a> framework for building Java microservices with Helidon SE and MP.</p>
     <p>Features:</p>
     <ul>
-      <li>New project wizard.</li>
-      <li>Coding assistance: code completion, inspections, quick fixes.</li>
-      <li>Autocompletion for YAML/Properties configuration files.</li>
-      <li>Display of application endpoints in the Endpoints tool window.</li>
+      <li>Create Helidon Maven projects from the IDE.</li>
+      <li>Navigate between Helidon services, injection points, and service registry lookups.</li>
+      <li>Discover Helidon WebServer and RestServer endpoints in the Endpoints tool window.</li>
+      <li>Open gutter navigation for Helidon routes, declarative HTTP endpoints, and declarative services.</li>
+      <li>Complete, inspect, document, and rename Helidon configuration keys in YAML and properties files.</li>
     </ul>
   ]]></description>
 

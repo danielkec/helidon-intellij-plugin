@@ -63,7 +63,14 @@ intellijPlatform {
       untilBuild = "261.*"
     }
 
-    changeNotes = ""
+    changeNotes = """
+      <ul>
+        <li>Added navigation support for Helidon SE declarative services annotated with <code>@Service.Singleton</code>.</li>
+        <li>Added gutter navigation between declarative service beans, injection points, and service registry lookups.</li>
+        <li>Added Endpoints tool window support for Helidon RestServer endpoints annotated with <code>@RestServer.Endpoint</code>.</li>
+        <li>Updated the Helidon declarative service gutter icon.</li>
+      </ul>
+    """.trimIndent()
   }
 }
 

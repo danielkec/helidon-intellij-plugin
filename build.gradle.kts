@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.intellij.helidon"
-version = "262.0.6"
+version = "262.0.7"
 
 kotlin {
   jvmToolchain(21)

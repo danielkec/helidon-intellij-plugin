@@ -15,6 +15,7 @@
       <li>Open gutter navigation for Helidon routes, declarative HTTP endpoints, and declarative services.</li>
       <li>Complete, inspect, document, and rename Helidon configuration keys in YAML and properties files.</li>
     </ul>
+    <p>Endpoints tool window, URL resolver and inlay support, declarative HTTP endpoint route navigation, and Helidon configuration assistance require IntelliJ IDEA Ultimate with the optional Microservices integration.</p>
   ]]></description>
 
   <dependencies>

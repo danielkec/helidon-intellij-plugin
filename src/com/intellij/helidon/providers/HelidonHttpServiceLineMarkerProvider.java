@@ -54,6 +54,7 @@ public final class HelidonHttpServiceLineMarkerProvider extends RelatedItemLineM
     final PsiElement psiElement = ContainerUtil.getFirstItem(elements);
     if (psiElement == null) return;
     Module module = ModuleUtilCore.findModuleForPsiElement(psiElement);
+    if (module == null) return;
     if (HelidonCommonUtils.hasHelidonLibrary(module)) {
       for (PsiElement element : elements) {
         collectNavigationMarkers(element, module, result);

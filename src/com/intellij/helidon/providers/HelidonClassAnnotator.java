@@ -47,6 +47,7 @@ public final class HelidonClassAnnotator extends RelatedItemLineMarkerProvider {
     final PsiElement psiElement = ContainerUtil.getFirstItem(elements);
     if (psiElement == null) return;
     Module module = ModuleUtilCore.findModuleForPsiElement(psiElement);
+    if (module == null) return;
     if (HelidonCoreUtils.hasHelidonLibrary(module)) {
       for (PsiElement element : elements) {
         collectNavigationMarkers(element, module, result);

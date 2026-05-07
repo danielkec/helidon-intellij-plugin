@@ -79,8 +79,19 @@ intellijPlatform {
     freeArgs.addAll("-mute", "ForbiddenPluginIdPrefix", "-mute", "TemplateWordInPluginId")
 
     ides {
+      // IDEA 2026.1 is distributed as the unified IU product; IC verifier artifacts are no longer published.
+      // Community compatibility is covered by descriptor tests that keep microservices registrations optional.
       create(IntelliJPlatformType.IntellijIdea, "2026.1.1")
-      create(IntelliJPlatformType.IntellijIdeaUltimate, "2026.1.1")
+    }
+  }
+}
+
+intellijPlatformTesting {
+  runIde {
+    register("runIdeWithoutMicroservices") {
+      plugins {
+        disablePlugin("com.intellij.microservices.jvm")
+      }
     }
   }
 }

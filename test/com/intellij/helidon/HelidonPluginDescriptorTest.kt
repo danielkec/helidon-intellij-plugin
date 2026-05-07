@@ -23,12 +23,26 @@ class HelidonPluginDescriptorTest {
 
     val optionalMicroservices = document.getElementsByTagName("depends").elements()
       .any { element ->
-        element.textContent == "com.intellij.microservices.jvm" &&
+        element.textContent.trim() == "com.intellij.microservices.jvm" &&
           element.getAttribute("optional") == "true" &&
           element.getAttribute("config-file") == "helidon-microservices.xml"
       }
 
     assertTrue(optionalMicroservices)
+  }
+
+  @Test
+  fun testDescriptionDocumentsOptionalMicroservicesFeatures() {
+    val description = parseDescriptor(Path.of("resources/META-INF/plugin.xml"))
+      .getElementsByTagName("description")
+      .item(0)
+      .textContent
+      .replace(Regex("\\s+"), " ")
+      .trim()
+
+    assertTrue(description.contains("Endpoints tool window, URL resolver and inlay support, declarative HTTP endpoint " +
+                                      "route navigation, and Helidon configuration assistance require IntelliJ IDEA " +
+                                      "Ultimate with the optional Microservices integration."))
   }
 
   @Test

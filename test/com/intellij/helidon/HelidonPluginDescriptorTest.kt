@@ -2,8 +2,10 @@
 package com.intellij.helidon
 
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.w3c.dom.Element
+import org.w3c.dom.NodeList
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.xml.parsers.DocumentBuilderFactory
@@ -11,15 +13,29 @@ import javax.xml.parsers.DocumentBuilderFactory
 class HelidonPluginDescriptorTest {
 
   @Test
+  fun testMainDescriptorDoesNotRequireUltimateOrMicroservices() {
+    val document = parseDescriptor(Path.of("resources/META-INF/plugin.xml"))
+    val hardDependencies = document.getElementsByTagName("dependencies").item(0) as Element
+    val pluginIds = hardDependencies.getElementsByTagName("plugin").attributes("id")
+
+    assertFalse(pluginIds.contains("com.intellij.modules.ultimate"))
+    assertFalse(pluginIds.contains("com.intellij.microservices.jvm"))
+
+    val optionalMicroservices = document.getElementsByTagName("depends").elements()
+      .any { element ->
+        element.textContent == "com.intellij.microservices.jvm" &&
+          element.getAttribute("optional") == "true" &&
+          element.getAttribute("config-file") == "helidon-microservices.xml"
+      }
+
+    assertTrue(optionalMicroservices)
+  }
+
+  @Test
   fun testInternalMicroservicesYamlConfigModuleIsNotDeclared() {
-    val document = DocumentBuilderFactory.newInstance()
-      .newDocumentBuilder()
-      .parse(Path.of("resources/META-INF/plugin.xml").toFile())
+    val document = parseDescriptor(Path.of("resources/META-INF/helidon-microservices.xml"))
     val dependencies = document.getElementsByTagName("dependencies").item(0) as Element
-    val modules = dependencies.getElementsByTagName("module")
-    val moduleNames = (0 until modules.length)
-      .map { modules.item(it) as Element }
-      .map { it.getAttribute("name") }
+    val moduleNames = dependencies.getElementsByTagName("module").attributes("name")
 
     assertFalse(moduleNames.contains("intellij.microservices.jvm.config.yaml"))
   }
@@ -35,4 +51,14 @@ class HelidonPluginDescriptorTest {
 
     assertFalse(sourceUsesInternalPackage)
   }
+
+  private fun parseDescriptor(path: Path) = DocumentBuilderFactory.newInstance()
+    .newDocumentBuilder()
+    .parse(path.toFile())
+
+  private fun NodeList.elements(): List<Element> = (0 until length)
+    .map { item(it) as Element }
+
+  private fun NodeList.attributes(name: String): List<String> = elements()
+    .map { it.getAttribute(name) }
 }

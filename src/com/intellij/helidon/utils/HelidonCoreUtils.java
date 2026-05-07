@@ -1,0 +1,204 @@
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+package com.intellij.helidon.utils;
+
+import com.intellij.helidon.constants.HelidonConstants;
+import com.intellij.java.library.JavaLibraryUtil;
+import com.intellij.openapi.module.Module;
+import com.intellij.openapi.project.Project;
+import com.intellij.psi.*;
+import com.intellij.psi.search.searches.ReferencesSearch;
+import com.intellij.psi.util.PsiTreeUtil;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.Set;
+
+public final class HelidonCoreUtils {
+  private static final Set<String> HELIDON_SERVICE_SCOPE_ANNOTATIONS = Set.of(HelidonConstants.SERVICE_SINGLETON,
+                                                                               HelidonConstants.SERVICE_PROVIDER,
+                                                                               HelidonConstants.SERVICE_PER_LOOKUP,
+                                                                               HelidonConstants.SERVICE_PER_REQUEST,
+                                                                               HelidonConstants.REST_SERVER_ENDPOINT);
+  private static final Set<String> SERVICE_LOOKUP_METHODS = Set.of("get",
+                                                                   "getNamed",
+                                                                   "first",
+                                                                   "firstNamed",
+                                                                   "all",
+                                                                   "supply",
+                                                                   "supplyFirst",
+                                                                   "supplyAll");
+
+  private HelidonCoreUtils() {
+  }
+
+  public static boolean hasHelidonLibrary(@NotNull Project project) {
+    return JavaLibraryUtil.hasLibraryClass(project, HelidonConstants.HTTP_ROUTING) ||
+           JavaLibraryUtil.hasLibraryClass(project, HelidonConstants.ROUTING) ||
+           JavaLibraryUtil.hasLibraryClass(project, HelidonConstants.REST_SERVER_ENDPOINT) ||
+           JavaLibraryUtil.hasLibraryClass(project, HelidonConstants.SERVICE_REGISTRY_SERVICE);
+  }
+
+  public static boolean hasHelidonLibrary(@Nullable Module module) {
+    return JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.HTTP_ROUTING) ||
+           JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.ROUTING) ||
+           JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.REST_SERVER_ENDPOINT) ||
+           JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.SERVICE_REGISTRY_SERVICE);
+  }
+
+  public static boolean hasHelidonMPLibrary(@Nullable Module module) {
+    return JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.MP_MAIN);
+  }
+
+  public static boolean isHelidonServiceRegistryClass(@NotNull PsiClass psiClass) {
+    return hasAnnotationOrMetaAnnotation(psiClass, HELIDON_SERVICE_SCOPE_ANNOTATIONS, new HashSet<>());
+  }
+
+  public static @NotNull Set<PsiElement> getHelidonServiceUsageTargets(@NotNull Module module, @NotNull PsiClass serviceClass) {
+    Set<PsiElement> targets = new LinkedHashSet<>();
+    for (PsiClass contract : getHelidonServiceContracts(serviceClass)) {
+      ReferencesSearch.search(contract, module.getModuleWithDependenciesScope()).forEach(reference -> {
+        PsiElement element = reference.getElement();
+        PsiElement target = getServiceUsageTarget(element);
+        if (target != null && !PsiTreeUtil.isAncestor(serviceClass, target, false)) {
+          targets.add(target);
+        }
+        return true;
+      });
+    }
+    return targets;
+  }
+
+  private static @NotNull Set<PsiClass> getHelidonServiceContracts(@NotNull PsiClass serviceClass) {
+    Set<PsiClass> contracts = new LinkedHashSet<>();
+    contracts.add(serviceClass);
+    collectAllInterfaces(serviceClass, contracts, new HashSet<>());
+    PsiClass superClass = serviceClass.getSuperClass();
+    while (superClass != null && !CommonClassNames.JAVA_LANG_OBJECT.equals(superClass.getQualifiedName())) {
+      contracts.add(superClass);
+      superClass = superClass.getSuperClass();
+    }
+    collectExternalContractClasses(serviceClass, contracts);
+    return contracts;
+  }
+
+  private static void collectAllInterfaces(@NotNull PsiClass psiClass,
+                                           @NotNull Set<? super PsiClass> result,
+                                           @NotNull Set<? super PsiClass> visited) {
+    if (!visited.add(psiClass)) return;
+    for (PsiClass anInterface : psiClass.getInterfaces()) {
+      if (result.add(anInterface)) {
+        collectAllInterfaces(anInterface, result, visited);
+      }
+    }
+    PsiClass superClass = psiClass.getSuperClass();
+    if (superClass != null && !CommonClassNames.JAVA_LANG_OBJECT.equals(superClass.getQualifiedName())) {
+      collectAllInterfaces(superClass, result, visited);
+    }
+  }
+
+  private static void collectExternalContractClasses(@NotNull PsiClass serviceClass, @NotNull Set<? super PsiClass> contracts) {
+    PsiAnnotation annotation = findAnnotation(serviceClass, HelidonConstants.SERVICE_EXTERNAL_CONTRACTS);
+    if (annotation == null) return;
+    collectClassLiterals(annotation.findDeclaredAttributeValue("value"), contracts);
+  }
+
+  private static void collectClassLiterals(@Nullable PsiAnnotationMemberValue value, @NotNull Set<? super PsiClass> result) {
+    if (value instanceof PsiArrayInitializerMemberValue) {
+      for (PsiAnnotationMemberValue initializer : ((PsiArrayInitializerMemberValue)value).getInitializers()) {
+        collectClassLiterals(initializer, result);
+      }
+      return;
+    }
+    if (value instanceof PsiClassObjectAccessExpression) {
+      PsiTypeElement operand = ((PsiClassObjectAccessExpression)value).getOperand();
+      PsiType type = operand.getType();
+      if (type instanceof PsiClassType) {
+        PsiClass resolved = ((PsiClassType)type).resolve();
+        if (resolved != null) {
+          result.add(resolved);
+        }
+      }
+    }
+  }
+
+  private static @Nullable PsiElement getServiceUsageTarget(@NotNull PsiElement referenceElement) {
+    PsiClassObjectAccessExpression classObjectAccess =
+      PsiTreeUtil.getParentOfType(referenceElement, PsiClassObjectAccessExpression.class, false);
+    if (classObjectAccess != null && isServiceLookupClassLiteral(classObjectAccess)) {
+      return classObjectAccess;
+    }
+
+    PsiTypeElement typeElement = PsiTreeUtil.getParentOfType(referenceElement, PsiTypeElement.class, false);
+    if (typeElement == null) return null;
+
+    PsiField field = PsiTreeUtil.getParentOfType(typeElement, PsiField.class);
+    if (field != null && hasAnnotation(field, HelidonConstants.SERVICE_INJECT)) {
+      return field.getNameIdentifier() != null ? field.getNameIdentifier() : field;
+    }
+
+    PsiParameter parameter = PsiTreeUtil.getParentOfType(typeElement, PsiParameter.class);
+    if (parameter != null && isInjectedParameter(parameter)) {
+      return parameter.getNameIdentifier() != null ? parameter.getNameIdentifier() : parameter;
+    }
+    return null;
+  }
+
+  private static boolean isServiceLookupClassLiteral(@NotNull PsiClassObjectAccessExpression classObjectAccess) {
+    PsiExpressionList expressionList = PsiTreeUtil.getParentOfType(classObjectAccess, PsiExpressionList.class);
+    PsiMethodCallExpression methodCall = expressionList == null ? null : PsiTreeUtil.getParentOfType(expressionList, PsiMethodCallExpression.class);
+    if (methodCall == null || expressionList.getParent() != methodCall) return false;
+
+    PsiExpression[] expressions = expressionList.getExpressions();
+    if (expressions.length == 0 || expressions[0] != classObjectAccess) return false;
+
+    PsiMethod method = methodCall.resolveMethod();
+    if (method == null || !SERVICE_LOOKUP_METHODS.contains(method.getName())) return false;
+
+    PsiClass containingClass = method.getContainingClass();
+    String containingClassName = containingClass == null ? null : containingClass.getQualifiedName();
+    return HelidonConstants.SERVICE_REGISTRY_SERVICES.equals(containingClassName) ||
+           HelidonConstants.SERVICE_REGISTRY.equals(containingClassName);
+  }
+
+  private static boolean isInjectedParameter(@NotNull PsiParameter parameter) {
+    PsiElement parent = parameter.getDeclarationScope();
+    return parent instanceof PsiMethod && hasAnnotation((PsiMethod)parent, HelidonConstants.SERVICE_INJECT);
+  }
+
+  private static boolean hasAnnotationOrMetaAnnotation(@NotNull PsiModifierListOwner owner,
+                                                       @NotNull Set<String> annotations,
+                                                       @NotNull Set<? super PsiModifierListOwner> visited) {
+    if (!visited.add(owner)) return false;
+    for (PsiAnnotation annotation : getAnnotations(owner)) {
+      String qualifiedName = annotation.getQualifiedName();
+      if (qualifiedName != null && annotations.contains(qualifiedName)) {
+        return true;
+      }
+      PsiClass annotationClass = annotation.resolveAnnotationType();
+      if (annotationClass != null && hasAnnotationOrMetaAnnotation(annotationClass, annotations, visited)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static boolean hasAnnotation(@NotNull PsiModifierListOwner owner, @NotNull String annotationName) {
+    return findAnnotation(owner, annotationName) != null;
+  }
+
+  private static @Nullable PsiAnnotation findAnnotation(@NotNull PsiModifierListOwner owner, @NotNull String annotationName) {
+    for (PsiAnnotation annotation : getAnnotations(owner)) {
+      if (annotationName.equals(annotation.getQualifiedName())) {
+        return annotation;
+      }
+    }
+    return null;
+  }
+
+  private static @NotNull PsiAnnotation[] getAnnotations(@NotNull PsiModifierListOwner owner) {
+    PsiModifierList modifierList = owner.getModifierList();
+    return modifierList == null ? PsiAnnotation.EMPTY_ARRAY : modifierList.getAnnotations();
+  }
+}

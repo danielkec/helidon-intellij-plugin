@@ -41,6 +41,11 @@ Before widening the supported IDE range, run `./gradlew verifyPlugin` against
 the new target IDE build and update both `build.gradle.kts` and
 `docs/updatePlugins.xml` in the same release.
 
+The base plugin descriptor is compatible with IntelliJ IDEA Community. Helidon
+configuration, Endpoints, URL resolver, URL inlay, and path-variable support are
+loaded from an optional microservices descriptor when `com.intellij.microservices.jvm`
+is available.
+
 ## Distribution Identity
 
 This fork intentionally keeps the inherited plugin id `com.intellij.helidon`
@@ -74,7 +79,9 @@ IDEA_HOME_PATH=/path/to/intellij/community ./gradlew test
 
 ## Notes
 
-- The plugin declares several IntelliJ Ultimate/platform bundled dependencies.
+- The plugin compiles against the IntelliJ IDEA 2026.1 SDK with optional
+  microservices APIs available at build time. Runtime microservices integrations
+  are declared in optional descriptor files under `resources/META-INF`.
 - `gen/` is part of the main source set and should be kept under version control.
 - Test-only IntelliJ platform dependencies are declared with `testBundledPlugin` so
   they do not leak into the runtime sandbox classpath.

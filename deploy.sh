@@ -19,7 +19,7 @@ The script:
   1. Requires a clean git worktree.
   2. Bumps the plugin version in build.gradle.kts.
   3. Updates README.md and docs/updatePlugins.xml.
-  4. Runs ./gradlew clean buildPlugin.
+  4. Runs ./gradlew clean buildPlugin verifyPlugin.
   5. Commits the release metadata.
   6. Creates and pushes tag v<VERSION>.
   7. Creates a GitHub release with build/distributions/Helidon-<VERSION>.zip.
@@ -254,7 +254,7 @@ Release URL:      $release_url
 Artifact:         $asset
 
 Commands that would run:
-  ./gradlew clean buildPlugin
+  ./gradlew clean buildPlugin verifyPlugin
   git -c core.editor=: -c commit.gpgsign=false commit --no-verify -F <release-message-file>
   git -c core.editor=: -c tag.gpgSign=false tag --no-sign -a "$tag" -F <release-message-file>
   git push origin "$branch"
@@ -338,8 +338,8 @@ else:
             "IDE since-build")
 PY
 
-echo "Building Helidon plugin $new_version..."
-./gradlew clean buildPlugin
+echo "Building and verifying Helidon plugin $new_version..."
+./gradlew clean buildPlugin verifyPlugin
 
 [[ -f "$asset" ]] || die "expected plugin artifact not found: $asset"
 

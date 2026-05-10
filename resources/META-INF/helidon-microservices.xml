@@ -29,8 +29,6 @@
     <!-- Config -->
     <psi.referenceContributor language="UAST"
                               implementation="com.intellij.helidon.config.HelidonConfigPropertyReferenceContributor"/>
-    <psi.referenceContributor language="kotlin"
-                              implementation="com.intellij.helidon.config.HelidonKotlinConfigPropertyReferenceContributor"/>
 
     <!-- Properties -->
     <annotator language="Properties"

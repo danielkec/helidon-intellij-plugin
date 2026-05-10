@@ -59,6 +59,10 @@ configuration, Endpoints, URL resolver, URL inlay, and path-variable support are
 loaded from an optional microservices descriptor when `com.intellij.microservices.jvm`
 is available.
 
+Helidon source-language assistance targets Java source files. Kotlin Helidon
+source support is intentionally not registered; the Kotlin Gradle plugin remains
+only because the plugin implementation and tests are written in Kotlin.
+
 ## Distribution Identity
 
 This fork intentionally keeps the inherited plugin id `com.intellij.helidon`

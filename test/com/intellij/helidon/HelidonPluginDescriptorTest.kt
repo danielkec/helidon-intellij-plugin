@@ -40,9 +40,16 @@ class HelidonPluginDescriptorTest {
       .replace(Regex("\\s+"), " ")
       .trim()
 
-    assertTrue(description.contains("Endpoints tool window, URL resolver and inlay support, declarative HTTP endpoint " +
-                                      "route navigation, and Helidon configuration assistance require IntelliJ IDEA " +
-                                      "Ultimate with the optional Microservices integration."))
+    listOf(
+      "Endpoints tool window",
+      "URL resolver",
+      "declarative HTTP endpoint",
+      "Helidon configuration",
+      "IntelliJ IDEA Ultimate",
+      "Microservices integration",
+    ).forEach { expected ->
+      assertTrue("Description should mention $expected", description.contains(expected))
+    }
   }
 
   @Test

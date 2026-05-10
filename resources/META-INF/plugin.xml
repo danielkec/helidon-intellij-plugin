@@ -11,11 +11,11 @@
     <ul>
       <li>Create Helidon Maven projects from the IDE.</li>
       <li>Navigate between Helidon services, injection points, and service registry lookups.</li>
-      <li>Discover Helidon WebServer and RestServer endpoints in the Endpoints tool window.</li>
-      <li>Open gutter navigation for Helidon routes, declarative HTTP endpoints, and declarative services.</li>
-      <li>Complete, inspect, document, and rename Helidon configuration keys in YAML and properties files.</li>
+      <li>Open gutter navigation for Helidon declarative services.</li>
+      <li>With IntelliJ IDEA Ultimate and the optional Microservices integration enabled: discover Helidon WebServer and
+        RestServer endpoints in the Endpoints tool window, use URL resolver and inlay support, navigate declarative HTTP
+        endpoint routes, and work with Helidon configuration keys in YAML and properties files.</li>
     </ul>
-    <p>Endpoints tool window, URL resolver and inlay support, declarative HTTP endpoint route navigation, and Helidon configuration assistance require IntelliJ IDEA Ultimate with the optional Microservices integration.</p>
   ]]></description>
 
   <dependencies>

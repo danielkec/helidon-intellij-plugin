@@ -193,6 +193,18 @@ class HelidonStarterClientTest {
     assertEquals(listOf("h2", "mysql", "oracledb"), model.databaseServers(HELIDON_MP_FLAVOR).map { it.value })
   }
 
+  @Test
+  fun wizardAuthenticationProvidersHideGoogleLogin() {
+    val providers = listOf(
+      HelidonStarterOption("oidc", "OIDC"),
+      HelidonStarterOption("jwt", "JWT"),
+      HelidonStarterOption("google", "Google Login"),
+      HelidonStarterOption("http-signature", "HTTP Signature")
+    )
+
+    assertEquals(listOf("oidc", "jwt", "http-signature"), wizardAuthenticationProviders(providers).map { it.value })
+  }
+
   @Test(expected = HelidonStarterUnsupportedException::class)
   fun generateRejectsMetadataWithoutMavenSupport() {
     val starterUrl = "https://starter.test/starter"

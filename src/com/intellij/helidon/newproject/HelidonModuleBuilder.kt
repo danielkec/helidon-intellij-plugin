@@ -141,7 +141,6 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
     private var secureCheckBox: JCheckBox? = null
     private var oidcCheckBox: JCheckBox? = null
     private var jwtCheckBox: JCheckBox? = null
-    private var googleCheckBox: JCheckBox? = null
     private var httpSignatureCheckBox: JCheckBox? = null
     private var abacCheckBox: JCheckBox? = null
     private var seExtrasRow: Row? = null
@@ -312,13 +311,6 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
             }
           }
           row("Providers:") {
-            checkBox("Google Login").component.apply {
-              googleCheckBox = this
-              addActionListener {
-                if (syncing) return@addActionListener
-                setOptions(currentOptions.copy(authenticationProviders = currentOptions.authenticationProviders.toggle("google", isSelected)))
-              }
-            }
             checkBox("HTTP Signature").component.apply {
               httpSignatureCheckBox = this
               addActionListener {
@@ -510,7 +502,7 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
         val availableDatabaseServerOptions = databaseServers(flavor)
         val availableJpaOptions = jpaImplementations()
         val availableConnectionPoolOptions = connectionPools()
-        val availableAuthenticationProviderOptions = metadataModel.authenticationProviders
+        val availableAuthenticationProviderOptions = wizardAuthenticationProviders(metadataModel.authenticationProviders)
         val availableAuthorizationProviderOptions = metadataModel.authorizationProviders
         val availableExtraOptions = extras(flavor)
         val availableMetricsProviderOptions = metricsProviders()
@@ -540,7 +532,6 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
         secureCheckBox?.isSelected = currentOptions.security
         oidcCheckBox?.isSelected = "oidc" in currentOptions.authenticationProviders
         jwtCheckBox?.isSelected = "jwt" in currentOptions.authenticationProviders
-        googleCheckBox?.isSelected = "google" in currentOptions.authenticationProviders
         httpSignatureCheckBox?.isSelected = "http-signature" in currentOptions.authenticationProviders
         abacCheckBox?.isSelected = "abac" in currentOptions.authorizationProviders
         webClientCheckBox?.isSelected = "webclient" in currentOptions.extras
@@ -572,7 +563,6 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
         connectionPoolCombo?.isVisible = availableConnectionPoolOptions.isNotEmpty()
         oidcCheckBox?.isVisible = availableAuthenticationProviderOptions.hasValue("oidc")
         jwtCheckBox?.isVisible = availableAuthenticationProviderOptions.hasValue("jwt")
-        googleCheckBox?.isVisible = availableAuthenticationProviderOptions.hasValue("google")
         httpSignatureCheckBox?.isVisible = availableAuthenticationProviderOptions.hasValue("http-signature")
         abacCheckBox?.isVisible = availableAuthorizationProviderOptions.hasValue("abac")
         webClientCheckBox?.isVisible = availableExtraOptions.hasValue("webclient")
@@ -593,7 +583,7 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
         persistenceUnitField?.isEnabled = mpDatabaseOptionsVisible
         dataSourceField?.isEnabled = mpDatabaseOptionsVisible
         secureCheckBox?.isEnabled = custom
-        listOf(oidcCheckBox, jwtCheckBox, googleCheckBox, httpSignatureCheckBox, abacCheckBox)
+        listOf(oidcCheckBox, jwtCheckBox, httpSignatureCheckBox, abacCheckBox)
           .setEnabled(custom && currentOptions.security)
         webClientCheckBox?.isEnabled = custom && flavor == HELIDON_SE_FLAVOR
         listOf(faultToleranceCheckBox, corsCheckBox, coherenceCheckBox).setEnabled(custom)

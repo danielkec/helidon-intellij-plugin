@@ -31,8 +31,12 @@ internal const val HELIDON_QUICKSTART_APP_TYPE = "quickstart"
 internal const val HELIDON_DATABASE_APP_TYPE = "database"
 internal const val HELIDON_CUSTOM_APP_TYPE = "custom"
 internal const val HELIDON_OCI_APP_TYPE = "oci"
+private const val HELIDON_GOOGLE_AUTHENTICATION_PROVIDER = "google"
 
 internal data class HelidonStarterOption(val value: String, val label: String)
+
+internal fun wizardAuthenticationProviders(options: List<HelidonStarterOption>): List<HelidonStarterOption> =
+  options.filterNot { it.value == HELIDON_GOOGLE_AUTHENTICATION_PROVIDER }
 
 internal data class HelidonStarterMetadataModel(
   val buildSystems: List<HelidonStarterOption>,

@@ -191,6 +191,28 @@ class HelidonStarterClientTest {
     assertEquals(listOf("jackson", "jsonb"), model.jsonLibraries(HELIDON_MP_FLAVOR).map { it.value })
     assertEquals(listOf("h2", "mysql", "oracledb", "mongodb"), model.databaseServers(HELIDON_SE_FLAVOR).map { it.value })
     assertEquals(listOf("h2", "mysql", "oracledb"), model.databaseServers(HELIDON_MP_FLAVOR).map { it.value })
+    assertEquals(listOf("oidc", "jwt", "google", "http-signature"), model.authenticationProviders.map { it.value })
+  }
+
+  @Test
+  fun wizardAuthenticationProvidersHideGoogleLogin() {
+    val model = HelidonStarterMetadata(starterMetadata()).model()
+
+    assertEquals(listOf("oidc", "jwt", "google", "http-signature"), model.authenticationProviders.map { it.value })
+    assertEquals(listOf("oidc", "jwt", "http-signature"), wizardAuthenticationProviders(model.authenticationProviders).map { it.value })
+  }
+
+  @Test
+  fun wizardOptionsRemoveHiddenGoogleAuthenticationProvider() {
+    val options = HelidonStarterOptions(
+      appType = HELIDON_CUSTOM_APP_TYPE,
+      security = true,
+      authenticationProviders = listOf("oidc", "google", "jwt", "http-signature"),
+      authorizationProviders = listOf("abac")
+    ).normalizedForStarter()
+
+    assertEquals(listOf("oidc", "google", "jwt", "http-signature"), options.authenticationProviders)
+    assertEquals(listOf("oidc", "jwt", "http-signature"), options.withWizardAuthenticationProviders().authenticationProviders)
   }
 
   @Test(expected = HelidonStarterUnsupportedException::class)
@@ -521,6 +543,39 @@ class HelidonStarterClientTest {
                           ]
                         }
                       ]
+                    }
+                  ]
+                },
+                {
+                  "kind": "list",
+                  "id": "atn",
+                  "children": [
+                    {
+                      "kind": "option",
+                      "value": "oidc"
+                    },
+                    {
+                      "kind": "option",
+                      "value": "jwt"
+                    },
+                    {
+                      "kind": "option",
+                      "name": "Google Login",
+                      "value": "google"
+                    },
+                    {
+                      "kind": "option",
+                      "value": "http-signature"
+                    }
+                  ]
+                },
+                {
+                  "kind": "list",
+                  "id": "atz",
+                  "children": [
+                    {
+                      "kind": "option",
+                      "value": "abac"
                     }
                   ]
                 }

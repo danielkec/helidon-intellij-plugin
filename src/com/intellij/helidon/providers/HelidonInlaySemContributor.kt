@@ -23,6 +23,10 @@ internal class HelidonInlaySemContributor : SemContributor() {
     val pattern = StandardPatterns.or(
       httpRulesMethods(uExpression()),
       anyOfMethod(uExpression()),
+      routeMethod(uExpression()),
+      routeObjectFactoryMethod(uExpression()),
+      httpRouteBuilderPathMethod(uExpression()),
+      pathMatcherFactoryMethod(uExpression()),
       serviceMethodCallPattern(uExpression())
     )
     registrar.registerUastSemProvider(

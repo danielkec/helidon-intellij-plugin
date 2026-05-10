@@ -96,6 +96,65 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
     })
   }
 
+  fun testRegisteredServiceGroupExpandsRouteOverloadEndpoints() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Method;
+      import io.helidon.webserver.http.HttpRoute;
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.HttpRules;
+      import io.helidon.webserver.http.HttpService;
+      import io.helidon.webserver.http.ServerRequest;
+      import io.helidon.webserver.http.ServerResponse;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.register("/api/{tenant}", new GreetingService());
+        }
+      }
+
+      class GreetingService implements HttpService {
+        @Override
+        public void routing(HttpRules rules) {
+          rules.route(Method.GET, "/route/{name}", this::hello);
+          rules.route(HttpRoute.builder()
+            .methods(Method.POST)
+            .path("/built/{name}")
+            .handler(this::hello)
+            .build());
+          rules.get(this::root);
+        }
+
+        void hello(ServerRequest request, ServerResponse response) {
+        }
+
+        void root(ServerRequest request, ServerResponse response) {
+        }
+      }
+    """.trimIndent())
+
+    val groupEndpoint = collectBuilderEndpoints().first {
+      it.type == HelidonRequestMethods.REGISTER && it.urlDefinition == "/api/{tenant}"
+    }
+
+    val endpoints = HelidonUrlFramework().getEndpoints(groupEndpoint).toList()
+
+    assertTrue(endpoints.any {
+      it.type == HelidonRequestMethods.GET &&
+      it.parentUrl == "/api/{tenant}" &&
+      it.urlDefinition == "/route/{name}"
+    })
+    assertTrue(endpoints.any {
+      it.type == HelidonRequestMethods.POST &&
+      it.parentUrl == "/api/{tenant}" &&
+      it.urlDefinition == "/built/{name}"
+    })
+    assertTrue(endpoints.any {
+      it.type == HelidonRequestMethods.GET &&
+      it.parentUrl == "/api/{tenant}" &&
+      it.urlDefinition == "/"
+    })
+  }
+
   private fun collectBuilderEndpoints(): Collection<HelidonUrlTargetInfo> {
     val processor = CollectProcessor<HelidonUrlTargetInfo>()
     val module = ModuleUtilCore.findModuleForPsiElement(myFixture.file)!!

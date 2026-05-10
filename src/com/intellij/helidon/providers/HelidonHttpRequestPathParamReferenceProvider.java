@@ -103,7 +103,11 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
     PsiMethod routeMethod = methodCallExpression.resolveMethod();
     if (routeMethod == null) return true;
 
-    int pathArgumentIndex = getRoutePathArgumentIndex(routeMethod);
+    if (isHelidonHttpRouteBuilderHandlerMethod(routeMethod)) {
+      return processHttpRouteBuilderHandlerPathVariables(methodCallExpression, processor);
+    }
+
+    int pathArgumentIndex = getHelidonRoutePathArgumentIndex(routeMethod);
     if (pathArgumentIndex < 0) return true;
 
     PsiExpression[] expressions = methodCallExpression.getArgumentList().getExpressions();
@@ -120,13 +124,64 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
     return true;
   }
 
-  private static int getRoutePathArgumentIndex(@NotNull PsiMethod routeMethod) {
-    if (getHttpMethodsPattern().accepts(routeMethod)) return 0;
-    if (getAnyOfMethodPattern().accepts(routeMethod)) return 1;
-    if (!getRegisterMethodPattern().accepts(routeMethod)) return -1;
+  private static boolean processHttpRouteBuilderHandlerPathVariables(@NotNull PsiMethodCallExpression methodCallExpression,
+                                                                     @NotNull Processor<? super PomTargetPsiElement> processor) {
+    PsiExpression pathExpression = findHttpRouteBuilderPathExpression(methodCallExpression);
+    if (pathExpression == null) return true;
+    if (!processPathVariableDefinitions(pathExpression, processor)) {
+      return false;
+    }
+    for (UExpression parentPathExpression : HelidonCommonUtils.getParentUrlPathExpressions(methodCallExpression)) {
+      PsiElement sourcePsi = parentPathExpression.getSourcePsi();
+      if (sourcePsi != null && !processPathVariableDefinitions(sourcePsi, processor)) {
+        return false;
+      }
+    }
+    return true;
+  }
 
-    PsiParameter[] parameters = routeMethod.getParameterList().getParameters();
-    return parameters.length > 0 && parameters[0].getType().equalsToText(CommonClassNames.JAVA_LANG_STRING) ? 0 : -1;
+  private static @Nullable PsiExpression findHttpRouteBuilderPathExpression(@Nullable PsiExpression expression) {
+    return findHttpRouteBuilderPathExpression(expression, new HashSet<>());
+  }
+
+  private static @Nullable PsiExpression findHttpRouteBuilderPathExpression(@Nullable PsiExpression expression,
+                                                                           @NotNull Set<? super PsiElement> stack) {
+    expression = unwrapExpression(expression);
+    if (expression == null || !stack.add(expression)) return null;
+    try {
+      if (expression instanceof PsiMethodCallExpression) {
+        PsiMethodCallExpression callExpression = (PsiMethodCallExpression)expression;
+        PsiMethod method = callExpression.resolveMethod();
+        if (method != null && getHttpRouteBuilderPathMethodPattern().accepts(method)) {
+          PsiExpression[] arguments = callExpression.getArgumentList().getExpressions();
+          return arguments.length == 0 ? null : arguments[0];
+        }
+        return findHttpRouteBuilderPathExpression(callExpression.getMethodExpression().getQualifierExpression(), stack);
+      }
+      if (expression instanceof PsiReferenceExpression) {
+        PsiElement resolved = ((PsiReferenceExpression)expression).resolve();
+        if (resolved instanceof PsiVariable) {
+          return findHttpRouteBuilderPathExpression(((PsiVariable)resolved).getInitializer(), stack);
+        }
+      }
+      return null;
+    }
+    finally {
+      stack.remove(expression);
+    }
+  }
+
+  private static @Nullable PsiExpression unwrapExpression(@Nullable PsiExpression expression) {
+    PsiExpression current = expression;
+    while (current instanceof PsiParenthesizedExpression || current instanceof PsiTypeCastExpression) {
+      if (current instanceof PsiParenthesizedExpression) {
+        current = ((PsiParenthesizedExpression)current).getExpression();
+      }
+      else {
+        current = ((PsiTypeCastExpression)current).getOperand();
+      }
+    }
+    return current;
   }
 
   private static boolean processPathVariableDefinitions(@NotNull PsiElement expression,

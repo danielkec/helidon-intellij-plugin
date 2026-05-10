@@ -13,12 +13,18 @@ public interface HelidonConstants {
   @NonNls String HTTP_ROUTING_BUILDER = "io.helidon.webserver.http.HttpRouting.Builder";
   @NonNls String HTTP_RULES = "io.helidon.webserver.http.HttpRules";
   @NonNls String HTTP_SERVICE = "io.helidon.webserver.http.HttpService";
+  @NonNls String HTTP_ROUTE = "io.helidon.webserver.http.HttpRoute";
+  @NonNls String HTTP_ROUTE_BUILDER = "io.helidon.webserver.http.HttpRoute.Builder";
   @NonNls String HTTP_HANDLER = "io.helidon.webserver.http.Handler";
   @NonNls String HTTP_SERVER_REQUEST = "io.helidon.webserver.http.ServerRequest";
   @NonNls String HTTP_SERVER_RESPONSE = "io.helidon.webserver.http.ServerResponse";
   @NonNls String HTTP_PARAMETERS = "io.helidon.common.parameters.Parameters";
   @NonNls String REST_SERVER_ENDPOINT = "io.helidon.webserver.http.RestServer.Endpoint";
 
+  @NonNls String HTTP_METHOD = "io.helidon.http.Method";
+  @NonNls String HTTP_METHOD_PREDICATE = "io.helidon.http.MethodPredicate";
+  @NonNls String HTTP_PATH_MATCHER = "io.helidon.http.PathMatcher";
+  @NonNls String HTTP_PATH_MATCHERS = "io.helidon.http.PathMatchers";
   @NonNls String HTTP_PATH = "io.helidon.http.Http.Path";
   @NonNls String HTTP_HTTP_METHOD = "io.helidon.http.Http.HttpMethod";
   @NonNls String HTTP_PATH_PARAM = "io.helidon.http.Http.PathParam";
@@ -34,7 +40,9 @@ public interface HelidonConstants {
   @NonNls String ROUTING_BUILDER = "io.helidon.webserver.Routing.Builder";
   @NonNls String ROUTING_RULES = "io.helidon.webserver.Routing.Rules";
   @NonNls String SERVICE = "io.helidon.webserver.Service";
+  @NonNls String LEGACY_HTTP_ROUTE = "io.helidon.webserver.HttpRoute";
   @NonNls String HANDLER = "io.helidon.webserver.Handler";
+  @NonNls String LEGACY_PATH_MATCHER = "io.helidon.webserver.PathMatcher";
   @NonNls String HTTP_REQUEST_PATH = "io.helidon.common.http.HttpRequest.Path";
   @NonNls String LEGACY_HTTP_SERVER_REQUEST = "io.helidon.webserver.ServerRequest";
   @NonNls String LEGACY_HTTP_SERVER_RESPONSE = "io.helidon.webserver.ServerResponse";

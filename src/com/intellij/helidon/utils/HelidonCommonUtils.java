@@ -393,8 +393,8 @@ public final class HelidonCommonUtils {
                                                 @NotNull SearchScope scope,
                                                 @Nullable Module module) {
     if (module == null) return true;
-    for (Pair<PsiMethod, HelidonRequestMethods> rulesMethod : getRulesHttpMethods(module)) {
-      if (!findAndProcessTargets(processor, scope, rulesMethod.first, rulesMethod.second, getPathArgumentIndex(rulesMethod.second))) {
+    for (RouteMethod rulesMethod : getRulesHttpMethods(module)) {
+      if (!findAndProcessTargets(processor, scope, rulesMethod)) {
         return false;
       }
     }
@@ -405,8 +405,8 @@ public final class HelidonCommonUtils {
                                                   @NotNull SearchScope scope,
                                                   @Nullable Module module) {
     if (module == null) return true;
-    for (Pair<PsiMethod, HelidonRequestMethods> rulesMethod : getBuilderHttpMethods(module)) {
-      if (!findAndProcessTargets(processor, scope, rulesMethod.first, rulesMethod.second, getPathArgumentIndex(rulesMethod.second), true)) {
+    for (RouteMethod rulesMethod : getBuilderHttpMethods(module)) {
+      if (!findAndProcessTargets(processor, scope, rulesMethod, true)) {
         return false;
       }
     }
@@ -624,10 +624,6 @@ public final class HelidonCommonUtils {
     return null;
   }
 
-  private static int getPathArgumentIndex(@NotNull HelidonRequestMethods requestMethods) {
-    return requestMethods == HelidonRequestMethods.ANY_OF ? 1 : 0;
-  }
-
   private static boolean findAndProcessTargets(@NotNull Processor<? super HelidonUrlTargetInfo> processor,
                                                @NotNull SearchScope scope,
                                                @NotNull PsiMethod psiMethod,
@@ -649,6 +645,107 @@ public final class HelidonCommonUtils {
       if (!processExpressions(processor, requestMethods, expression, getExplicitMethods(requestMethods, callExpression))) return false;
     }
     return true;
+  }
+
+  private static boolean findAndProcessTargets(@NotNull Processor<? super HelidonUrlTargetInfo> processor,
+                                               @NotNull SearchScope scope,
+                                               @NotNull RouteMethod routeMethod) {
+    return findAndProcessTargets(processor, scope, routeMethod, false);
+  }
+
+  private static boolean findAndProcessTargets(@NotNull Processor<? super HelidonUrlTargetInfo> processor,
+                                               @NotNull SearchScope scope,
+                                               @NotNull RouteMethod routeMethod,
+                                               boolean skipServiceClasses) {
+    for (UCallExpression callExpression : getUCallExpressions(scope, routeMethod.method)) {
+      if (skipServiceClasses && isInsideHttpServiceClass(callExpression)) continue;
+      if (routeMethod.routeObjectRegistration) {
+        if (!processHttpRouteObjectTargets(processor, routeMethod, callExpression)) return false;
+        continue;
+      }
+      Collection<String> explicitMethods = getRouteExplicitMethods(routeMethod, callExpression);
+      HelidonRequestMethods requestMethod = routeMethod.getRequestMethod(explicitMethods);
+      Collection<String> methods = getStoredExplicitMethods(requestMethod, explicitMethods);
+
+      if (routeMethod.pathArgumentIndex >= 0) {
+        UExpression expression = callExpression.getArgumentForParameter(routeMethod.pathArgumentIndex);
+        if (expression == null) continue;
+        if (!processExpressions(processor, requestMethod, expression, methods)) return false;
+        continue;
+      }
+
+      PsiElement sourcePsi = callExpression.getSourcePsi();
+      if (sourcePsi != null &&
+          !processTarget(processor, sourcePsi, routeMethod.defaultPath, requestMethod, methods, getParentUrlPaths(sourcePsi))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private static boolean processHttpRouteObjectTargets(@NotNull Processor<? super HelidonUrlTargetInfo> processor,
+                                                       @NotNull RouteMethod routeMethod,
+                                                       @NotNull UCallExpression callExpression) {
+    UExpression routeExpression = callExpression.getArgumentForParameter(0);
+    if (routeExpression == null) return true;
+
+    for (HttpRouteTarget target : getHttpRouteTargets(routeExpression)) {
+      Collection<String> explicitMethods = target.explicitMethods;
+      HelidonRequestMethods requestMethod = routeMethod.getRequestMethod(explicitMethods);
+      Collection<String> methods = getStoredExplicitMethods(requestMethod, explicitMethods);
+      if (target.pathExpression != null) {
+        if (!processExpressions(processor, requestMethod, target.pathExpression, methods)) return false;
+      }
+      else if (target.defaultPath != null &&
+               !processTarget(processor,
+                              target.sourcePsi,
+                              target.defaultPath,
+                              requestMethod,
+                              methods,
+                              getParentUrlPaths(target.sourcePsi))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private static @Nullable Collection<String> getRouteExplicitMethods(@NotNull RouteMethod routeMethod,
+                                                                      @NotNull UCallExpression callExpression) {
+    if (routeMethod.methodArgumentIndex < 0) return null;
+    UExpression methodsExpression = callExpression.getArgumentForParameter(routeMethod.methodArgumentIndex);
+    return getExplicitMethods(methodsExpression);
+  }
+
+  private static @Nullable Collection<String> getExplicitMethods(@Nullable UExpression methodsExpression) {
+    if (methodsExpression == null) return null;
+
+    PsiElement sourcePsi = methodsExpression.getSourcePsi();
+    if (sourcePsi instanceof PsiExpression) {
+      return getExplicitMethods((PsiExpression)sourcePsi);
+    }
+
+    String expressionText = getUExpressionText(methodsExpression);
+    if (expressionText != null) {
+      return createMethodSet(expressionText);
+    }
+    return null;
+  }
+
+  private static @NotNull HelidonRequestMethods getRequestMethodFromExplicitMethods(@Nullable Collection<String> explicitMethods) {
+    if (explicitMethods == null || explicitMethods.isEmpty()) return HelidonRequestMethods.UNKNOWN;
+    if (explicitMethods.size() > 1) return HelidonRequestMethods.ANY_OF;
+    return HelidonRequestMethods.getTypeByMethodName(explicitMethods.iterator().next().toLowerCase(Locale.ENGLISH));
+  }
+
+  private static @Nullable Collection<String> getStoredExplicitMethods(@NotNull HelidonRequestMethods requestMethod,
+                                                                       @Nullable Collection<String> explicitMethods) {
+    if (explicitMethods == null || explicitMethods.isEmpty()) return null;
+    if (requestMethod == HelidonRequestMethods.UNKNOWN ||
+        requestMethod == HelidonRequestMethods.ANY_OF ||
+        explicitMethods.size() > 1) {
+      return explicitMethods;
+    }
+    return null;
   }
 
   private static boolean processExpressions(@NotNull Processor<? super HelidonUrlTargetInfo> processor,
@@ -714,7 +811,11 @@ public final class HelidonCommonUtils {
       return method == null ? null : createMethodSet(method);
     }
     if (expression instanceof PsiMethodCallExpression) {
-      return getExplicitMethodCallMethods((PsiMethodCallExpression)expression);
+      PsiMethodCallExpression methodCallExpression = (PsiMethodCallExpression)expression;
+      Set<String> methods = getExplicitMethodCallMethods(methodCallExpression);
+      if (methods != null) return methods;
+      String method = getStaticRequestMethodName(methodCallExpression);
+      return method == null ? null : createMethodSet(method);
     }
     if (expression instanceof PsiArrayInitializerExpression) {
       return getExplicitMethods(((PsiArrayInitializerExpression)expression).getInitializers());
@@ -731,6 +832,10 @@ public final class HelidonCommonUtils {
     PsiMethod method = expression.resolveMethod();
     PsiClass containingClass = method == null ? null : method.getContainingClass();
     String containingClassName = containingClass == null ? null : containingClass.getQualifiedName();
+    if (HelidonConstants.HTTP_METHOD.equals(containingClassName) && "predicate".equals(methodName)) {
+      PsiExpression[] arguments = expression.getArgumentList().getExpressions();
+      return arguments.length == 1 ? getExplicitMethods(arguments[0]) : getExplicitMethods(arguments);
+    }
     if (!isSupportedMethodCollectionFactory(containingClassName, methodName)) {
       return null;
     }
@@ -766,6 +871,146 @@ public final class HelidonCommonUtils {
     return methods.isEmpty() ? null : methods;
   }
 
+  private static @NotNull Collection<HttpRouteTarget> getHttpRouteTargets(@NotNull UExpression routeExpression) {
+    PsiElement sourcePsi = routeExpression.getSourcePsi();
+    if (!(sourcePsi instanceof PsiExpression)) return Collections.emptyList();
+    return getHttpRouteTargets((PsiExpression)sourcePsi, new HashSet<>());
+  }
+
+  private static @NotNull Collection<HttpRouteTarget> getHttpRouteTargets(@Nullable PsiExpression expression,
+                                                                          @NotNull Set<PsiElement> stack) {
+    expression = unwrapExpression(expression);
+    if (expression == null || !stack.add(expression)) return Collections.emptyList();
+    try {
+      if (expression instanceof PsiReferenceExpression) {
+        PsiElement resolved = ((PsiReferenceExpression)expression).resolve();
+        if (resolved instanceof PsiVariable) {
+          return getHttpRouteTargets(((PsiVariable)resolved).getInitializer(), stack);
+        }
+        return Collections.emptyList();
+      }
+
+      if (expression instanceof PsiLambdaExpression) {
+        return getHttpRouteTargetsFromLambda((PsiLambdaExpression)expression, stack);
+      }
+
+      if (!(expression instanceof PsiMethodCallExpression)) return Collections.emptyList();
+
+      PsiMethodCallExpression callExpression = (PsiMethodCallExpression)expression;
+      PsiMethod method = callExpression.resolveMethod();
+      if (method == null) return Collections.emptyList();
+
+      if (getRouteObjectFactoryMethodPattern().accepts(method)) {
+        return getLegacyHttpRouteFactoryTarget(callExpression);
+      }
+
+      PsiType callType = callExpression.getType();
+      if ("build".equals(callExpression.getMethodExpression().getReferenceName()) &&
+          callType != null &&
+          isAssignableToAny(callType, method.getProject(), HelidonConstants.HTTP_ROUTE)) {
+        HttpRouteBuilderInfo builderInfo = collectHttpRouteBuilderInfo(callExpression.getMethodExpression().getQualifierExpression(), stack);
+        return builderInfo == null ? Collections.emptyList() : builderInfo.toTargets();
+      }
+      return Collections.emptyList();
+    }
+    finally {
+      stack.remove(expression);
+    }
+  }
+
+  private static @NotNull Collection<HttpRouteTarget> getHttpRouteTargetsFromLambda(@NotNull PsiLambdaExpression lambdaExpression,
+                                                                                   @NotNull Set<PsiElement> stack) {
+    PsiElement body = lambdaExpression.getBody();
+    if (body instanceof PsiExpression) {
+      return getHttpRouteTargets((PsiExpression)body, stack);
+    }
+    if (body instanceof PsiCodeBlock) {
+      List<HttpRouteTarget> result = new ArrayList<>();
+      for (PsiStatement statement : ((PsiCodeBlock)body).getStatements()) {
+        if (statement instanceof PsiReturnStatement) {
+          result.addAll(getHttpRouteTargets(((PsiReturnStatement)statement).getReturnValue(), stack));
+        }
+      }
+      return result;
+    }
+    return Collections.emptyList();
+  }
+
+  private static @NotNull Collection<HttpRouteTarget> getLegacyHttpRouteFactoryTarget(@NotNull PsiMethodCallExpression callExpression) {
+    PsiExpression[] arguments = callExpression.getArgumentList().getExpressions();
+    if (arguments.length < 2) return Collections.emptyList();
+    UElement uElement = UastContextKt.toUElement(arguments[1]);
+    if (!(uElement instanceof UExpression)) return Collections.emptyList();
+    UExpression pathExpression = (UExpression)uElement;
+    return Collections.singletonList(new HttpRouteTarget(pathExpression, null, arguments[1], getExplicitMethods(arguments[0])));
+  }
+
+  private static @Nullable HttpRouteBuilderInfo collectHttpRouteBuilderInfo(@Nullable PsiExpression expression,
+                                                                            @NotNull Set<PsiElement> stack) {
+    expression = unwrapExpression(expression);
+    if (expression == null || !stack.add(expression)) return null;
+    try {
+      if (expression instanceof PsiReferenceExpression) {
+        PsiElement resolved = ((PsiReferenceExpression)expression).resolve();
+        if (resolved instanceof PsiVariable) {
+          return collectHttpRouteBuilderInfo(((PsiVariable)resolved).getInitializer(), stack);
+        }
+        return null;
+      }
+      if (!(expression instanceof PsiMethodCallExpression)) return null;
+
+      PsiMethodCallExpression callExpression = (PsiMethodCallExpression)expression;
+      PsiMethod method = callExpression.resolveMethod();
+      if (method == null) return null;
+
+      String methodName = callExpression.getMethodExpression().getReferenceName();
+      if ("builder".equals(methodName) && method.getParameterList().getParametersCount() == 0 && isHttpRouteType(method.getContainingClass())) {
+        return new HttpRouteBuilderInfo();
+      }
+
+      HttpRouteBuilderInfo info = collectHttpRouteBuilderInfo(callExpression.getMethodExpression().getQualifierExpression(), stack);
+      if (info == null) return null;
+
+      PsiExpression[] arguments = callExpression.getArgumentList().getExpressions();
+      if ("path".equals(methodName) && arguments.length == 1 && isHttpRouteBuilderMethod(method)) {
+        UElement uElement = UastContextKt.toUElement(arguments[0]);
+        if (uElement instanceof UExpression) {
+          info.pathExpression = (UExpression)uElement;
+          info.sourcePsi = arguments[0];
+        }
+      }
+      else if ("methods".equals(methodName) && arguments.length > 0 && isHttpRouteBuilderMethod(method)) {
+        info.explicitMethods = arguments.length == 1 ? getExplicitMethods(arguments[0]) : getExplicitMethods(arguments);
+      }
+      return info;
+    }
+    finally {
+      stack.remove(expression);
+    }
+  }
+
+  private static boolean isHttpRouteBuilderMethod(@NotNull PsiMethod method) {
+    PsiClass containingClass = method.getContainingClass();
+    return containingClass != null && HelidonConstants.HTTP_ROUTE_BUILDER.equals(containingClass.getQualifiedName());
+  }
+
+  private static boolean isHttpRouteType(@Nullable PsiClass psiClass) {
+    return psiClass != null && HelidonConstants.HTTP_ROUTE.equals(psiClass.getQualifiedName());
+  }
+
+  private static @Nullable PsiExpression unwrapExpression(@Nullable PsiExpression expression) {
+    PsiExpression current = expression;
+    while (current instanceof PsiParenthesizedExpression || current instanceof PsiTypeCastExpression) {
+      if (current instanceof PsiParenthesizedExpression) {
+        current = ((PsiParenthesizedExpression)current).getExpression();
+      }
+      else {
+        current = ((PsiTypeCastExpression)current).getOperand();
+      }
+    }
+    return current;
+  }
+
   private static @Nullable Set<String> createMethodSet(@Nullable Object value) {
     if (!(value instanceof String)) return null;
 
@@ -791,6 +1036,9 @@ public final class HelidonCommonUtils {
       PsiElement resolved = ((PsiReferenceExpression)expression).resolve();
       if (resolved instanceof PsiEnumConstant) {
         return ((PsiEnumConstant)resolved).getName();
+      }
+      if (resolved instanceof PsiField && isRequestMethodType(((PsiField)resolved).getType())) {
+        return ((PsiField)resolved).getName();
       }
       if (resolved instanceof PsiVariable) {
         PsiExpression initializer = ((PsiVariable)resolved).getInitializer();
@@ -855,6 +1103,14 @@ public final class HelidonCommonUtils {
                                                       @NotNull HelidonRequestMethods requestMethods,
                                                       @Nullable Collection<String> explicitMethods,
                                                       @NotNull PsiExpression expression) {
+    PsiExpression pathMatcherPattern = getPathMatcherFactoryPattern(expression);
+    if (pathMatcherPattern != null) {
+      UElement uElement = UastContextKt.toUElement(pathMatcherPattern);
+      if (uElement instanceof UExpression) {
+        return processExpressions(processor, requestMethods, (UExpression)uElement, explicitMethods);
+      }
+    }
+
     Pair<PsiElement, String> pair = StringExpressionHelper.evaluateExpression(expression);
     if (pair != null) {
       UElement uElement = UastContextKt.toUElement(pair.first);
@@ -864,6 +1120,32 @@ public final class HelidonCommonUtils {
       }
     }
     return true;
+  }
+
+  private static @Nullable PsiExpression getPathMatcherFactoryPattern(@NotNull PsiExpression expression) {
+    expression = unwrapExpression(expression);
+    if (!(expression instanceof PsiMethodCallExpression)) return null;
+
+    PsiMethodCallExpression callExpression = (PsiMethodCallExpression)expression;
+    PsiMethod method = callExpression.resolveMethod();
+    PsiClass containingClass = method == null ? null : method.getContainingClass();
+    String className = containingClass == null ? null : containingClass.getQualifiedName();
+    String methodName = callExpression.getMethodExpression().getReferenceName();
+    if (!isPathMatcherFactory(className, methodName)) return null;
+
+    PsiExpression[] arguments = callExpression.getArgumentList().getExpressions();
+    return arguments.length == 1 ? arguments[0] : null;
+  }
+
+  private static boolean isPathMatcherFactory(@Nullable String className, @Nullable String methodName) {
+    if (HelidonConstants.LEGACY_PATH_MATCHER.equals(className)) {
+      return "create".equals(methodName);
+    }
+    if (!HelidonConstants.HTTP_PATH_MATCHERS.equals(className)) return false;
+    return "create".equals(methodName) ||
+           "exact".equals(methodName) ||
+           "prefix".equals(methodName) ||
+           "pattern".equals(methodName);
   }
 
   private static boolean isInsideHttpServiceClass(@NotNull UCallExpression callExpression) {
@@ -893,6 +1175,23 @@ public final class HelidonCommonUtils {
     return true;
   }
 
+  private static boolean processTarget(@NotNull Processor<? super HelidonUrlTargetInfo> processor,
+                                       @NotNull PsiElement psiElement,
+                                       @NotNull String url,
+                                       HelidonRequestMethods requestMethods,
+                                       @Nullable Collection<String> explicitMethods,
+                                       @NotNull Set<String> parentUrlPaths) {
+    if (parentUrlPaths.isEmpty()) {
+      return processor.process(createTargetInfo(url, psiElement, requestMethods, explicitMethods));
+    }
+    for (String parentUrl : parentUrlPaths) {
+      if (!processor.process(createTargetInfo(url, psiElement, requestMethods, explicitMethods).withParentUrl(parentUrl))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   private static @NotNull HelidonUrlTargetInfo createTargetInfo(@NotNull String url,
                                                                 @NotNull PsiElement psiElement,
                                                                 @NotNull HelidonRequestMethods requestMethods,
@@ -904,7 +1203,27 @@ public final class HelidonCommonUtils {
     return targetInfo;
   }
 
-  private static @NotNull Collection<Pair<PsiMethod, HelidonRequestMethods>> getRulesHttpMethods(@NotNull Module module) {
+  private static @Nullable RouteMethod createRouteMethod(@NotNull PsiMethod method) {
+    if (isHelidonRouteObjectRegistrationMethod(method)) {
+      return new RouteMethod(method, HelidonRequestMethods.UNKNOWN, -1, -1, null, true, true);
+    }
+
+    int pathArgumentIndex = getHelidonRoutePathArgumentIndex(method);
+    int methodArgumentIndex = getHelidonRouteMethodArgumentIndex(method);
+    boolean pathless = isHelidonPathlessRouteMethod(method);
+    if (pathArgumentIndex < 0 && !pathless) return null;
+
+    HelidonRequestMethods requestMethod = methodArgumentIndex >= 0
+                                          ? HelidonRequestMethods.UNKNOWN
+                                          : HelidonRequestMethods.getTypeByMethodName(method.getName());
+    if (getAnyOfMethodPattern().accepts(method)) {
+      requestMethod = HelidonRequestMethods.ANY_OF;
+    }
+    boolean requestMethodFromArgument = methodArgumentIndex >= 0 && requestMethod != HelidonRequestMethods.ANY_OF;
+    return new RouteMethod(method, requestMethod, pathArgumentIndex, methodArgumentIndex, pathless ? "/" : null, false, requestMethodFromArgument);
+  }
+
+  private static @NotNull Collection<RouteMethod> getRulesHttpMethods(@NotNull Module module) {
     return CachedValuesManager.getManager(module.getProject())
       .getCachedValue(module, () -> Result.createSingleDependency(getHttpMethods(module,
                                                                                  HelidonConstants.HTTP_RULES,
@@ -912,7 +1231,7 @@ public final class HelidonCommonUtils {
                                                                   JavaLibraryModificationTracker.getInstance(module.getProject())));
   }
 
-  private static @NotNull Collection<Pair<PsiMethod, HelidonRequestMethods>> getBuilderHttpMethods(@NotNull Module module) {
+  private static @NotNull Collection<RouteMethod> getBuilderHttpMethods(@NotNull Module module) {
     return CachedValuesManager.getManager(module.getProject())
       .getCachedValue(module, () -> Result.createSingleDependency(getHttpMethods(module,
                                                                                  HelidonConstants.HTTP_ROUTING_BUILDER,
@@ -920,18 +1239,18 @@ public final class HelidonCommonUtils {
                                                                   JavaLibraryModificationTracker.getInstance(module.getProject())));
   }
 
-  private static @NotNull Collection<Pair<PsiMethod, HelidonRequestMethods>> getHttpMethods(@NotNull Module module,
-                                                                                            @NotNull String... containerClasses) {
-    Set<Pair<PsiMethod, HelidonRequestMethods>> methods = new HashSet<>();
+  private static @NotNull Collection<RouteMethod> getHttpMethods(@NotNull Module module,
+                                                                 @NotNull String... containerClasses) {
+    Set<RouteMethod> methods = new HashSet<>();
     for (String containerClass : containerClasses) {
       PsiClass routingBuilderClass = findClass(module, containerClass);
 
       if (routingBuilderClass == null) continue;
 
-      Arrays.stream(routingBuilderClass.getAllMethods()).filter(method -> {
-        return getHttpMethodsPattern().accepts(method) ||
-               getAnyOfMethodPattern().accepts(method);
-      }).map(method -> Pair.create(method, HelidonRequestMethods.getTypeByMethodName(method.getName()))).forEach(methods::add);
+      Arrays.stream(routingBuilderClass.getAllMethods())
+        .map(HelidonCommonUtils::createRouteMethod)
+        .filter(Objects::nonNull)
+        .forEach(methods::add);
     }
     return methods;
   }
@@ -1005,6 +1324,88 @@ public final class HelidonCommonUtils {
                          HelidonConstants.ROUTING_RULES,
                          HelidonConstants.SERVICE,
                          HelidonConstants.SERVICE_REGISTRY_SERVICE);
+  }
+
+  private static final class RouteMethod {
+    private final PsiMethod method;
+    private final HelidonRequestMethods requestMethod;
+    private final int pathArgumentIndex;
+    private final int methodArgumentIndex;
+    private final @Nullable String defaultPath;
+    private final boolean routeObjectRegistration;
+    private final boolean requestMethodFromArgument;
+
+    private RouteMethod(@NotNull PsiMethod method,
+                        @NotNull HelidonRequestMethods requestMethod,
+                        int pathArgumentIndex,
+                        int methodArgumentIndex,
+                        @Nullable String defaultPath,
+                        boolean routeObjectRegistration,
+                        boolean requestMethodFromArgument) {
+      this.method = method;
+      this.requestMethod = requestMethod;
+      this.pathArgumentIndex = pathArgumentIndex;
+      this.methodArgumentIndex = methodArgumentIndex;
+      this.defaultPath = defaultPath;
+      this.routeObjectRegistration = routeObjectRegistration;
+      this.requestMethodFromArgument = requestMethodFromArgument;
+    }
+
+    private @NotNull HelidonRequestMethods getRequestMethod(@Nullable Collection<String> explicitMethods) {
+      return requestMethodFromArgument ? getRequestMethodFromExplicitMethods(explicitMethods) : requestMethod;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (!(obj instanceof RouteMethod)) return false;
+      RouteMethod other = (RouteMethod)obj;
+      return method.equals(other.method) &&
+             requestMethod == other.requestMethod &&
+             pathArgumentIndex == other.pathArgumentIndex &&
+             methodArgumentIndex == other.methodArgumentIndex &&
+             Objects.equals(defaultPath, other.defaultPath) &&
+             routeObjectRegistration == other.routeObjectRegistration &&
+             requestMethodFromArgument == other.requestMethodFromArgument;
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(method,
+                          requestMethod,
+                          pathArgumentIndex,
+                          methodArgumentIndex,
+                          defaultPath,
+                          routeObjectRegistration,
+                          requestMethodFromArgument);
+    }
+  }
+
+  private static final class HttpRouteTarget {
+    private final @Nullable UExpression pathExpression;
+    private final @Nullable String defaultPath;
+    private final PsiElement sourcePsi;
+    private final @Nullable Collection<String> explicitMethods;
+
+    private HttpRouteTarget(@Nullable UExpression pathExpression,
+                            @Nullable String defaultPath,
+                            @NotNull PsiElement sourcePsi,
+                            @Nullable Collection<String> explicitMethods) {
+      this.pathExpression = pathExpression;
+      this.defaultPath = defaultPath;
+      this.sourcePsi = sourcePsi;
+      this.explicitMethods = explicitMethods;
+    }
+  }
+
+  private static final class HttpRouteBuilderInfo {
+    private @Nullable UExpression pathExpression;
+    private @Nullable PsiElement sourcePsi;
+    private @Nullable Collection<String> explicitMethods;
+
+    private @NotNull Collection<HttpRouteTarget> toTargets() {
+      if (pathExpression == null || sourcePsi == null) return Collections.emptyList();
+      return Collections.singletonList(new HttpRouteTarget(pathExpression, null, sourcePsi, explicitMethods));
+    }
   }
 
   private static final class PathDefinition {

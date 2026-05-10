@@ -114,7 +114,7 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
     private val updateOptions: (HelidonStarterOptions) -> Unit
   ) : StarterInitialStep(contextProvider) {
     private var metadataModel = HelidonStarterMetadataModelProvider.current()
-    private var currentOptions = options().normalizedForStarter(metadataModel)
+    private var currentOptions = options().normalizedForStarter(metadataModel).withWizardAuthenticationProviders()
     private var syncing = false
 
     private val appTypeModel = DefaultComboBoxModel(appTypes(currentOptions.flavor).toTypedArray())
@@ -606,7 +606,7 @@ internal class HelidonModuleBuilder : StarterModuleBuilder() {
     }
 
     private fun setOptions(newOptions: HelidonStarterOptions) {
-      currentOptions = newOptions.normalizedForStarter(metadataModel)
+      currentOptions = newOptions.normalizedForStarter(metadataModel).withWizardAuthenticationProviders()
       updateOptions(currentOptions)
       refreshControls()
     }

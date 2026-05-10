@@ -38,6 +38,9 @@ internal data class HelidonStarterOption(val value: String, val label: String)
 internal fun wizardAuthenticationProviders(options: List<HelidonStarterOption>): List<HelidonStarterOption> =
   options.filterNot { it.value == HELIDON_GOOGLE_AUTHENTICATION_PROVIDER }
 
+internal fun HelidonStarterOptions.withWizardAuthenticationProviders(): HelidonStarterOptions =
+  copy(authenticationProviders = authenticationProviders.filterNot { it == HELIDON_GOOGLE_AUTHENTICATION_PROVIDER })
+
 internal data class HelidonStarterMetadataModel(
   val buildSystems: List<HelidonStarterOption>,
   val flavors: List<HelidonStarterOption>,

@@ -252,7 +252,7 @@ private fun PsiType.isRegisterTargetType(project: Project): Boolean {
 
   if (targetType is PsiWildcardType) {
     if (!targetType.isExtends) return false
-    return targetType.extendsBound.isRegisterTargetType(project)
+    return targetType.bound?.isRegisterTargetType(project) ?: false
   }
 
   if (targetType.isAssignableToAny(project,
@@ -325,7 +325,7 @@ private fun PsiType.unwrapVarargType(): PsiType {
   return when (this) {
     is PsiEllipsisType -> componentType
     is PsiArrayType -> componentType
-    is PsiWildcardType -> if (isExtends) extendsBound.unwrapVarargType() else this
+    is PsiWildcardType -> if (isExtends) bound?.unwrapVarargType() ?: this else this
     else -> this
   }
 }

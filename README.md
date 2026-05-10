@@ -41,6 +41,24 @@ Before widening the supported IDE range, run `./gradlew verifyPlugin` against
 the new target IDE build and update both `build.gradle.kts` and
 `docs/updatePlugins.xml` in the same release.
 
+IntelliJ IDEA `2026.1` is distributed as the unified IDEA product for plugin
+verification; IntelliJ IDEA Community verifier artifacts are no longer published
+for this line. `./gradlew verifyPlugin` therefore verifies the unified `IU`
+target, while descriptor tests cover that the base plugin descriptor does not
+hard-require the optional Microservices integration.
+
+To exercise the runtime path where the optional Microservices integration is not
+available, launch a sandbox with that bundled plugin disabled:
+
+```bash
+./gradlew runIdeWithoutMicroservices
+```
+
+The base plugin descriptor is compatible with IntelliJ IDEA Community. Helidon
+configuration, Endpoints, URL resolver, URL inlay, and path-variable support are
+loaded from an optional microservices descriptor when `com.intellij.microservices.jvm`
+is available.
+
 ## Distribution Identity
 
 This fork intentionally keeps the inherited plugin id `com.intellij.helidon`
@@ -74,7 +92,9 @@ IDEA_HOME_PATH=/path/to/intellij/community ./gradlew test
 
 ## Notes
 
-- The plugin declares several IntelliJ Ultimate/platform bundled dependencies.
+- The plugin compiles against the IntelliJ IDEA 2026.1 SDK with optional
+  microservices APIs available at build time. Runtime microservices integrations
+  are declared in optional descriptor files under `resources/META-INF`.
 - `gen/` is part of the main source set and should be kept under version control.
 - Test-only IntelliJ platform dependencies are declared with `testBundledPlugin` so
   they do not leak into the runtime sandbox classpath.

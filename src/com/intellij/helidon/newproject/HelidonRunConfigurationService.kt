@@ -5,7 +5,7 @@ import com.intellij.execution.RunManager
 import com.intellij.execution.application.ApplicationConfiguration
 import com.intellij.execution.application.ApplicationConfigurationType
 import com.intellij.helidon.constants.HelidonConstants
-import com.intellij.helidon.utils.HelidonCommonUtils
+import com.intellij.helidon.utils.HelidonCoreUtils
 import com.intellij.java.library.JavaLibraryUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
@@ -101,7 +101,7 @@ class HelidonRunConfigurationService {
     if (JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.HELIDON_MAIN)) {
       return HelidonRunConfigurationTarget(module, HelidonConstants.HELIDON_MAIN)
     }
-    if (HelidonCommonUtils.hasHelidonMPLibrary(module)) {
+    if (HelidonCoreUtils.hasHelidonMPLibrary(module)) {
       return HelidonRunConfigurationTarget(module, HelidonConstants.MP_MAIN)
     }
     return null

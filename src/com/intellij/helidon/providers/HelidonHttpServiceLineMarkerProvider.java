@@ -7,21 +7,28 @@ import com.intellij.codeInsight.navigation.NavigationGutterIconBuilder;
 import com.intellij.codeInsight.navigation.impl.PsiTargetPresentationRenderer;
 import com.intellij.helidon.HelidonIcons;
 import com.intellij.helidon.utils.HelidonBundle;
-import com.intellij.helidon.utils.HelidonCoreUtils;
+import com.intellij.helidon.utils.HelidonCommonUtils;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleUtilCore;
+import com.intellij.openapi.util.Pair;
 import com.intellij.psi.*;
 import com.intellij.psi.presentation.java.SymbolPresentationUtil;
 import com.intellij.psi.util.PsiTreeUtil;
+import com.intellij.uast.UastSmartPointer;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.uast.UExpression;
 
 import javax.swing.*;
-import java.util.*;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
-public final class HelidonClassAnnotator extends RelatedItemLineMarkerProvider {
-
+public final class HelidonHttpServiceLineMarkerProvider extends RelatedItemLineMarkerProvider {
   private static PsiTargetPresentationRenderer<PsiElement> getMethodCallRenderer() {
     return new PsiTargetPresentationRenderer<>() {
       @Override
@@ -48,7 +55,7 @@ public final class HelidonClassAnnotator extends RelatedItemLineMarkerProvider {
     if (psiElement == null) return;
     Module module = ModuleUtilCore.findModuleForPsiElement(psiElement);
     if (module == null) return;
-    if (HelidonCoreUtils.hasHelidonLibrary(module)) {
+    if (HelidonCommonUtils.hasHelidonLibrary(module)) {
       for (PsiElement element : elements) {
         collectNavigationMarkers(element, module, result);
       }
@@ -62,31 +69,43 @@ public final class HelidonClassAnnotator extends RelatedItemLineMarkerProvider {
       final PsiElement parent = psiElement.getParent();
       if (parent instanceof PsiClass) {
         PsiClass psiClass = (PsiClass)parent;
-        if (HelidonCoreUtils.isHelidonServiceRegistryClass(psiClass)) {
-          Set<PsiElement> targets = HelidonCoreUtils.getHelidonServiceUsageTargets(module, psiClass);
-          if (targets.isEmpty()) {
-            targets = Collections.singleton(psiElement);
+        if (HelidonCommonUtils.isHelidonHttpServiceClass(psiClass)) {
+          Set<UExpression> calls =
+            getServiceRegisterExpressions(module, JavaPsiFacade.getInstance(module.getProject()).getElementFactory()
+              .createType(psiClass));
+
+          Set<PsiElement> targets =
+            calls.stream().map(UExpression::getSourcePsi).filter(Objects::nonNull).collect(Collectors.toSet());
+          if (!targets.isEmpty()) {
+            NavigationGutterIconBuilder<PsiElement> builder =
+              NavigationGutterIconBuilder.create(HelidonIcons.HelidonGutter, HelidonBundle.HELIDON_LIBRARY).
+                setTargets(targets).
+                setPopupTitle(HelidonBundle.message("gutter.choose.service.registration")).
+                setTooltipText(HelidonBundle.message("gutter.navigate.to.service.registration")).
+                setTargetRenderer(HelidonHttpServiceLineMarkerProvider::getMethodCallRenderer);
+            result.add(builder.createLineMarkerInfo(psiElement));
           }
-          NavigationGutterIconBuilder<PsiElement> builder =
-            NavigationGutterIconBuilder.create(HelidonIcons.HelidonBeanGutter, HelidonBundle.HELIDON_LIBRARY).
-              setTargets(targets).
-              setPopupTitle(HelidonBundle.message("gutter.choose.service.usage")).
-              setTooltipText(HelidonBundle.message("gutter.navigate.to.service.usage")).
-              setTargetRenderer(HelidonClassAnnotator::getMethodCallRenderer);
-          result.add(builder.createLineMarkerInfo(psiElement));
         }
       }
     }
   }
 
+  private static @NotNull Set<UExpression> getServiceRegisterExpressions(@NotNull Module module, @NotNull PsiClassType serviceType) {
+    Set<UExpression> expressions = new HashSet<>();
+    for (Pair<UastSmartPointer<UExpression>, PsiType> entry : HelidonCommonUtils.getServiceRegisterPathExpressions(module)) {
+      if (entry.second.isAssignableFrom(serviceType)) ContainerUtil.addIfNotNull(expressions, entry.first.getElement());
+    }
+    return expressions;
+  }
+
   @Override
   public @NonNls String getName() {
-    return "Helidon Declarative Services";
+    return "Helidon HTTP Services";
   }
 
   @Override
   public String getId() {
-    return "HelidonClassAnnotator";
+    return "HelidonHttpServiceLineMarkerProvider";
   }
 
   @Override

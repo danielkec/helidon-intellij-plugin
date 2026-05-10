@@ -1,5 +1,6 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 
 plugins {
   id("java")
@@ -25,7 +26,6 @@ dependencies {
   intellijPlatform {
     intellijIdea("2026.1.1")
     bundledPlugin("com.intellij.java")
-    bundledPlugin("com.intellij.modules.ultimate")
     bundledPlugin("com.intellij.properties")
     bundledPlugin("com.intellij.modules.json")
     bundledPlugin("org.jetbrains.idea.maven")
@@ -69,8 +69,30 @@ intellijPlatform {
         <li>Added gutter navigation between declarative service beans, injection points, and service registry lookups.</li>
         <li>Added Endpoints tool window support for Helidon RestServer endpoints annotated with <code>@RestServer.Endpoint</code>.</li>
         <li>Updated the Helidon declarative service gutter icon.</li>
+        <li>Made the base plugin descriptor compatible with IntelliJ IDEA Community and load microservices integrations only when available.</li>
       </ul>
     """.trimIndent()
+  }
+
+  pluginVerification {
+    // This fork intentionally keeps the inherited JetBrains plugin ID for the custom update repository.
+    freeArgs.addAll("-mute", "ForbiddenPluginIdPrefix", "-mute", "TemplateWordInPluginId")
+
+    ides {
+      // IDEA 2026.1 is distributed as the unified IU product; IC verifier artifacts are no longer published.
+      // Community compatibility is covered by descriptor tests that keep microservices registrations optional.
+      create(IntelliJPlatformType.IntellijIdea, "2026.1.1")
+    }
+  }
+}
+
+intellijPlatformTesting {
+  runIde {
+    register("runIdeWithoutMicroservices") {
+      plugins {
+        disablePlugin("com.intellij.microservices.jvm")
+      }
+    }
   }
 }
 

@@ -4,7 +4,7 @@ package com.intellij.helidon.providers
 import com.intellij.codeInsight.daemon.RelatedItemLineMarkerInfo
 import com.intellij.helidon.HelidonIcons
 import com.intellij.helidon.HelidonHighlightingTestCase
-import com.intellij.helidon.utils.HelidonCommonUtils
+import com.intellij.helidon.utils.HelidonCoreUtils
 import com.intellij.openapi.module.ModuleUtilCore
 
 class HelidonClassAnnotatorTest : HelidonHighlightingTestCase() {
@@ -57,7 +57,7 @@ class HelidonClassAnnotatorTest : HelidonHighlightingTestCase() {
     val serviceClass = myFixture.findClass("GreetingService")
     val module = ModuleUtilCore.findModuleForPsiElement(myFixture.file)!!
 
-    val targets = HelidonCommonUtils.getHelidonServiceUsageTargets(module, serviceClass)
+    val targets = HelidonCoreUtils.getHelidonServiceUsageTargets(module, serviceClass)
 
     assertTrue(targets.any { it.text == "greeting" })
     assertTrue(targets.any { it.text == "Greeting.class" })

@@ -44,17 +44,17 @@ private val routingClasses: Set<String> = setOf(
   HelidonConstants.ROUTING_BUILDER
 )
 
-private val directHandlerClasses: Set<String> = setOf(
+private val directHandlerClassNames: Array<String> = arrayOf(
   HelidonConstants.HTTP_HANDLER,
   HelidonConstants.HANDLER
 )
 
-private val routeClassNames: Set<String> = setOf(
+private val routeClassNames: Array<String> = arrayOf(
   HelidonConstants.HTTP_ROUTE,
   HelidonConstants.LEGACY_HTTP_ROUTE
 )
 
-private val pathMatcherClassNames: Set<String> = setOf(
+private val pathMatcherClassNames: Array<String> = arrayOf(
   HelidonConstants.HTTP_PATH_MATCHER,
   HelidonConstants.LEGACY_PATH_MATCHER
 )
@@ -145,7 +145,7 @@ private fun PsiMethod.isPathBasedHelidonAnyOfMethod(): Boolean {
   if (name != "anyOf" || !isInRoutingClass()) return false
   val parameters = parameterList.parameters
   return parameters.size >= 3 &&
-         parameters[0].type.isIterableType(project) &&
+         parameters[0].type.isIterableType() &&
          parameters[1].type.isRoutePathType(project) &&
          parameters.drop(2).any { parameter -> parameter.type.isDirectHandlerType(project) }
 }
@@ -154,7 +154,7 @@ private fun PsiMethod.isPathlessHelidonAnyOfMethod(): Boolean {
   if (name != "anyOf" || !isInRoutingClass()) return false
   val parameters = parameterList.parameters
   return parameters.size >= 2 &&
-         parameters[0].type.isIterableType(project) &&
+         parameters[0].type.isIterableType() &&
          parameters.drop(1).all { parameter -> parameter.type.isDirectHandlerType(project) }
 }
 
@@ -273,7 +273,7 @@ private fun PsiType.isRegisterTargetType(project: Project): Boolean {
 }
 
 private fun PsiType.isDirectHandlerType(project: Project): Boolean {
-  return unwrapVarargType().isAssignableToAny(project, *directHandlerClasses.toTypedArray())
+  return unwrapVarargType().isAssignableToAny(project, *directHandlerClassNames)
 }
 
 private fun PsiType.isRouteHandlerShortcutType(project: Project): Boolean {
@@ -288,7 +288,7 @@ private fun PsiType.isRouteHandlerShortcutType(project: Project): Boolean {
 private fun PsiType.isRoutePathType(project: Project): Boolean {
   val targetType = unwrapVarargType()
   return targetType.equalsToText(JAVA_LANG_STRING) ||
-         targetType.isAssignableToAny(project, *pathMatcherClassNames.toTypedArray())
+         targetType.isAssignableToAny(project, *pathMatcherClassNames)
 }
 
 private fun PsiType.isHelidonRouteMethodPredicateType(project: Project): Boolean {
@@ -304,7 +304,7 @@ private fun PsiType.isHelidonHttpMethodType(project: Project): Boolean {
 }
 
 private fun PsiType.isRouteObjectType(project: Project): Boolean {
-  return unwrapVarargType().isAssignableToAny(project, *routeClassNames.toTypedArray())
+  return unwrapVarargType().isAssignableToAny(project, *routeClassNames)
 }
 
 private fun PsiType.isRouteSupplierType(project: Project): Boolean {
@@ -315,7 +315,7 @@ private fun PsiType.isRouteSupplierType(project: Project): Boolean {
   return classType.parameters.any { parameter -> parameter.isRouteObjectType(project) }
 }
 
-private fun PsiType.isIterableType(project: Project): Boolean {
+private fun PsiType.isIterableType(): Boolean {
   val classType = unwrapVarargType() as? PsiClassType ?: return false
   val resolved = classType.resolve() ?: return false
   return resolved.qualifiedName == JAVA_LANG_ITERABLE || InheritanceUtil.isInheritor(resolved, JAVA_LANG_ITERABLE)

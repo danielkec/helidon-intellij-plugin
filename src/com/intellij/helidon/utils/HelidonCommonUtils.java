@@ -800,6 +800,9 @@ public final class HelidonCommonUtils {
       return createMethodSet(((PsiLiteralExpression)expression).getValue());
     }
     if (expression instanceof PsiReferenceExpression) {
+      String method = getStaticMethodName(expression);
+      if (method != null) return createMethodSet(method);
+
       PsiElement resolved = ((PsiReferenceExpression)expression).resolve();
       if (resolved instanceof PsiVariable) {
         PsiExpression initializer = ((PsiVariable)resolved).getInitializer();
@@ -807,8 +810,7 @@ public final class HelidonCommonUtils {
           return getExplicitMethods(initializer);
         }
       }
-      String method = getStaticMethodName(expression);
-      return method == null ? null : createMethodSet(method);
+      return null;
     }
     if (expression instanceof PsiMethodCallExpression) {
       PsiMethodCallExpression methodCallExpression = (PsiMethodCallExpression)expression;
@@ -1169,16 +1171,7 @@ public final class HelidonCommonUtils {
                                         @NotNull Set<String> parentUrlPaths) {
 
     PsiElement psiElement = resolveTo.getSourcePsi();
-    if (psiElement == null) return true;
-    if (parentUrlPaths.isEmpty()) {
-      return processor.process(createTargetInfo(url, psiElement, requestMethods, explicitMethods));
-    }
-    for (String parentUrl : parentUrlPaths) {
-      if (!processor.process(createTargetInfo(url, psiElement, requestMethods, explicitMethods).withParentUrl(parentUrl))) {
-        return false;
-      }
-    }
-    return true;
+    return psiElement == null || processTarget(processor, psiElement, url, requestMethods, explicitMethods, parentUrlPaths);
   }
 
   private static boolean processTarget(@NotNull Processor<? super HelidonUrlTargetInfo> processor,

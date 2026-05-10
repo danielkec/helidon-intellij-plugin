@@ -114,7 +114,7 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
 
     PsiExpression[] expressions = methodCallExpression.getArgumentList().getExpressions();
     if (expressions.length <= pathArgumentIndex ||
-        !processPathVariableDefinitions(expressions[pathArgumentIndex], processor)) {
+        !processPathExpressionVariableDefinitions(expressions[pathArgumentIndex], processor)) {
       return false;
     }
     return processParentRoutePathVariables(methodCallExpression, processor);
@@ -134,7 +134,7 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
   private static boolean processHttpRouteBuilderHandlerPathVariables(@NotNull PsiMethodCallExpression methodCallExpression,
                                                                      @NotNull Processor<? super PomTargetPsiElement> processor) {
     PsiExpression pathExpression = findHttpRouteBuilderPathExpression(methodCallExpression);
-    if (pathExpression != null && !processPathVariableDefinitions(pathExpression, processor)) {
+    if (pathExpression != null && !processPathExpressionVariableDefinitions(pathExpression, processor)) {
       return false;
     }
     return processParentRoutePathVariables(methodCallExpression, processor);
@@ -145,7 +145,7 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
   }
 
   private static @Nullable PsiExpression findHttpRouteBuilderPathExpression(@Nullable PsiExpression expression,
-                                                                           @NotNull Set<? super PsiElement> stack) {
+                                                                           @NotNull Set<PsiElement> stack) {
     expression = HelidonCommonUtils.unwrapExpression(expression);
     if (expression == null || !stack.add(expression)) return null;
     try {
@@ -171,6 +171,12 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
     finally {
       stack.remove(expression);
     }
+  }
+
+  private static boolean processPathExpressionVariableDefinitions(@NotNull PsiExpression expression,
+                                                                 @NotNull Processor<? super PomTargetPsiElement> processor) {
+    PsiExpression pathMatcherPattern = HelidonCommonUtils.getPathMatcherFactoryPattern(expression);
+    return processPathVariableDefinitions(pathMatcherPattern != null ? pathMatcherPattern : expression, processor);
   }
 
   private static @Nullable String getContainingClassName(@NotNull PsiMethod method) {

@@ -24,31 +24,6 @@ class HelidonConfigPropertyReferenceContributorTest : HelidonHighlightingTestCas
     """.trimMargin())
   }
 
-  fun testConfigGetReferenceUsesKotlinRawStringValueRange() {
-    val delimiter = "\"\"\""
-    assertConfigGetReferenceRange("Main.kt", """
-      |import io.helidon.config.Config
-      |
-      |fun test(config: Config) {
-      |  config.get(${delimiter}server.<caret>host$delimiter)
-      |}
-    """.trimMargin())
-  }
-
-  fun testKotlinInterpolatedConfigGetDoesNotCreateConfigReference() {
-    addHelidonConfigClass()
-    configureApplicationProperties("server.host=localhost\n")
-    myFixture.configureByText("Main.kt", """
-      |import io.helidon.config.Config
-      |
-      |fun test(config: Config, name: String) {
-      |  config.get("server.<caret>${'$'}name")
-      |}
-    """.trimMargin())
-
-    assertNull(findConfigPlaceholderReferenceAtCaret())
-  }
-
   private fun assertConfigGetReferenceRange(fileName: String, text: String) {
     addHelidonConfigClass()
     configureApplicationProperties("server.host=localhost\n")

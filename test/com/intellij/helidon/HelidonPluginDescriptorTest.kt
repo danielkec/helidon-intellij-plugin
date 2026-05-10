@@ -62,6 +62,25 @@ class HelidonPluginDescriptorTest {
   }
 
   @Test
+  fun testDescriptorsDoNotRegisterKotlinSourceLanguageSupport() {
+    listOf(
+      Path.of("resources/META-INF/plugin.xml"),
+      Path.of("resources/META-INF/helidon-microservices.xml"),
+    ).forEach { path ->
+      val elements = parseDescriptor(path)
+        .getElementsByTagName("*")
+        .elements()
+
+      assertFalse("$path should not register Kotlin source-language extensions",
+                  elements.any { element ->
+                    element.getAttribute("language").equals("kotlin", ignoreCase = true) ||
+                      element.getAttribute("implementation") ==
+                      "com.intellij.helidon.config.HelidonKotlinConfigPropertyReferenceContributor"
+                  })
+    }
+  }
+
+  @Test
   fun testInternalMicroservicesYamlConfigPackageIsNotUsed() {
     val internalPackage = "com.intellij.microservices.jvm.config.yaml"
     val sourceUsesInternalPackage = Files.walk(Path.of("src/com/intellij/helidon/config/yaml")).use { paths ->

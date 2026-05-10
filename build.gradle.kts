@@ -34,7 +34,6 @@ dependencies {
 
     testBundledPlugin("com.intellij.java-i18n")
     testBundledPlugin("com.intellij.javaee")
-    testBundledPlugin("org.jetbrains.kotlin")
     testBundledPlugin("tanvd.grazi")
 
     testFramework(TestFrameworkType.Plugin.Java)
@@ -70,6 +69,7 @@ intellijPlatform {
         <li>Added Endpoints tool window support for Helidon RestServer endpoints annotated with <code>@RestServer.Endpoint</code>.</li>
         <li>Updated the Helidon declarative service gutter icon.</li>
         <li>Made the base plugin descriptor compatible with IntelliJ IDEA Community and load microservices integrations only when available.</li>
+        <li>Removed incomplete Kotlin source-language support for Helidon config references.</li>
       </ul>
     """.trimIndent()
   }

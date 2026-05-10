@@ -74,6 +74,10 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
             .path("/built/{name}")
             .handler((req, res) -> {})
             .build());
+          routing.route(HttpRoute.builder()
+            .methods(Method.DELETE)
+            .handler((req, res) -> {})
+            .build());
         }
       }
     """.trimIndent())
@@ -81,6 +85,7 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     val endpoints = collectBuilderEndpoints()
 
     assertAnyOfEndpointMethods(endpoints, "/built/{name}", setOf("GET", "POST"))
+    assertTrue(endpoints.any { it.type == HelidonRequestMethods.DELETE && it.urlDefinition == "/" })
   }
 
   fun testLegacyHttpRouteRegistrationIsDiscovered() {
@@ -622,6 +627,64 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
 
         static void hello(ServerRequest request, ServerResponse response) {
           request.path().pathParameters().get("na<caret>me");
+        }
+      }
+    """.trimIndent())
+
+    val reference = myFixture.getReferenceAtCaretPositionWithAssertion()
+    assertNotNull(reference.resolve())
+  }
+
+  fun testHelidon4HttpRouteBuilderPathMatcherPathParameterReference() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Method;
+      import io.helidon.http.PathMatchers;
+      import io.helidon.webserver.http.HttpRoute;
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.ServerRequest;
+      import io.helidon.webserver.http.ServerResponse;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.route(HttpRoute.builder()
+            .methods(Method.GET)
+            .path(PathMatchers.pattern("/hello/{name}"))
+            .handler(Main::hello)
+            .build());
+        }
+
+        static void hello(ServerRequest request, ServerResponse response) {
+          request.path().pathParameters().get("na<caret>me");
+        }
+      }
+    """.trimIndent())
+
+    val reference = myFixture.getReferenceAtCaretPositionWithAssertion()
+    assertNotNull(reference.resolve())
+  }
+
+  fun testPathlessHelidon4RouteResolvesParentPathParameterReference() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.HttpRules;
+      import io.helidon.webserver.http.HttpService;
+      import io.helidon.webserver.http.ServerRequest;
+      import io.helidon.webserver.http.ServerResponse;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.register("/api/{tenant}", new GreetingService());
+        }
+      }
+
+      class GreetingService implements HttpService {
+        @Override
+        public void routing(HttpRules rules) {
+          rules.get(this::hello);
+        }
+
+        void hello(ServerRequest request, ServerResponse response) {
+          request.path().pathParameters().get("ten<caret>ant");
         }
       }
     """.trimIndent())

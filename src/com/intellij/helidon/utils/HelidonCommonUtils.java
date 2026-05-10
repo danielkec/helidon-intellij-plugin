@@ -979,6 +979,12 @@ public final class HelidonCommonUtils {
           info.sourcePsi = arguments[0];
         }
       }
+      else if ("handler".equals(methodName) && arguments.length == 1 && isHttpRouteBuilderMethod(method)) {
+        info.hasHandler = true;
+        if (info.sourcePsi == null) {
+          info.sourcePsi = arguments[0];
+        }
+      }
       else if ("methods".equals(methodName) && arguments.length > 0 && isHttpRouteBuilderMethod(method)) {
         info.explicitMethods = arguments.length == 1 ? getExplicitMethods(arguments[0]) : getExplicitMethods(arguments);
       }
@@ -998,7 +1004,7 @@ public final class HelidonCommonUtils {
     return psiClass != null && HelidonConstants.HTTP_ROUTE.equals(psiClass.getQualifiedName());
   }
 
-  private static @Nullable PsiExpression unwrapExpression(@Nullable PsiExpression expression) {
+  public static @Nullable PsiExpression unwrapExpression(@Nullable PsiExpression expression) {
     PsiExpression current = expression;
     while (current instanceof PsiParenthesizedExpression || current instanceof PsiTypeCastExpression) {
       if (current instanceof PsiParenthesizedExpression) {
@@ -1122,7 +1128,7 @@ public final class HelidonCommonUtils {
     return true;
   }
 
-  private static @Nullable PsiExpression getPathMatcherFactoryPattern(@NotNull PsiExpression expression) {
+  public static @Nullable PsiExpression getPathMatcherFactoryPattern(@NotNull PsiExpression expression) {
     expression = unwrapExpression(expression);
     if (!(expression instanceof PsiMethodCallExpression)) return null;
 
@@ -1401,9 +1407,13 @@ public final class HelidonCommonUtils {
     private @Nullable UExpression pathExpression;
     private @Nullable PsiElement sourcePsi;
     private @Nullable Collection<String> explicitMethods;
+    private boolean hasHandler;
 
     private @NotNull Collection<HttpRouteTarget> toTargets() {
-      if (pathExpression == null || sourcePsi == null) return Collections.emptyList();
+      if (sourcePsi == null) return Collections.emptyList();
+      if (pathExpression == null) {
+        return hasHandler ? Collections.singletonList(new HttpRouteTarget(null, "/", sourcePsi, explicitMethods)) : Collections.emptyList();
+      }
       return Collections.singletonList(new HttpRouteTarget(pathExpression, null, sourcePsi, explicitMethods));
     }
   }

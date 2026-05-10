@@ -67,12 +67,12 @@ class HelidonPluginDescriptorTest {
       Path.of("resources/META-INF/plugin.xml"),
       Path.of("resources/META-INF/helidon-microservices.xml"),
     ).forEach { path ->
-      val contributors = parseDescriptor(path)
-        .getElementsByTagName("psi.referenceContributor")
+      val elements = parseDescriptor(path)
+        .getElementsByTagName("*")
         .elements()
 
-      assertFalse("$path should not register Kotlin source-language contributors",
-                  contributors.any { element ->
+      assertFalse("$path should not register Kotlin source-language extensions",
+                  elements.any { element ->
                     element.getAttribute("language").equals("kotlin", ignoreCase = true) ||
                       element.getAttribute("implementation") ==
                       "com.intellij.helidon.config.HelidonKotlinConfigPropertyReferenceContributor"

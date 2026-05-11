@@ -11,6 +11,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.RecursionManager;
+import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.*;
@@ -387,7 +388,7 @@ public final class HelidonCommonUtils {
                    target.getParentUrl() + "\n" +
                    target.getUrlDefinition() + "\n" +
                    target.getMethods() + "\n" +
-                   target.resolveToPsiElement();
+                   getTargetSourceKey(target);
       return !processed.add(key) || processor.process(target);
     };
     for (PsiMethod registerMethod : getBuilderRegisterMethod(module)) {
@@ -396,6 +397,17 @@ public final class HelidonCommonUtils {
       }
     }
     return true;
+  }
+
+  private static @NotNull String getTargetSourceKey(@NotNull HelidonUrlTargetInfo target) {
+    PsiElement element = target.resolveToPsiElement();
+    if (element == null) return "<unresolved>";
+
+    PsiFile containingFile = element.getContainingFile();
+    VirtualFile virtualFile = containingFile == null ? null : containingFile.getVirtualFile();
+    String fileKey = virtualFile == null ? String.valueOf(containingFile) : virtualFile.getPath();
+    TextRange textRange = element.getTextRange();
+    return fileKey + "\n" + textRange.getStartOffset() + "\n" + textRange.getEndOffset();
   }
 
   public static boolean processRulesHttpMethods(@NotNull Processor<? super HelidonUrlTargetInfo> processor,

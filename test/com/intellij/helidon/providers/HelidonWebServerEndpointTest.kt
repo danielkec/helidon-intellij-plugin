@@ -219,6 +219,41 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     assertEquals(registerEndpoints.joinToString { "${it.type} ${it.urlDefinition} ${it.methods}" }, 1, registerEndpoints.size)
   }
 
+  fun testRegisterEndpointsWithSamePathKeepDistinctSources() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.HttpRules;
+      import io.helidon.webserver.http.HttpService;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.register("/api", new AlphaService());
+          routing.register("/api", new BetaService());
+        }
+      }
+
+      class AlphaService implements HttpService {
+        @Override
+        public void routing(HttpRules rules) {
+        }
+      }
+
+      class BetaService implements HttpService {
+        @Override
+        public void routing(HttpRules rules) {
+        }
+      }
+    """.trimIndent())
+
+    val registerEndpoints = collectBuilderEndpoints().filter {
+      it.type == HelidonRequestMethods.REGISTER && it.urlDefinition == "/api"
+    }
+
+    assertEquals(registerEndpoints.joinToString { "${it.type} ${it.urlDefinition} ${it.resolveToPsiElement()?.textRange}" },
+                 2,
+                 registerEndpoints.size)
+  }
+
   fun testLegacyHttpRouteRegistrationIsDiscovered() {
     addLegacyAnyOfStubs()
     myFixture.configureByText("Main.java", """

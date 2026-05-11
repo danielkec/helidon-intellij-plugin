@@ -818,7 +818,7 @@ public final class HelidonCommonUtils {
     else {
       // if UStringConcatenationsFacade failed to process)))
       if (javaPsi instanceof PsiExpression &&
-          !processJavaStringExpressions(processor, requestMethods, explicitMethods, (PsiExpression)javaPsi, parentUrlPaths)) {
+          !processJavaStringExpressions(processor, requestMethods, explicitMethods, (PsiExpression)javaPsi, parentUrlPaths, literalPath)) {
         return false;
       }
     }
@@ -972,10 +972,7 @@ public final class HelidonCommonUtils {
         return builderInfo.toTargets();
       }
       PsiType callType = callExpression.getType();
-      if (callType != null && isAssignableToAny(callType,
-                                                method.getProject(),
-                                                HelidonConstants.HTTP_ROUTE,
-                                                HelidonConstants.LEGACY_HTTP_ROUTE)) {
+      if (callType != null && isExpandableHttpRouteHelperType(callType, method.getProject())) {
         return getHttpRouteTargetsFromMethod(method, stack);
       }
       return Collections.emptyList();
@@ -1091,6 +1088,15 @@ public final class HelidonCommonUtils {
 
   private static boolean isHttpRouteType(@Nullable PsiClass psiClass) {
     return psiClass != null && HelidonConstants.HTTP_ROUTE.equals(psiClass.getQualifiedName());
+  }
+
+  private static boolean isExpandableHttpRouteHelperType(@NotNull PsiType type, @NotNull Project project) {
+    return isAssignableToAny(type,
+                             project,
+                             HelidonConstants.HTTP_ROUTE,
+                             HelidonConstants.LEGACY_HTTP_ROUTE,
+                             HelidonConstants.HTTP_ROUTE_BUILDER,
+                             JAVA_UTIL_FUNCTION_SUPPLIER);
   }
 
   public static @Nullable PsiExpression unwrapExpression(@Nullable PsiExpression expression) {
@@ -1209,7 +1215,8 @@ public final class HelidonCommonUtils {
                                                       @NotNull HelidonRequestMethods requestMethods,
                                                       @Nullable Collection<String> explicitMethods,
                                                       @NotNull PsiExpression expression,
-                                                      @NotNull Set<String> parentUrlPaths) {
+                                                      @NotNull Set<String> parentUrlPaths,
+                                                      boolean literalPath) {
     PathMatcherFactoryPath pathMatcherPath = getPathMatcherFactoryPath(expression);
     if (pathMatcherPath != null) {
       UElement uElement = UastContextKt.toUElement(pathMatcherPath.expression);
@@ -1219,7 +1226,7 @@ public final class HelidonCommonUtils {
                                   (UExpression)uElement,
                                   explicitMethods,
                                   parentUrlPaths,
-                                  pathMatcherPath.literal);
+                                  literalPath || pathMatcherPath.literal);
       }
     }
 
@@ -1227,7 +1234,7 @@ public final class HelidonCommonUtils {
     if (pair != null) {
       UElement uElement = UastContextKt.toUElement(pair.first);
       if (uElement instanceof UExpression &&
-          !processTargets(processor, (UExpression)uElement, pair.second, requestMethods, explicitMethods, parentUrlPaths)) {
+          !processTargets(processor, (UExpression)uElement, pair.second, requestMethods, explicitMethods, parentUrlPaths, literalPath)) {
         return false;
       }
     }

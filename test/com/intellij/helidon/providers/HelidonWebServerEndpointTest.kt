@@ -139,6 +139,46 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
                endpoints.any { it.type == HelidonRequestMethods.POST && it.urlDefinition == "/supplied/{name}" })
   }
 
+  fun testHelidon4HttpRouteBuilderAndSupplierFromHelperAreDiscovered() {
+    addHelidon4SourceRouteStubs()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Method;
+      import io.helidon.webserver.http.HttpRoute;
+      import io.helidon.webserver.http.HttpRouting;
+      import java.util.function.Supplier;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.route(Routes.builder());
+          routing.route(Routes.supplier());
+        }
+      }
+
+      class Routes {
+        static HttpRoute.Builder builder() {
+          return HttpRoute.builder()
+            .methods(Method.GET)
+            .path("/builder-helper/{name}")
+            .handler((req, res) -> {});
+        }
+
+        static Supplier<? extends HttpRoute> supplier() {
+          return HttpRoute.builder()
+            .methods(Method.POST)
+            .path("/supplier-helper/{name}")
+            .handler((req, res) -> {});
+        }
+      }
+    """.trimIndent())
+
+    val endpoints = collectBuilderEndpoints()
+
+    assertTrue(endpoints.joinToString { "${it.type} ${it.urlDefinition} ${it.methods}" },
+               endpoints.any { it.type == HelidonRequestMethods.GET && it.urlDefinition == "/builder-helper/{name}" })
+    assertTrue(endpoints.joinToString { "${it.type} ${it.urlDefinition} ${it.methods}" },
+               endpoints.any { it.type == HelidonRequestMethods.POST && it.urlDefinition == "/supplier-helper/{name}" })
+  }
+
   fun testHelidon4SourceMethodFieldsKeepConcreteRouteMethods() {
     addHelidon4SourceRouteStubs()
     myFixture.configureByText("Main.java", """
@@ -940,6 +980,29 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
                prefixEndpoints.none { it.path.isCompatibleWith(UrlPath.fromExactString("/prefix/bob")) })
   }
 
+  fun testPathMatcherLiteralFactoryConstantPathKeepsLiteralEndpointPath() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Method;
+      import io.helidon.http.PathMatchers;
+      import io.helidon.webserver.http.HttpRouting;
+
+      class Main {
+        private static final String NAME = "name";
+        private static final String PATH = "/exact/{" + NAME + "}";
+
+        static void routing(HttpRouting.Builder routing) {
+          routing.route(Method.GET, PathMatchers.exact(PATH), (req, res) -> {});
+        }
+      }
+    """.trimIndent())
+
+    val endpoints = collectBuilderEndpoints().filter { it.urlDefinition == "/exact/{name}" }
+
+    assertTrue(endpointSummary(endpoints), endpoints.isNotEmpty())
+    assertTrue(endpointSummary(endpoints), endpoints.all { it.path.isCompatibleWith(UrlPath.fromExactString("/exact/{name}")) })
+    assertTrue(endpointSummary(endpoints), endpoints.none { it.path.isCompatibleWith(UrlPath.fromExactString("/exact/bob")) })
+  }
+
   fun testPathMatcherLiteralFactoryKeepsParentPathVariables() {
     myFixture.configureByText("Main.java", """
       import io.helidon.http.Method;
@@ -1009,6 +1072,29 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
                                   PathVariablePomTarget::class.java)
     assertTrue(target.scope.isPhysical)
     assertEquals("path", target.textRange.substring(target.scope.text))
+  }
+
+  fun testHelidon4PathMatcherUnnamedWildcardPathParameterReferenceDoesNotResolve() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Method;
+      import io.helidon.http.PathMatchers;
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.ServerRequest;
+      import io.helidon.webserver.http.ServerResponse;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.route(Method.GET, PathMatchers.pattern("/files/{*}"), Main::files);
+        }
+
+        static void files(ServerRequest request, ServerResponse response) {
+          request.path().pathParameters().get("*<caret>");
+        }
+      }
+    """.trimIndent())
+
+    val reference = myFixture.getReferenceAtCaretPositionWithAssertion()
+    assertNull(reference.resolve())
   }
 
   fun testHelidon4HttpRouteBuilderPathParameterReference() {
@@ -1091,6 +1177,50 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
 
     val reference = myFixture.getReferenceAtCaretPositionWithAssertion()
     assertNotNull(reference.resolve())
+  }
+
+  fun testHelidon4HttpRouteBuilderHelperPathParameterReferenceKeepsRegisteredServiceParentPath() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Method;
+      import io.helidon.webserver.http.HttpRoute;
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.HttpRules;
+      import io.helidon.webserver.http.HttpService;
+      import io.helidon.webserver.http.ServerRequest;
+      import io.helidon.webserver.http.ServerResponse;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.register("/api/{tenant}", new GreetingService());
+        }
+      }
+
+      class GreetingService implements HttpService {
+        @Override
+        public void routing(HttpRules rules) {
+          rules.route(Routes.hello());
+        }
+      }
+
+      class Routes {
+        static HttpRoute hello() {
+          return HttpRoute.builder()
+            .methods(Method.GET)
+            .path("/helper/{name}")
+            .handler(Routes::handle)
+            .build();
+        }
+
+        static void handle(ServerRequest request, ServerResponse response) {
+          request.path().pathParameters().get("ten<caret>ant");
+        }
+      }
+    """.trimIndent())
+
+    val reference = myFixture.getReferenceAtCaretPositionWithAssertion()
+    val target = assertInstanceOf(assertInstanceOf(reference.resolve(), PomTargetPsiElement::class.java).target,
+                                  PathVariablePomTarget::class.java)
+    assertEquals("tenant", target.textRange.substring(target.scope.text))
   }
 
   fun testPathlessHelidon4RouteResolvesParentPathParameterReference() {
@@ -1435,7 +1565,7 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
           return null;
         }
 
-        interface Builder {
+        interface Builder extends java.util.function.Supplier<HttpRoute> {
           Builder methods(Method... methods);
           Builder path(String path);
           Builder handler(Handler handler);

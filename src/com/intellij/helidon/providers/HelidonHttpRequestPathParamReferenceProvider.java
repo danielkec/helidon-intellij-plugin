@@ -28,6 +28,7 @@ import static com.intellij.microservices.jvm.pathvars.usages.AnnotationParamSear
 
 public final class HelidonHttpRequestPathParamReferenceProvider extends PathVariableUsageUastReferenceProvider {
   public static final HelidonHttpRequestPathParamReferenceProvider INSTANCE = new HelidonHttpRequestPathParamReferenceProvider();
+  private static final String JAVA_UTIL_FUNCTION_SUPPLIER = "java.util.function.Supplier";
   private static final DefaultPathVariableUsagesProvider PATH_VARIABLE_USAGES_PROVIDER = new DefaultPathVariableUsagesProvider();
 
   private HelidonHttpRequestPathParamReferenceProvider() {}
@@ -137,7 +138,43 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
     if (pathExpression != null && !processPathExpressionVariableDefinitions(pathExpression, processor)) {
       return false;
     }
-    return processParentRoutePathVariables(methodCallExpression, processor);
+    return processParentRoutePathVariables(methodCallExpression, processor) &&
+           processHttpRouteFactoryCallSiteParentPathVariables(methodCallExpression, processor);
+  }
+
+  private static boolean processHttpRouteFactoryCallSiteParentPathVariables(@NotNull PsiMethodCallExpression methodCallExpression,
+                                                                            @NotNull Processor<? super PomTargetPsiElement> processor) {
+    PsiMethod factoryMethod = PsiTreeUtil.getParentOfType(methodCallExpression, PsiMethod.class);
+    if (!isHttpRouteFactoryMethod(factoryMethod)) return true;
+
+    return MethodReferencesSearch.search(factoryMethod, factoryMethod.getResolveScope(), true).forEach(reference -> {
+      PsiMethodCallExpression routeCallExpression = findRouteObjectRegistrationCall(reference.getElement());
+      return routeCallExpression == null || processParentRoutePathVariables(routeCallExpression, processor);
+    });
+  }
+
+  private static boolean isHttpRouteFactoryMethod(@Nullable PsiMethod method) {
+    if (method == null) return false;
+    return isAssignableToAny(method.getReturnType(),
+                             method.getProject(),
+                             HelidonConstants.HTTP_ROUTE,
+                             HelidonConstants.LEGACY_HTTP_ROUTE,
+                             HelidonConstants.HTTP_ROUTE_BUILDER,
+                             JAVA_UTIL_FUNCTION_SUPPLIER);
+  }
+
+  private static @Nullable PsiMethodCallExpression findRouteObjectRegistrationCall(@NotNull PsiElement element) {
+    PsiElement current = element;
+    while (true) {
+      PsiMethodCallExpression callExpression = PsiTreeUtil.getParentOfType(current, PsiMethodCallExpression.class, true);
+      if (callExpression == null) return null;
+
+      PsiMethod method = callExpression.resolveMethod();
+      if (method != null && isHelidonRouteObjectRegistrationMethod(method)) {
+        return callExpression;
+      }
+      current = callExpression;
+    }
   }
 
   private static @NotNull PsiMethodCallExpression getHttpRouteBuilderChainExpression(@NotNull PsiMethodCallExpression methodCallExpression) {
@@ -307,7 +344,7 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
       if (variableEnd > variableStart) {
         TextRange variableRange = TextRange.create(variableStart, variableEnd);
         String variableName = variableRange.substring(pathText);
-        if (!processMappedPathVariable(path, variableRange, variableName, processor)) return false;
+        if (!"*".equals(variableName) && !processMappedPathVariable(path, variableRange, variableName, processor)) return false;
       }
       searchFrom = end + 1;
     }

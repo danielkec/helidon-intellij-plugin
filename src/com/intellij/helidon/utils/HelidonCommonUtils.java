@@ -382,8 +382,18 @@ public final class HelidonCommonUtils {
 
   public static boolean processBuilderRegisterMethods(@NotNull Processor<? super HelidonUrlTargetInfo> processor,
                                                       @NotNull GlobalSearchScope scope, @NotNull Module module) {
+    Processor<HelidonUrlTargetInfo> uniqueProcessor = createUniqueTargetProcessor(processor);
+    for (PsiMethod registerMethod : getBuilderRegisterMethod(module)) {
+      if (!findAndProcessTargets(uniqueProcessor, scope, registerMethod, HelidonRequestMethods.REGISTER, 0)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private static @NotNull Processor<HelidonUrlTargetInfo> createUniqueTargetProcessor(@NotNull Processor<? super HelidonUrlTargetInfo> processor) {
     Set<String> processed = new HashSet<>();
-    Processor<HelidonUrlTargetInfo> uniqueProcessor = target -> {
+    return target -> {
       String key = target.getType() + "\n" +
                    target.getParentUrl() + "\n" +
                    target.getUrlDefinition() + "\n" +
@@ -391,12 +401,6 @@ public final class HelidonCommonUtils {
                    getTargetSourceKey(target);
       return !processed.add(key) || processor.process(target);
     };
-    for (PsiMethod registerMethod : getBuilderRegisterMethod(module)) {
-      if (!findAndProcessTargets(uniqueProcessor, scope, registerMethod, HelidonRequestMethods.REGISTER, 0)) {
-        return false;
-      }
-    }
-    return true;
   }
 
   private static @NotNull String getTargetSourceKey(@NotNull HelidonUrlTargetInfo target) {
@@ -414,8 +418,9 @@ public final class HelidonCommonUtils {
                                                 @NotNull SearchScope scope,
                                                 @Nullable Module module) {
     if (module == null) return true;
+    Processor<HelidonUrlTargetInfo> uniqueProcessor = createUniqueTargetProcessor(processor);
     for (RouteMethod rulesMethod : getRulesHttpMethods(module)) {
-      if (!findAndProcessTargets(processor, scope, rulesMethod)) {
+      if (!findAndProcessTargets(uniqueProcessor, scope, rulesMethod)) {
         return false;
       }
     }
@@ -426,8 +431,9 @@ public final class HelidonCommonUtils {
                                                   @NotNull SearchScope scope,
                                                   @Nullable Module module) {
     if (module == null) return true;
+    Processor<HelidonUrlTargetInfo> uniqueProcessor = createUniqueTargetProcessor(processor);
     for (RouteMethod rulesMethod : getBuilderHttpMethods(module)) {
-      if (!findAndProcessTargets(processor, scope, rulesMethod, true)) {
+      if (!findAndProcessTargets(uniqueProcessor, scope, rulesMethod, true)) {
         return false;
       }
     }
@@ -1599,9 +1605,9 @@ public final class HelidonCommonUtils {
     private boolean hasHandler;
 
     private @NotNull Collection<HttpRouteTarget> toTargets() {
-      if (sourcePsi == null) return Collections.emptyList();
+      if (sourcePsi == null || !hasHandler) return Collections.emptyList();
       if (pathExpression == null) {
-        return hasHandler ? Collections.singletonList(new HttpRouteTarget(null, "/", sourcePsi, explicitMethods)) : Collections.emptyList();
+        return Collections.singletonList(new HttpRouteTarget(null, "/", sourcePsi, explicitMethods));
       }
       return Collections.singletonList(new HttpRouteTarget(pathExpression, null, sourcePsi, explicitMethods));
     }

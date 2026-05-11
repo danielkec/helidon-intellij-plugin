@@ -118,7 +118,8 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
         !processPathExpressionVariableDefinitions(expressions[pathArgumentIndex], processor)) {
       return false;
     }
-    return processParentRoutePathVariables(methodCallExpression, processor);
+    return processParentRoutePathVariables(methodCallExpression, processor) &&
+           processHttpRouteFactoryCallSiteParentPathVariables(methodCallExpression, processor);
   }
 
   private static boolean processParentRoutePathVariables(@NotNull PsiMethodCallExpression methodCallExpression,
@@ -145,12 +146,61 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
   private static boolean processHttpRouteFactoryCallSiteParentPathVariables(@NotNull PsiMethodCallExpression methodCallExpression,
                                                                             @NotNull Processor<? super PomTargetPsiElement> processor) {
     PsiMethod factoryMethod = PsiTreeUtil.getParentOfType(methodCallExpression, PsiMethod.class);
-    if (!isHttpRouteFactoryMethod(factoryMethod)) return true;
+    return processHttpRouteFactoryMethodCallSiteParentPathVariables(factoryMethod, processor, new HashSet<>());
+  }
 
-    return MethodReferencesSearch.search(factoryMethod, factoryMethod.getResolveScope(), true).forEach(reference -> {
-      PsiMethodCallExpression routeCallExpression = findRouteObjectRegistrationCall(reference.getElement());
-      return routeCallExpression == null || processParentRoutePathVariables(routeCallExpression, processor);
-    });
+  private static boolean processHttpRouteFactoryMethodCallSiteParentPathVariables(@Nullable PsiMethod factoryMethod,
+                                                                                  @NotNull Processor<? super PomTargetPsiElement> processor,
+                                                                                  @NotNull Set<PsiMethod> stack) {
+    if (!isHttpRouteFactoryMethod(factoryMethod) || !stack.add(factoryMethod)) return true;
+
+    try {
+      return MethodReferencesSearch.search(factoryMethod, factoryMethod.getResolveScope(), true).forEach(reference -> {
+        PsiElement referenceElement = reference.getElement();
+        PsiMethodCallExpression routeCallExpression = findRouteObjectRegistrationCall(referenceElement);
+        if (routeCallExpression != null) {
+          return processParentRoutePathVariables(routeCallExpression, processor);
+        }
+
+        PsiMethod callerMethod = PsiTreeUtil.getParentOfType(referenceElement, PsiMethod.class);
+        return callerMethod == null ||
+               !isReturnedRouteHelperReference(referenceElement, callerMethod) ||
+               processHttpRouteFactoryMethodCallSiteParentPathVariables(callerMethod, processor, stack);
+      });
+    }
+    finally {
+      stack.remove(factoryMethod);
+    }
+  }
+
+  private static boolean isReturnedRouteHelperReference(@NotNull PsiElement referenceElement, @NotNull PsiMethod method) {
+    PsiReturnStatement returnStatement = PsiTreeUtil.getParentOfType(referenceElement, PsiReturnStatement.class);
+    if (returnStatement != null && PsiTreeUtil.isAncestor(method, returnStatement, true)) {
+      PsiExpression returnValue = returnStatement.getReturnValue();
+      return returnValue != null && PsiTreeUtil.isAncestor(returnValue, referenceElement, false);
+    }
+
+    PsiLocalVariable localVariable = PsiTreeUtil.getParentOfType(referenceElement, PsiLocalVariable.class);
+    if (localVariable == null ||
+        !PsiTreeUtil.isAncestor(method, localVariable, true) ||
+        !PsiTreeUtil.isAncestor(localVariable.getInitializer(), referenceElement, false)) {
+      return false;
+    }
+    return isLocalVariableReturned(localVariable, method);
+  }
+
+  private static boolean isLocalVariableReturned(@NotNull PsiLocalVariable localVariable, @NotNull PsiMethod method) {
+    PsiCodeBlock body = method.getBody();
+    if (body == null) return false;
+
+    for (PsiReturnStatement returnStatement : PsiTreeUtil.findChildrenOfType(body, PsiReturnStatement.class)) {
+      PsiExpression returnValue = HelidonCommonUtils.unwrapExpression(returnStatement.getReturnValue());
+      if (returnValue instanceof PsiReferenceExpression &&
+          ((PsiReferenceExpression)returnValue).resolve() == localVariable) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static boolean isHttpRouteFactoryMethod(@Nullable PsiMethod method) {

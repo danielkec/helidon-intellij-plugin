@@ -30,6 +30,7 @@ public final class HelidonUrlTargetInfo implements UrlTargetInfo {
   private HelidonRequestMethods myType = HelidonRequestMethods.UNKNOWN;
   private Set<String> myMethods = null;
   private String myParentUrl = null;
+  private boolean myLiteralPath = false;
   private final NotNullLazyValue<UrlPath> myUrlPath = NotNullLazyValue.createValue(() -> {
     return computeUrlPath();
   });
@@ -75,12 +76,36 @@ public final class HelidonUrlTargetInfo implements UrlTargetInfo {
     return this;
   }
 
+  public HelidonUrlTargetInfo withLiteralPath() {
+    myLiteralPath = true;
+    return this;
+  }
+
   private HelidonUrlTargetInfo(@NotNull String url, @NotNull PsiElement resolveTo) {
     urlDefinition = url;
     myElementPointer = SmartPointerManager.getInstance(resolveTo.getProject()).createSmartPsiElementPointer(resolveTo);
   }
 
   private @NotNull UrlPath computeUrlPath() {
+    if (myLiteralPath) {
+      return computeUrlPathWithLiteralChild();
+    }
+    return parseUrlPath(getFullUrlDefinition());
+  }
+
+  private @NotNull UrlPath computeUrlPathWithLiteralChild() {
+    UrlPath childPath = UrlPath.fromExactString(withoutLeadingSlash(urlDefinition));
+    if (myParentUrl == null) {
+      return childPath;
+    }
+
+    UrlPath parentPath = parseUrlPath(withoutTrailingSlash(withoutLeadingSlash(myParentUrl)));
+    List<UrlPath.PathSegment> segments = new ArrayList<>(parentPath.getSegments());
+    segments.addAll(childPath.getSegments());
+    return new UrlPath(segments);
+  }
+
+  private @NotNull String getFullUrlDefinition() {
     StringBuilder sb = new StringBuilder();
     if (myParentUrl != null) {
       sb.append(myParentUrl);
@@ -94,10 +119,23 @@ public final class HelidonUrlTargetInfo implements UrlTargetInfo {
       }
       sb.append(urlDefinition);
     }
+    return withoutLeadingSlash(sb.toString());
+  }
 
-    String url = StringsKt.removePrefix(sb.toString(), "/");
+  private static @NotNull UrlPath parseUrlPath(@NotNull String url) {
     var urlPath = HelidonUrlPathSpecification.INSTANCE.getParser().parseUrlPath(new PartiallyKnownString(url));
     return urlPath.getUrlPath();
+  }
+
+  private static @NotNull String withoutLeadingSlash(@NotNull String url) {
+    return StringsKt.removePrefix(url, "/");
+  }
+
+  private static @NotNull String withoutTrailingSlash(@NotNull String url) {
+    while (url.endsWith("/") && !url.isEmpty()) {
+      url = url.substring(0, url.length() - 1);
+    }
+    return url;
   }
 
   @Override

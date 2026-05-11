@@ -4,6 +4,7 @@ package com.intellij.helidon.providers
 import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.utils.HelidonCommonUtils
 import com.intellij.helidon.utils.HelidonUrlTargetInfo
+import com.intellij.microservices.url.UrlPath
 import com.intellij.microservices.url.parameters.PathVariablePomTarget
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.module.ModuleUtilCore
@@ -271,6 +272,31 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     val endpoints = collectBuilderEndpoints()
 
     assertTrue(endpoints.any { it.type == HelidonRequestMethods.DELETE && it.urlDefinition == "/legacy-route/{name}" })
+  }
+
+  fun testLegacyHttpRouteRegistrationFromHelperIsDiscovered() {
+    addLegacyAnyOfStubs()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.common.http.Http;
+      import io.helidon.webserver.HttpRoute;
+      import io.helidon.webserver.Routing;
+
+      class Main {
+        static void routing(Routing.Builder routing) {
+          routing.route(Routes.legacy());
+        }
+      }
+
+      class Routes {
+        static HttpRoute legacy() {
+          return HttpRoute.route(Http.Method.DELETE, "/legacy-helper/{name}", (req, res) -> {});
+        }
+      }
+    """.trimIndent())
+
+    val endpoints = collectBuilderEndpoints()
+
+    assertTrue(endpoints.any { it.type == HelidonRequestMethods.DELETE && it.urlDefinition == "/legacy-helper/{name}" })
   }
 
   fun testPathlessHelidon4ServiceRouteKeepsParentPath() {
@@ -884,6 +910,65 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     assertNull(reference.resolve())
   }
 
+  fun testPathMatcherLiteralFactoriesKeepLiteralEndpointPaths() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Method;
+      import io.helidon.http.PathMatchers;
+      import io.helidon.webserver.http.HttpRouting;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.route(Method.GET, PathMatchers.exact("/exact/{name}"), (req, res) -> {});
+          routing.route(Method.GET, PathMatchers.prefix("/prefix/{name}"), (req, res) -> {});
+        }
+      }
+    """.trimIndent())
+
+    val endpoints = collectBuilderEndpoints()
+    val exactEndpoints = endpoints.filter { it.urlDefinition == "/exact/{name}" }
+    val prefixEndpoints = endpoints.filter { it.urlDefinition == "/prefix/{name}" }
+
+    assertTrue(endpointSummary(exactEndpoints), exactEndpoints.isNotEmpty())
+    assertTrue(endpointSummary(exactEndpoints),
+               exactEndpoints.all { it.path.isCompatibleWith(UrlPath.fromExactString("/exact/{name}")) })
+    assertTrue(endpointSummary(exactEndpoints),
+               exactEndpoints.none { it.path.isCompatibleWith(UrlPath.fromExactString("/exact/bob")) })
+    assertTrue(endpointSummary(prefixEndpoints), prefixEndpoints.isNotEmpty())
+    assertTrue(endpointSummary(prefixEndpoints),
+               prefixEndpoints.all { it.path.isCompatibleWith(UrlPath.fromExactString("/prefix/{name}")) })
+    assertTrue(endpointSummary(prefixEndpoints),
+               prefixEndpoints.none { it.path.isCompatibleWith(UrlPath.fromExactString("/prefix/bob")) })
+  }
+
+  fun testPathMatcherLiteralFactoryKeepsParentPathVariables() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Method;
+      import io.helidon.http.PathMatchers;
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.HttpRules;
+      import io.helidon.webserver.http.HttpService;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.register("/api/{tenant}", new GreetingService());
+        }
+      }
+
+      class GreetingService implements HttpService {
+        @Override
+        public void routing(HttpRules rules) {
+          rules.route(Method.GET, PathMatchers.exact("/literal/{name}"), (req, res) -> {});
+        }
+      }
+    """.trimIndent())
+
+    val endpoints = collectServiceEndpoints(myFixture.findClass("GreetingService"))
+    val endpoint = endpoints.single { it.parentUrl == "/api/{tenant}" && it.urlDefinition == "/literal/{name}" }
+
+    assertTrue(endpoint.path.isCompatibleWith(UrlPath.fromExactString("/api/acme/literal/{name}")))
+    assertFalse(endpoint.path.isCompatibleWith(UrlPath.fromExactString("/api/acme/literal/bob")))
+  }
+
   fun testPathMatcherLiteralFactoriesAreNotVariableBearingDeclarationPatterns() {
     assertPathMatcherDeclarationDoesNotResolvePathVariable("exact")
     assertPathMatcherDeclarationDoesNotResolvePathVariable("prefix")
@@ -1240,6 +1325,16 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     val module = ModuleUtilCore.findModuleForPsiElement(myFixture.file)!!
     assertTrue(HelidonCommonUtils.processRestServerEndpointMethods(processor, GlobalSearchScope.fileScope(myFixture.file), module))
     return processor.results
+  }
+
+  private fun endpointSummary(endpoints: Collection<HelidonUrlTargetInfo>): String {
+    return endpoints.joinToString("\n") {
+      "${it.type} parent=${it.parentUrl} path=${it.urlDefinition} " +
+        "methods=${it.methods} " +
+        "exactBob=${it.path.isCompatibleWith(UrlPath.fromExactString("/exact/bob"))} " +
+        "prefixBob=${it.path.isCompatibleWith(UrlPath.fromExactString("/prefix/bob"))} " +
+        "source=${it.resolveToPsiElement()?.textRange}"
+    }
   }
 
   private fun assertAnyOfEndpointMethods(endpoints: Collection<HelidonUrlTargetInfo>,

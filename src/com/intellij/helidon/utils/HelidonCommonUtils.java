@@ -783,15 +783,40 @@ public final class HelidonCommonUtils {
                                             @NotNull UExpression expression,
                                             @Nullable Collection<String> explicitMethods,
                                             @NotNull Set<String> parentUrlPaths) {
+    return processExpressions(processor, requestMethods, expression, explicitMethods, parentUrlPaths, false);
+  }
+
+  private static boolean processExpressions(@NotNull Processor<? super HelidonUrlTargetInfo> processor,
+                                            @NotNull HelidonRequestMethods requestMethods,
+                                            @NotNull UExpression expression,
+                                            @Nullable Collection<String> explicitMethods,
+                                            @NotNull Set<String> parentUrlPaths,
+                                            boolean literalPath) {
+    PsiElement javaPsi = expression.getJavaPsi();
+    if (javaPsi instanceof PsiExpression) {
+      PathMatcherFactoryPath pathMatcherPath = getPathMatcherFactoryPath((PsiExpression)javaPsi);
+      if (pathMatcherPath != null) {
+        UElement uElement = UastContextKt.toUElement(pathMatcherPath.expression);
+        if (uElement instanceof UExpression) {
+          return processExpressions(processor,
+                                    requestMethods,
+                                    (UExpression)uElement,
+                                    explicitMethods,
+                                    parentUrlPaths,
+                                    pathMatcherPath.literal);
+        }
+        return true;
+      }
+    }
+
     String expressionText = getUExpressionText(expression);
     if (expressionText != null) {
-      if (!processTargets(processor, expression, expressionText, requestMethods, explicitMethods, parentUrlPaths)) {
+      if (!processTargets(processor, expression, expressionText, requestMethods, explicitMethods, parentUrlPaths, literalPath)) {
         return false;
       }
     }
     else {
       // if UStringConcatenationsFacade failed to process)))
-      PsiElement javaPsi = expression.getJavaPsi();
       if (javaPsi instanceof PsiExpression &&
           !processJavaStringExpressions(processor, requestMethods, explicitMethods, (PsiExpression)javaPsi, parentUrlPaths)) {
         return false;
@@ -947,7 +972,10 @@ public final class HelidonCommonUtils {
         return builderInfo.toTargets();
       }
       PsiType callType = callExpression.getType();
-      if (callType != null && isAssignableToAny(callType, method.getProject(), HelidonConstants.HTTP_ROUTE)) {
+      if (callType != null && isAssignableToAny(callType,
+                                                method.getProject(),
+                                                HelidonConstants.HTTP_ROUTE,
+                                                HelidonConstants.LEGACY_HTTP_ROUTE)) {
         return getHttpRouteTargetsFromMethod(method, stack);
       }
       return Collections.emptyList();
@@ -1182,11 +1210,16 @@ public final class HelidonCommonUtils {
                                                       @Nullable Collection<String> explicitMethods,
                                                       @NotNull PsiExpression expression,
                                                       @NotNull Set<String> parentUrlPaths) {
-    PsiExpression pathMatcherPath = getPathMatcherFactoryPath(expression);
+    PathMatcherFactoryPath pathMatcherPath = getPathMatcherFactoryPath(expression);
     if (pathMatcherPath != null) {
-      UElement uElement = UastContextKt.toUElement(pathMatcherPath);
+      UElement uElement = UastContextKt.toUElement(pathMatcherPath.expression);
       if (uElement instanceof UExpression) {
-        return processExpressions(processor, requestMethods, (UExpression)uElement, explicitMethods, parentUrlPaths);
+        return processExpressions(processor,
+                                  requestMethods,
+                                  (UExpression)uElement,
+                                  explicitMethods,
+                                  parentUrlPaths,
+                                  pathMatcherPath.literal);
       }
     }
 
@@ -1205,12 +1238,19 @@ public final class HelidonCommonUtils {
     return getPathMatcherFactoryCall(expression) != null;
   }
 
-  public static @Nullable PsiExpression getPathMatcherFactoryPath(@NotNull PsiExpression expression) {
+  private static @Nullable PathMatcherFactoryPath getPathMatcherFactoryPath(@NotNull PsiExpression expression) {
     PsiMethodCallExpression callExpression = getPathMatcherFactoryCall(expression);
     if (callExpression == null) return null;
 
     PsiExpression[] arguments = callExpression.getArgumentList().getExpressions();
-    return arguments.length == 1 ? arguments[0] : null;
+    if (arguments.length != 1) return null;
+
+    PsiMethod method = callExpression.resolveMethod();
+    PsiClass containingClass = method == null ? null : method.getContainingClass();
+    String className = containingClass == null ? null : containingClass.getQualifiedName();
+    String methodName = callExpression.getMethodExpression().getReferenceName();
+    boolean literal = !isVariableBearingPathMatcherFactory(className, methodName, arguments[0]);
+    return new PathMatcherFactoryPath(arguments[0], literal);
   }
 
   public static @Nullable PsiExpression getPathMatcherFactoryPattern(@NotNull PsiExpression expression) {
@@ -1286,9 +1326,19 @@ public final class HelidonCommonUtils {
                                         HelidonRequestMethods requestMethods,
                                         @Nullable Collection<String> explicitMethods,
                                         @NotNull Set<String> parentUrlPaths) {
+    return processTargets(processor, resolveTo, url, requestMethods, explicitMethods, parentUrlPaths, false);
+  }
+
+  private static boolean processTargets(@NotNull Processor<? super HelidonUrlTargetInfo> processor,
+                                        @NotNull UExpression resolveTo,
+                                        @NotNull String url,
+                                        HelidonRequestMethods requestMethods,
+                                        @Nullable Collection<String> explicitMethods,
+                                        @NotNull Set<String> parentUrlPaths,
+                                        boolean literalPath) {
 
     PsiElement psiElement = resolveTo.getSourcePsi();
-    return psiElement == null || processTarget(processor, psiElement, url, requestMethods, explicitMethods, parentUrlPaths);
+    return psiElement == null || processTarget(processor, psiElement, url, requestMethods, explicitMethods, parentUrlPaths, literalPath);
   }
 
   private static boolean processTarget(@NotNull Processor<? super HelidonUrlTargetInfo> processor,
@@ -1297,11 +1347,21 @@ public final class HelidonCommonUtils {
                                        HelidonRequestMethods requestMethods,
                                        @Nullable Collection<String> explicitMethods,
                                        @NotNull Set<String> parentUrlPaths) {
+    return processTarget(processor, psiElement, url, requestMethods, explicitMethods, parentUrlPaths, false);
+  }
+
+  private static boolean processTarget(@NotNull Processor<? super HelidonUrlTargetInfo> processor,
+                                       @NotNull PsiElement psiElement,
+                                       @NotNull String url,
+                                       HelidonRequestMethods requestMethods,
+                                       @Nullable Collection<String> explicitMethods,
+                                       @NotNull Set<String> parentUrlPaths,
+                                       boolean literalPath) {
     if (parentUrlPaths.isEmpty()) {
-      return processor.process(createTargetInfo(url, psiElement, requestMethods, explicitMethods));
+      return processor.process(createTargetInfo(url, psiElement, requestMethods, explicitMethods, literalPath));
     }
     for (String parentUrl : parentUrlPaths) {
-      if (!processor.process(createTargetInfo(url, psiElement, requestMethods, explicitMethods).withParentUrl(parentUrl))) {
+      if (!processor.process(createTargetInfo(url, psiElement, requestMethods, explicitMethods, literalPath).withParentUrl(parentUrl))) {
         return false;
       }
     }
@@ -1312,9 +1372,20 @@ public final class HelidonCommonUtils {
                                                                 @NotNull PsiElement psiElement,
                                                                 @NotNull HelidonRequestMethods requestMethods,
                                                                 @Nullable Collection<String> explicitMethods) {
+    return createTargetInfo(url, psiElement, requestMethods, explicitMethods, false);
+  }
+
+  private static @NotNull HelidonUrlTargetInfo createTargetInfo(@NotNull String url,
+                                                                @NotNull PsiElement psiElement,
+                                                                @NotNull HelidonRequestMethods requestMethods,
+                                                                @Nullable Collection<String> explicitMethods,
+                                                                boolean literalPath) {
     HelidonUrlTargetInfo targetInfo = HelidonUrlTargetInfo.create(url, psiElement).ofType(requestMethods);
     if (explicitMethods != null) {
       targetInfo.withMethods(explicitMethods);
+    }
+    if (literalPath) {
+      targetInfo.withLiteralPath();
     }
     return targetInfo;
   }
@@ -1526,6 +1597,16 @@ public final class HelidonCommonUtils {
         return hasHandler ? Collections.singletonList(new HttpRouteTarget(null, "/", sourcePsi, explicitMethods)) : Collections.emptyList();
       }
       return Collections.singletonList(new HttpRouteTarget(pathExpression, null, sourcePsi, explicitMethods));
+    }
+  }
+
+  private static final class PathMatcherFactoryPath {
+    private final PsiExpression expression;
+    private final boolean literal;
+
+    private PathMatcherFactoryPath(@NotNull PsiExpression expression, boolean literal) {
+      this.expression = expression;
+      this.literal = literal;
     }
   }
 

@@ -133,11 +133,29 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
 
   private static boolean processHttpRouteBuilderHandlerPathVariables(@NotNull PsiMethodCallExpression methodCallExpression,
                                                                      @NotNull Processor<? super PomTargetPsiElement> processor) {
-    PsiExpression pathExpression = findHttpRouteBuilderPathExpression(methodCallExpression);
+    PsiExpression pathExpression = findHttpRouteBuilderPathExpression(getHttpRouteBuilderChainExpression(methodCallExpression));
     if (pathExpression != null && !processPathExpressionVariableDefinitions(pathExpression, processor)) {
       return false;
     }
     return processParentRoutePathVariables(methodCallExpression, processor);
+  }
+
+  private static @NotNull PsiMethodCallExpression getHttpRouteBuilderChainExpression(@NotNull PsiMethodCallExpression methodCallExpression) {
+    PsiMethodCallExpression result = methodCallExpression;
+    PsiElement current = methodCallExpression;
+    while (true) {
+      PsiMethodCallExpression parent = PsiTreeUtil.getParentOfType(current, PsiMethodCallExpression.class, true);
+      if (parent == null) return result;
+
+      PsiMethod method = parent.resolveMethod();
+      if (method == null || !HelidonConstants.HTTP_ROUTE_BUILDER.equals(getContainingClassName(method))) return result;
+
+      PsiExpression qualifier = parent.getMethodExpression().getQualifierExpression();
+      if (qualifier == null || !PsiTreeUtil.isAncestor(qualifier, result, false)) return result;
+
+      result = parent;
+      current = parent;
+    }
   }
 
   private static @Nullable PsiExpression findHttpRouteBuilderPathExpression(@Nullable PsiExpression expression) {
@@ -176,7 +194,10 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
   private static boolean processPathExpressionVariableDefinitions(@NotNull PsiExpression expression,
                                                                  @NotNull Processor<? super PomTargetPsiElement> processor) {
     PsiExpression pathMatcherPattern = HelidonCommonUtils.getPathMatcherFactoryPattern(expression);
-    return processPathVariableDefinitions(pathMatcherPattern != null ? pathMatcherPattern : expression, processor);
+    if (pathMatcherPattern != null) {
+      return processPathVariableDefinitions(pathMatcherPattern, processor);
+    }
+    return HelidonCommonUtils.isPathMatcherFactoryCall(expression) || processPathVariableDefinitions(expression, processor);
   }
 
   private static @Nullable String getContainingClassName(@NotNull PsiMethod method) {
@@ -274,12 +295,17 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
       int end = pathText.indexOf('}', start + 1);
       if (end < 0) break;
 
-      int variableEnd = pathText.indexOf(':', start + 1);
+      int variableStart = start + 1;
+      if (variableStart < end && pathText.charAt(variableStart) == '+') {
+        variableStart++;
+      }
+
+      int variableEnd = pathText.indexOf(':', variableStart);
       if (variableEnd < 0 || variableEnd > end) {
         variableEnd = end;
       }
-      if (variableEnd > start + 1) {
-        TextRange variableRange = TextRange.create(start + 1, variableEnd);
+      if (variableEnd > variableStart) {
+        TextRange variableRange = TextRange.create(variableStart, variableEnd);
         String variableName = variableRange.substring(pathText);
         if (!processMappedPathVariable(path, variableRange, variableName, processor)) return false;
       }

@@ -309,10 +309,8 @@ private fun PsiType.isRouteObjectType(project: Project): Boolean {
 
 private fun PsiType.isRouteSupplierType(project: Project): Boolean {
   val targetType = unwrapVarargType()
-  val classType = targetType as? PsiClassType ?: return false
-  val resolved = classType.resolve() ?: return false
-  if (resolved.qualifiedName != JAVA_UTIL_FUNCTION_SUPPLIER) return false
-  return classType.parameters.any { parameter -> parameter.isRouteObjectType(project) }
+  return targetType.isAssignableToAny(project, JAVA_UTIL_FUNCTION_SUPPLIER) &&
+         targetType.hasRouteObjectTypeArgument(project, HashSet())
 }
 
 private fun PsiType.isIterableType(): Boolean {
@@ -328,6 +326,16 @@ private fun PsiType.unwrapVarargType(): PsiType {
     is PsiWildcardType -> if (isExtends) bound?.unwrapVarargType() ?: this else this
     else -> this
   }
+}
+
+private fun PsiType.hasRouteObjectTypeArgument(project: Project, visited: MutableSet<PsiType>): Boolean {
+  val targetType = unwrapVarargType()
+  if (!visited.add(targetType)) return false
+  if (targetType.isRouteObjectType(project)) return true
+
+  val classType = targetType as? PsiClassType ?: return false
+  if (classType.parameters.any { parameter -> parameter.hasRouteObjectTypeArgument(project, visited) }) return true
+  return classType.superTypes.any { superType -> superType.hasRouteObjectTypeArgument(project, visited) }
 }
 
 private fun PsiType.isAssignableToAny(project: Project, vararg classNames: String): Boolean {

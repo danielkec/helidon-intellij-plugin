@@ -88,6 +88,34 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     assertTrue(endpoints.any { it.type == HelidonRequestMethods.DELETE && it.urlDefinition == "/" })
   }
 
+  fun testHelidon4HttpRouteBuilderRegistrationFromMethodReferenceSupplierIsDiscovered() {
+    addHelidon4SourceRouteStubs()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Method;
+      import io.helidon.webserver.http.HttpRoute;
+      import io.helidon.webserver.http.HttpRouting;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.route(Main::route);
+        }
+
+        static HttpRoute route() {
+          return HttpRoute.builder()
+            .methods(Method.POST)
+            .path("/supplied/{name}")
+            .handler((req, res) -> {})
+            .build();
+        }
+      }
+    """.trimIndent())
+
+    val endpoints = collectBuilderEndpoints()
+
+    assertTrue(endpoints.joinToString { "${it.type} ${it.urlDefinition} ${it.methods}" },
+               endpoints.any { it.type == HelidonRequestMethods.POST && it.urlDefinition == "/supplied/{name}" })
+  }
+
   fun testHelidon4SourceMethodFieldsKeepConcreteRouteMethods() {
     addHelidon4SourceRouteStubs()
     myFixture.configureByText("Main.java", """
@@ -111,6 +139,62 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
 
     assertTrue(endpoints.any { it.type == HelidonRequestMethods.POST && it.urlDefinition == "/posted/{name}" })
     assertTrue(endpoints.any { it.type == HelidonRequestMethods.GET && it.urlDefinition == "/built/{name}" })
+  }
+
+  fun testHelidon4SourceMethodAliasesUseInitializerMethods() {
+    addHelidon4SourceRouteStubs()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Method;
+      import io.helidon.webserver.http.HttpRoute;
+      import io.helidon.webserver.http.HttpRouting;
+
+      class Main {
+        private static final Method WRITE = Method.POST;
+        private static final Method CUSTOM = Method.create("PROPFIND");
+
+        static void routing(HttpRouting.Builder routing) {
+          routing.route(WRITE, "/write/{name}", (req, res) -> {});
+          routing.route(CUSTOM, "/custom/{name}", (req, res) -> {});
+          routing.route(HttpRoute.builder()
+            .methods(WRITE, CUSTOM)
+            .path("/built/{name}")
+            .handler((req, res) -> {})
+            .build());
+        }
+      }
+    """.trimIndent())
+
+    val endpoints = collectBuilderEndpoints()
+
+    assertTrue(endpoints.any { it.type == HelidonRequestMethods.POST && it.urlDefinition == "/write/{name}" })
+    assertTrue(endpoints.any { it.type == HelidonRequestMethods.UNKNOWN && it.methods == setOf("PROPFIND") && it.urlDefinition == "/custom/{name}" })
+    assertAnyOfEndpointMethods(endpoints, "/built/{name}", setOf("POST", "PROPFIND"))
+  }
+
+  fun testRegisterEndpointIsNotDuplicatedByHttpMethodProcessing() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.HttpRules;
+      import io.helidon.webserver.http.HttpService;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.register("/api", new GreetingService());
+        }
+      }
+
+      class GreetingService implements HttpService {
+        @Override
+        public void routing(HttpRules rules) {
+        }
+      }
+    """.trimIndent())
+
+    val registerEndpoints = collectBuilderEndpoints().filter {
+      it.type == HelidonRequestMethods.REGISTER && it.urlDefinition == "/api"
+    }
+
+    assertEquals(registerEndpoints.joinToString { "${it.type} ${it.urlDefinition} ${it.methods}" }, 1, registerEndpoints.size)
   }
 
   fun testLegacyHttpRouteRegistrationIsDiscovered() {
@@ -660,6 +744,57 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     assertNotNull(reference.resolve())
   }
 
+  fun testHelidon4PathMatcherExactPathParameterReferenceDoesNotResolve() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Method;
+      import io.helidon.http.PathMatchers;
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.ServerRequest;
+      import io.helidon.webserver.http.ServerResponse;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.route(Method.GET, PathMatchers.exact("/hello/{name}"), Main::hello);
+        }
+
+        static void hello(ServerRequest request, ServerResponse response) {
+          request.path().pathParameters().get("na<caret>me");
+        }
+      }
+    """.trimIndent())
+
+    val reference = myFixture.getReferenceAtCaretPositionWithAssertion()
+    assertNull(reference.resolve())
+  }
+
+  fun testHelidon4PathMatcherWildcardPathParameterReferenceFromConstantRoutePath() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Method;
+      import io.helidon.http.PathMatchers;
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.ServerRequest;
+      import io.helidon.webserver.http.ServerResponse;
+
+      class Main {
+        private static final String PATH = "/files/{+path}";
+
+        static void routing(HttpRouting.Builder routing) {
+          routing.route(Method.GET, PathMatchers.pattern(PATH), Main::files);
+        }
+
+        static void files(ServerRequest request, ServerResponse response) {
+          request.path().pathParameters().get("pa<caret>th");
+        }
+      }
+    """.trimIndent())
+
+    val reference = myFixture.getReferenceAtCaretPositionWithAssertion()
+    val target = assertInstanceOf(assertInstanceOf(reference.resolve(), PomTargetPsiElement::class.java).target,
+                                  PathVariablePomTarget::class.java)
+    assertTrue(target.scope.isPhysical)
+    assertEquals("path", target.textRange.substring(target.scope.text))
+  }
+
   fun testHelidon4HttpRouteBuilderPathParameterReference() {
     myFixture.configureByText("Main.java", """
       import io.helidon.http.Method;
@@ -674,6 +809,33 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
             .methods(Method.GET)
             .path("/hello/{name}")
             .handler(Main::hello)
+            .build());
+        }
+
+        static void hello(ServerRequest request, ServerResponse response) {
+          request.path().pathParameters().get("na<caret>me");
+        }
+      }
+    """.trimIndent())
+
+    val reference = myFixture.getReferenceAtCaretPositionWithAssertion()
+    assertNotNull(reference.resolve())
+  }
+
+  fun testHelidon4HttpRouteBuilderPathParameterReferenceWithPathAfterHandler() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Method;
+      import io.helidon.webserver.http.HttpRoute;
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.ServerRequest;
+      import io.helidon.webserver.http.ServerResponse;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.route(HttpRoute.builder()
+            .methods(Method.GET)
+            .handler(Main::hello)
+            .path("/hello/{name}")
             .build());
         }
 
@@ -1005,6 +1167,10 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
         public String name() {
           return name;
         }
+
+        public static Method create(String name) {
+          return new Method(name, false);
+        }
       }
     """.trimIndent())
     myFixture.addClass("""
@@ -1041,6 +1207,7 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
         interface Builder {
           Builder route(Method method, String path, Handler handler);
           Builder route(HttpRoute route);
+          Builder route(java.util.function.Supplier<? extends HttpRoute> route);
         }
       }
     """.trimIndent())

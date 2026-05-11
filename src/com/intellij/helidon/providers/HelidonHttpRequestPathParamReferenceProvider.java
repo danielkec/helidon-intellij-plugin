@@ -341,13 +341,16 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
   private static boolean isHandlerMethodCandidate(@Nullable PsiMethod declaration) {
     if (declaration == null) return false;
     PsiParameter[] parameters = declaration.getParameterList().getParameters();
-    return parameters.length == 2
-           && isAssignableToAny(parameters[0].getType(), declaration.getProject(),
-                                HelidonConstants.HTTP_SERVER_REQUEST,
-                                HelidonConstants.LEGACY_HTTP_SERVER_REQUEST)
-           && isAssignableToAny(parameters[1].getType(), declaration.getProject(),
-                                HelidonConstants.HTTP_SERVER_RESPONSE,
-                                HelidonConstants.LEGACY_HTTP_SERVER_RESPONSE);
+    boolean hasRequestParameter = parameters.length >= 1 &&
+                                  isAssignableToAny(parameters[0].getType(), declaration.getProject(),
+                                                    HelidonConstants.HTTP_SERVER_REQUEST,
+                                                    HelidonConstants.LEGACY_HTTP_SERVER_REQUEST);
+    if (parameters.length == 1) return hasRequestParameter;
+    return parameters.length == 2 &&
+           hasRequestParameter &&
+           isAssignableToAny(parameters[1].getType(), declaration.getProject(),
+                             HelidonConstants.HTTP_SERVER_RESPONSE,
+                             HelidonConstants.LEGACY_HTTP_SERVER_RESPONSE);
   }
 
   private static boolean isAssignableToAny(@Nullable PsiType type, @NotNull Project project, @NotNull String... classNames) {

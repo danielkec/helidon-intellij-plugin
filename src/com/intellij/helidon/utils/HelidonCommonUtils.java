@@ -698,12 +698,14 @@ public final class HelidonCommonUtils {
     UExpression routeExpression = callExpression.getArgumentForParameter(0);
     if (routeExpression == null) return true;
 
+    PsiElement callSourcePsi = callExpression.getSourcePsi();
+    Set<String> parentUrlPaths = getParentUrlPaths(callSourcePsi);
     for (HttpRouteTarget target : getHttpRouteTargets(routeExpression)) {
       Collection<String> explicitMethods = target.explicitMethods;
       HelidonRequestMethods requestMethod = routeMethod.getRequestMethod(explicitMethods);
       Collection<String> methods = getStoredExplicitMethods(requestMethod, explicitMethods);
       if (target.pathExpression != null) {
-        if (!processExpressions(processor, requestMethod, target.pathExpression, methods)) return false;
+        if (!processExpressions(processor, requestMethod, target.pathExpression, methods, parentUrlPaths)) return false;
       }
       else if (target.defaultPath != null &&
                !processTarget(processor,
@@ -711,7 +713,7 @@ public final class HelidonCommonUtils {
                               target.defaultPath,
                               requestMethod,
                               methods,
-                              getParentUrlPaths(target.sourcePsi))) {
+                              parentUrlPaths)) {
         return false;
       }
     }
@@ -761,16 +763,25 @@ public final class HelidonCommonUtils {
                                             @NotNull HelidonRequestMethods requestMethods,
                                             @NotNull UExpression expression,
                                             @Nullable Collection<String> explicitMethods) {
+    return processExpressions(processor, requestMethods, expression, explicitMethods, getParentUrlPaths(expression.getSourcePsi()));
+  }
+
+  private static boolean processExpressions(@NotNull Processor<? super HelidonUrlTargetInfo> processor,
+                                            @NotNull HelidonRequestMethods requestMethods,
+                                            @NotNull UExpression expression,
+                                            @Nullable Collection<String> explicitMethods,
+                                            @NotNull Set<String> parentUrlPaths) {
     String expressionText = getUExpressionText(expression);
     if (expressionText != null) {
-      if (!processTargets(processor, expression, expressionText, requestMethods, explicitMethods, getParentUrlPaths(expression.getSourcePsi()))) {
+      if (!processTargets(processor, expression, expressionText, requestMethods, explicitMethods, parentUrlPaths)) {
         return false;
       }
     }
     else {
       // if UStringConcatenationsFacade failed to process)))
       PsiElement javaPsi = expression.getJavaPsi();
-      if (javaPsi instanceof PsiExpression && !processJavaStringExpressions(processor, requestMethods, explicitMethods, (PsiExpression)javaPsi)) {
+      if (javaPsi instanceof PsiExpression &&
+          !processJavaStringExpressions(processor, requestMethods, explicitMethods, (PsiExpression)javaPsi, parentUrlPaths)) {
         return false;
       }
     }
@@ -919,12 +930,13 @@ public final class HelidonCommonUtils {
         return getLegacyHttpRouteFactoryTarget(callExpression);
       }
 
+      HttpRouteBuilderInfo builderInfo = collectHttpRouteBuilderInfo(callExpression, new HashSet<>());
+      if (builderInfo != null) {
+        return builderInfo.toTargets();
+      }
       PsiType callType = callExpression.getType();
-      if ("build".equals(callExpression.getMethodExpression().getReferenceName()) &&
-          callType != null &&
-          isAssignableToAny(callType, method.getProject(), HelidonConstants.HTTP_ROUTE)) {
-        HttpRouteBuilderInfo builderInfo = collectHttpRouteBuilderInfo(callExpression.getMethodExpression().getQualifierExpression(), stack);
-        return builderInfo == null ? Collections.emptyList() : builderInfo.toTargets();
+      if (callType != null && isAssignableToAny(callType, method.getProject(), HelidonConstants.HTTP_ROUTE)) {
+        return getHttpRouteTargetsFromMethod(method, stack);
       }
       return Collections.emptyList();
     }
@@ -956,7 +968,12 @@ public final class HelidonCommonUtils {
     PsiElement resolved = methodReference.resolve();
     if (!(resolved instanceof PsiMethod)) return Collections.emptyList();
 
-    PsiCodeBlock body = ((PsiMethod)resolved).getBody();
+    return getHttpRouteTargetsFromMethod((PsiMethod)resolved, stack);
+  }
+
+  private static @NotNull Collection<HttpRouteTarget> getHttpRouteTargetsFromMethod(@NotNull PsiMethod method,
+                                                                                    @NotNull Set<PsiElement> stack) {
+    PsiCodeBlock body = method.getBody();
     if (body == null) return Collections.emptyList();
 
     List<HttpRouteTarget> result = new ArrayList<>();
@@ -1151,12 +1168,13 @@ public final class HelidonCommonUtils {
   private static boolean processJavaStringExpressions(@NotNull Processor<? super HelidonUrlTargetInfo> processor,
                                                       @NotNull HelidonRequestMethods requestMethods,
                                                       @Nullable Collection<String> explicitMethods,
-                                                      @NotNull PsiExpression expression) {
+                                                      @NotNull PsiExpression expression,
+                                                      @NotNull Set<String> parentUrlPaths) {
     PsiExpression pathMatcherPath = getPathMatcherFactoryPath(expression);
     if (pathMatcherPath != null) {
       UElement uElement = UastContextKt.toUElement(pathMatcherPath);
       if (uElement instanceof UExpression) {
-        return processExpressions(processor, requestMethods, (UExpression)uElement, explicitMethods);
+        return processExpressions(processor, requestMethods, (UExpression)uElement, explicitMethods, parentUrlPaths);
       }
     }
 
@@ -1164,7 +1182,7 @@ public final class HelidonCommonUtils {
     if (pair != null) {
       UElement uElement = UastContextKt.toUElement(pair.first);
       if (uElement instanceof UExpression &&
-          !processTargets(processor, (UExpression)uElement, pair.second, requestMethods, explicitMethods, getParentUrlPaths(pair.first))) {
+          !processTargets(processor, (UExpression)uElement, pair.second, requestMethods, explicitMethods, parentUrlPaths)) {
         return false;
       }
     }

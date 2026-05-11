@@ -101,7 +101,7 @@ internal val httpRouteBuilderHandlerMethodPattern = psiMethod()
 
 internal val pathMatcherFactoryMethodPattern = or(
   psiMethod()
-    .withName(StandardPatterns.string().oneOf("create", "exact", "prefix", "pattern"))
+    .withName(StandardPatterns.string().oneOf("create", "pattern"))
     .definedInClass(HelidonConstants.HTTP_PATH_MATCHERS)
     .withParameters(JAVA_LANG_STRING),
   psiMethod()

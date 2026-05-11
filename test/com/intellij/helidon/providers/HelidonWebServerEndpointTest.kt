@@ -8,6 +8,7 @@ import com.intellij.microservices.url.parameters.PathVariablePomTarget
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.pom.PomTargetPsiElement
+import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
@@ -86,6 +87,27 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
 
     assertAnyOfEndpointMethods(endpoints, "/built/{name}", setOf("GET", "POST"))
     assertTrue(endpoints.any { it.type == HelidonRequestMethods.DELETE && it.urlDefinition == "/" })
+  }
+
+  fun testHelidon4HttpRouteBuilderSupplierRegistrationIsDiscovered() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Method;
+      import io.helidon.webserver.http.HttpRoute;
+      import io.helidon.webserver.http.HttpRouting;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.route(HttpRoute.builder()
+            .methods(Method.GET)
+            .path("/supplied-builder/{name}")
+            .handler((req, res) -> {}));
+        }
+      }
+    """.trimIndent())
+
+    val endpoints = collectBuilderEndpoints()
+
+    assertTrue(endpoints.any { it.type == HelidonRequestMethods.GET && it.urlDefinition == "/supplied-builder/{name}" })
   }
 
   fun testHelidon4HttpRouteBuilderRegistrationFromMethodReferenceSupplierIsDiscovered() {
@@ -637,6 +659,45 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     })
   }
 
+  fun testHelidon4RouteObjectFromHelperKeepsRegisteredServiceParentPath() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Method;
+      import io.helidon.webserver.http.HttpRoute;
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.HttpRules;
+      import io.helidon.webserver.http.HttpService;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.register("/api/{tenant}", new GreetingService());
+        }
+      }
+
+      class GreetingService implements HttpService {
+        @Override
+        public void routing(HttpRules rules) {
+          rules.route(Routes.hello());
+        }
+      }
+
+      class Routes {
+        static HttpRoute hello() {
+          return HttpRoute.builder()
+            .methods(Method.GET)
+            .path("/helper/{name}")
+            .handler((req, res) -> {})
+            .build();
+        }
+      }
+    """.trimIndent())
+
+    val serviceEndpoints = collectServiceEndpoints(myFixture.findClass("GreetingService"))
+
+    assertTrue(serviceEndpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/api/{tenant}" && it.urlDefinition == "/helper/{name}"
+    })
+  }
+
   fun testHelidon4PathParameterReference() {
     myFixture.configureByText("Main.java", """
       import io.helidon.webserver.http.HttpRouting;
@@ -717,6 +778,27 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     assertNotNull(reference.resolve())
   }
 
+  fun testHelidon4RouteMethodSingleRequestHandlerPathParameterReference() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Method;
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.ServerRequest;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.route(Method.GET, "/hello/{name}", Main::hello);
+        }
+
+        static String hello(ServerRequest request) {
+          return request.path().pathParameters().get("na<caret>me");
+        }
+      }
+    """.trimIndent())
+
+    val reference = myFixture.getReferenceAtCaretPositionWithAssertion()
+    assertNotNull(reference.resolve())
+  }
+
   fun testHelidon4RouteMethodPathMatcherPathParameterReference() {
     myFixture.configureByText("Main.java", """
       import io.helidon.http.Method;
@@ -765,6 +847,20 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
 
     val reference = myFixture.getReferenceAtCaretPositionWithAssertion()
     assertNull(reference.resolve())
+  }
+
+  fun testPathMatcherLiteralFactoriesAreNotVariableBearingDeclarationPatterns() {
+    assertPathMatcherDeclarationDoesNotResolvePathVariable("exact")
+    assertPathMatcherDeclarationDoesNotResolvePathVariable("prefix")
+
+    val pathMatchers = JavaPsiFacade.getInstance(project)
+      .findClass("io.helidon.http.PathMatchers", GlobalSearchScope.allScope(project))
+
+    assertNotNull(pathMatchers)
+    assertTrue(pathMatcherFactoryMethodPattern.accepts(pathMatcherMethod(pathMatchers!!, "create")))
+    assertTrue(pathMatcherFactoryMethodPattern.accepts(pathMatcherMethod(pathMatchers, "pattern")))
+    assertFalse(pathMatcherFactoryMethodPattern.accepts(pathMatcherMethod(pathMatchers, "exact")))
+    assertFalse(pathMatcherFactoryMethodPattern.accepts(pathMatcherMethod(pathMatchers, "prefix")))
   }
 
   fun testHelidon4PathMatcherWildcardPathParameterReferenceFromConstantRoutePath() {
@@ -1117,6 +1213,25 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     val anyOfEndpoints = endpoints.filter { it.type == HelidonRequestMethods.ANY_OF && it.urlDefinition == urlDefinition }
     assertFalse(anyOfEndpoints.isEmpty())
     assertTrue(anyOfEndpoints.all { it.methods == methods })
+  }
+
+  private fun pathMatcherMethod(pathMatchers: PsiClass, name: String) =
+    pathMatchers.methods.single {
+      it.name == name &&
+      it.parameterList.parameters.singleOrNull()?.type?.equalsToText("java.lang.String") == true
+    }
+
+  private fun assertPathMatcherDeclarationDoesNotResolvePathVariable(factoryMethod: String) {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.PathMatchers;
+
+      class Main {
+        static final Object MATCHER = PathMatchers.$factoryMethod("/hello/{na<caret>me}");
+      }
+    """.trimIndent())
+
+    val resolved = myFixture.getReferenceAtCaretPosition()?.resolve()
+    assertFalse(resolved is PomTargetPsiElement && resolved.target is PathVariablePomTarget)
   }
 
   private fun addHelidon4AnyOfStubs(): Pair<PsiClass, PsiClass> {

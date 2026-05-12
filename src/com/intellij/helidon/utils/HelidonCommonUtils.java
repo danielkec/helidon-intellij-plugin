@@ -456,6 +456,29 @@ public final class HelidonCommonUtils {
     return true;
   }
 
+  public static @NotNull Collection<HelidonUrlTargetInfo> getRestServerEndpointTargets(@NotNull PsiAnnotation httpMethodAnnotation,
+                                                                                       @NotNull Module module) {
+    String httpMethod = getHttpMethod(httpMethodAnnotation);
+    if (httpMethod == null) return Collections.emptyList();
+
+    PsiMethod declarationMethod = PsiTreeUtil.getParentOfType(httpMethodAnnotation, PsiMethod.class);
+    if (declarationMethod == null) return Collections.emptyList();
+
+    PsiClass endpointAnnotation = findClass(module, HelidonConstants.REST_SERVER_ENDPOINT);
+    if (endpointAnnotation == null) return Collections.emptyList();
+
+    List<HelidonUrlTargetInfo> result = new ArrayList<>();
+    Processor<HelidonUrlTargetInfo> processor = result::add;
+    SearchScope scope = GlobalSearchScope.moduleWithDependenciesScope(module);
+    for (PsiClass endpointClass : AnnotatedElementsSearch.searchPsiClasses(endpointAnnotation, scope)) {
+      if (!processRestServerEndpointClass(processor, endpointClass, (method, methodHierarchy, httpMethods) ->
+        httpMethods.contains(httpMethod) && methodHierarchyContains(declarationMethod, methodHierarchy))) {
+        break;
+      }
+    }
+    return result;
+  }
+
   public static boolean isHelidonHttpServiceClass(@NotNull PsiClass psiClass) {
     return InheritanceUtil.isInheritor(psiClass, HelidonConstants.HTTP_SERVICE) ||
            InheritanceUtil.isInheritor(psiClass, HelidonConstants.SERVICE);
@@ -471,6 +494,18 @@ public final class HelidonCommonUtils {
 
   private static boolean processRestServerEndpointClass(@NotNull Processor<? super HelidonUrlTargetInfo> processor,
                                                         @NotNull PsiClass endpointClass) {
+    return processRestServerEndpointClass(processor, endpointClass, (method, methodHierarchy, httpMethods) -> true);
+  }
+
+  private interface RestServerEndpointMethodFilter {
+    boolean accepts(@NotNull PsiMethod method,
+                    @NotNull List<PsiMethod> methodHierarchy,
+                    @NotNull Set<String> httpMethods);
+  }
+
+  private static boolean processRestServerEndpointClass(@NotNull Processor<? super HelidonUrlTargetInfo> processor,
+                                                        @NotNull PsiClass endpointClass,
+                                                        @NotNull RestServerEndpointMethodFilter filter) {
     List<PathDefinition> parentPaths = getEndpointTypePaths(endpointClass);
     Set<String> processed = new HashSet<>();
 
@@ -480,6 +515,7 @@ public final class HelidonCommonUtils {
       List<PsiMethod> methodHierarchy = getMethodHierarchy(method);
       Set<String> httpMethods = getHttpMethods(methodHierarchy);
       if (httpMethods.isEmpty()) continue;
+      if (!filter.accepts(method, methodHierarchy, httpMethods)) continue;
 
       List<PathDefinition> methodPaths = getMethodPaths(method, methodHierarchy);
       for (PathDefinition methodPath : methodPaths) {
@@ -497,6 +533,16 @@ public final class HelidonCommonUtils {
       }
     }
     return true;
+  }
+
+  private static boolean methodHierarchyContains(@NotNull PsiMethod targetMethod, @NotNull List<PsiMethod> methodHierarchy) {
+    PsiManager psiManager = targetMethod.getManager();
+    for (PsiMethod hierarchyMethod : methodHierarchy) {
+      if (psiManager.areElementsEquivalent(targetMethod, hierarchyMethod)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static boolean processRestServerEndpoint(@NotNull Processor<? super HelidonUrlTargetInfo> processor,

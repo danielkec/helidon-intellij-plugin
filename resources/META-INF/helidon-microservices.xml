@@ -11,6 +11,8 @@
     <psi.referenceContributor language="UAST" implementation="com.intellij.helidon.providers.HelidonReferenceContributor"/>
     <codeInsight.lineMarkerProvider language="JAVA" order="last"
                                     implementationClass="com.intellij.helidon.providers.HelidonHttpServiceLineMarkerProvider"/>
+    <codeInsight.lineMarkerProvider language="JAVA" order="last"
+                                    implementationClass="com.intellij.helidon.providers.HelidonHttpMappingsLineMarkerProvider"/>
 
     <microservices.urlResolverFactory implementation="com.intellij.helidon.providers.HelidonResolverFactory"/>
     <microservices.endpointsProvider implementation="com.intellij.helidon.providers.view.HelidonUrlFramework"/>

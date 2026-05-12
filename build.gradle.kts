@@ -64,12 +64,12 @@ intellijPlatform {
 
     changeNotes = """
       <ul>
-        <li>Added navigation support for Helidon SE declarative services annotated with <code>@Service.Singleton</code>.</li>
-        <li>Added gutter navigation between declarative service beans, injection points, and service registry lookups.</li>
-        <li>Added Endpoints tool window support for Helidon RestServer endpoints annotated with <code>@RestServer.Endpoint</code>.</li>
-        <li>Updated the Helidon declarative service gutter icon.</li>
-        <li>Made the base plugin descriptor compatible with IntelliJ IDEA Community and load microservices integrations only when available.</li>
-        <li>Removed incomplete Kotlin source-language support for Helidon config references.</li>
+        <li>Added IntelliJ HTTP Mappings gutter navigation for Helidon Declarative <code>@RestServer.Endpoint</code> HTTP method annotations, including inherited/interface declarations and custom <code>@Http.HttpMethod</code> annotations.</li>
+        <li>Improved Declarative HTTP mapping navigation with <code>http-method:</code> Endpoints filters, multi-endpoint handling, endpoint-module-aware navigation, and cached target lookup.</li>
+        <li>Expanded Helidon WebServer endpoint discovery for route builder/helper overloads, <code>anyOf</code>, <code>HttpRoute</code> objects, wildcard route types, registered service parent paths, and path matcher factories.</li>
+        <li>Improved URL resolver, inlay, and path-parameter reference support for route overloads and path matcher semantics.</li>
+        <li>Made the base plugin descriptor compatible with IntelliJ IDEA Community by loading Microservices-dependent integrations only when the optional Microservices plugin is available.</li>
+        <li>Removed unsupported Kotlin source-language registration for Helidon config references.</li>
         <li>Hid the Google Login authentication provider from the Helidon new project wizard.</li>
       </ul>
     """.trimIndent()

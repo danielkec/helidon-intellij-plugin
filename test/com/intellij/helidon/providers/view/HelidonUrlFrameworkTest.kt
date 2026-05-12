@@ -162,6 +162,13 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
       it.parentUrl == "/api/{tenant}" &&
       it.urlDefinition == "/created/*"
     })
+    val createdEndpoint = endpoints.first {
+      it.type == HelidonRequestMethods.GET &&
+      it.parentUrl == "/api/{tenant}" &&
+      it.urlDefinition == "/created/*"
+    }
+    assertTrue(HelidonUrlFramework().getEndpointPresentation(groupEndpoint, createdEndpoint).presentableText
+                 ?.contains("/api/{tenant}/created/*") == true)
     assertTrue(endpoints.any {
       it.type == HelidonRequestMethods.POST &&
       it.parentUrl == "/api/{tenant}" &&

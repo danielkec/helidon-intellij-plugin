@@ -20,6 +20,8 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.util.*;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 import static com.intellij.microservices.url.UrlConstants.HTTP_SCHEMES;
 
@@ -27,7 +29,8 @@ public final class HelidonUrlTargetInfo implements UrlTargetInfo {
   public enum PathSemantics {
     PATTERN,
     LITERAL,
-    PREFIX
+    PREFIX,
+    MATCHER_PATTERN
   }
 
   private final String urlDefinition;
@@ -94,6 +97,11 @@ public final class HelidonUrlTargetInfo implements UrlTargetInfo {
     return this;
   }
 
+  public HelidonUrlTargetInfo withMatcherPatternPath() {
+    myPathSemantics = PathSemantics.MATCHER_PATTERN;
+    return this;
+  }
+
   private HelidonUrlTargetInfo(@NotNull String url, @NotNull PsiElement resolveTo) {
     urlDefinition = url;
     myElementPointer = SmartPointerManager.getInstance(resolveTo.getProject()).createSmartPsiElementPointer(resolveTo);
@@ -140,6 +148,10 @@ public final class HelidonUrlTargetInfo implements UrlTargetInfo {
   }
 
   public boolean matchesPath(@NotNull UrlPath requestPath) {
+    if (myPathSemantics == PathSemantics.MATCHER_PATTERN && matchesPathMatcherPattern(requestPath)) {
+      return true;
+    }
+
     UrlPath path = getPath();
     if (path.isCompatibleWith(requestPath)) {
       return true;
@@ -147,17 +159,25 @@ public final class HelidonUrlTargetInfo implements UrlTargetInfo {
     return myPathSemantics == PathSemantics.PREFIX && isPrefixCompatibleWith(path, requestPath);
   }
 
-  private static boolean isPrefixCompatibleWith(@NotNull UrlPath prefixPath, @NotNull UrlPath requestPath) {
+  private boolean isPrefixCompatibleWith(@NotNull UrlPath prefixPath, @NotNull UrlPath requestPath) {
     List<UrlPath.PathSegment> prefixSegments = meaningfulSegments(prefixPath);
     List<UrlPath.PathSegment> requestSegments = meaningfulSegments(requestPath);
+    if (prefixSegments.isEmpty()) return true;
     if (prefixSegments.size() > requestSegments.size()) return false;
 
-    for (int i = 0; i < prefixSegments.size(); i++) {
+    int prefixLast = prefixSegments.size() - 1;
+    for (int i = 0; i < prefixLast; i++) {
       if (!segmentsAreCompatible(prefixSegments.get(i), requestSegments.get(i))) {
         return false;
       }
     }
-    return true;
+
+    UrlPath.PathSegment prefixSegment = prefixSegments.get(prefixLast);
+    UrlPath.PathSegment requestSegment = requestSegments.get(prefixLast);
+    if (isSlashTerminatedPrefix(getPathDefinition())) {
+      return segmentsAreCompatible(prefixSegment, requestSegment);
+    }
+    return segmentsStartWith(prefixSegment, requestSegment);
   }
 
   private static @NotNull List<UrlPath.PathSegment> meaningfulSegments(@NotNull UrlPath path) {
@@ -168,6 +188,17 @@ public final class HelidonUrlTargetInfo implements UrlTargetInfo {
       }
     }
     return result;
+  }
+
+  private boolean matchesPathMatcherPattern(@NotNull UrlPath requestPath) {
+    String request = normalizePathForMatching(requestPath.getPresentation(UrlPath.FULL_PATH_VARIABLE_PRESENTATION));
+    String pattern = normalizePathForMatching(getFullUrlDefinition());
+    try {
+      return Pattern.compile(toPathMatcherRegex(pattern)).matcher(request).matches();
+    }
+    catch (PatternSyntaxException ignored) {
+      return false;
+    }
   }
 
   private static boolean segmentsAreCompatible(@NotNull UrlPath.PathSegment targetSegment,
@@ -192,6 +223,80 @@ public final class HelidonUrlTargetInfo implements UrlTargetInfo {
     return new UrlPath(Collections.singletonList(targetSegment)).isCompatibleWith(new UrlPath(Collections.singletonList(requestSegment)));
   }
 
+  private static boolean segmentsStartWith(@NotNull UrlPath.PathSegment targetSegment,
+                                           @NotNull UrlPath.PathSegment requestSegment) {
+    if (targetSegment instanceof UrlPath.PathSegment.Exact && requestSegment instanceof UrlPath.PathSegment.Exact) {
+      String targetValue = targetSegment.getValueIfExact();
+      String requestValue = requestSegment.getValueIfExact();
+      return targetValue != null && requestValue != null && requestValue.startsWith(targetValue);
+    }
+    return segmentsAreCompatible(targetSegment, requestSegment);
+  }
+
+  private static boolean isSlashTerminatedPrefix(@NotNull String pathDefinition) {
+    return pathDefinition.length() > 1 && pathDefinition.endsWith("/");
+  }
+
+  private static @NotNull String toPathMatcherRegex(@NotNull String pattern) {
+    StringBuilder sb = new StringBuilder(pattern.length() * 2);
+    boolean escaped = false;
+    for (int i = 0; i < pattern.length(); i++) {
+      char c = pattern.charAt(i);
+      if (escaped) {
+        appendLiteral(sb, c);
+        escaped = false;
+        continue;
+      }
+
+      if (c == '\\') {
+        escaped = true;
+      }
+      else if (c == '*') {
+        sb.append(".*?");
+      }
+      else if (c == '[') {
+        sb.append('(');
+      }
+      else if (c == ']') {
+        sb.append(")?");
+      }
+      else if (c == '{') {
+        int end = pattern.indexOf('}', i + 1);
+        if (end < 0) {
+          appendLiteral(sb, c);
+        }
+        else {
+          appendParameterRegex(sb, pattern.substring(i + 1, end));
+          i = end;
+        }
+      }
+      else {
+        appendLiteral(sb, c);
+      }
+    }
+    if (escaped) {
+      appendLiteral(sb, '\\');
+    }
+    return sb.toString();
+  }
+
+  private static void appendParameterRegex(@NotNull StringBuilder sb, @NotNull String parameter) {
+    int regexStart = parameter.indexOf(':');
+    if (regexStart >= 0) {
+      sb.append('(').append(parameter.substring(regexStart + 1)).append(')');
+    }
+    else if (parameter.startsWith("+")) {
+      sb.append("(.+)");
+    }
+    else {
+      sb.append("([^/]+)");
+    }
+  }
+
+  private static void appendLiteral(@NotNull StringBuilder sb, char c) {
+    sb.append(Pattern.quote(String.valueOf(c)));
+  }
+
   private static @NotNull UrlPath parseUrlPath(@NotNull String url) {
     var urlPath = HelidonUrlPathSpecification.INSTANCE.getParser().parseUrlPath(new PartiallyKnownString(url));
     return urlPath.getUrlPath();
@@ -206,6 +311,10 @@ public final class HelidonUrlTargetInfo implements UrlTargetInfo {
       url = url.substring(0, url.length() - 1);
     }
     return url;
+  }
+
+  private static @NotNull String normalizePathForMatching(@NotNull String url) {
+    return url.startsWith("/") ? url : "/" + url;
   }
 
   @Override
@@ -237,6 +346,10 @@ public final class HelidonUrlTargetInfo implements UrlTargetInfo {
 
   public @NotNull String getUrlDefinition() {
     return urlDefinition;
+  }
+
+  public @NotNull String getPresentationPath() {
+    return getFullUrlDefinition();
   }
 
   public @NotNull PathSemantics getPathSemantics() {

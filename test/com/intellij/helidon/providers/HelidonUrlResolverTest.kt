@@ -42,6 +42,7 @@ class HelidonUrlResolverTest : HelidonHighlightingTestCase() {
   fun testResolveMatchesLiteralPathMatcherPrefixRouteChildren() {
     assertSize(1, resolve("/prefix/{name}"))
     assertSize(1, resolve("/prefix/{name}/child"))
+    assertSize(1, resolve("/prefix/{name}-suffix"))
     assertEmpty(resolve("/prefix/bob"))
   }
 
@@ -49,6 +50,19 @@ class HelidonUrlResolverTest : HelidonHighlightingTestCase() {
     assertSize(1, resolve("/created"))
     assertSize(1, resolve("/created/file"))
     assertEmpty(resolve("/created-suffix"))
+  }
+
+  fun testResolveMatchesRawPrefixPathMatcherSegmentPrefix() {
+    assertSize(1, resolve("/foo"))
+    assertSize(1, resolve("/foo/bar"))
+    assertSize(1, resolve("/foobar"))
+  }
+
+  fun testResolveMatchesPathMatcherPatternSyntax() {
+    assertSize(1, resolve("/files/readme.txt"))
+    assertSize(1, resolve("/docs"))
+    assertSize(1, resolve("/docs/api"))
+    assertSize(1, resolve("/deep/a/b"))
   }
 
   fun testResolveMatchesRegisterTargetAsAnyMethod() {
@@ -83,7 +97,19 @@ class HelidonUrlResolverTest : HelidonHighlightingTestCase() {
         .withPrefixPath(null),
       HelidonUrlTargetInfo.create("/created/*", psiElement)
         .ofType(HelidonRequestMethods.GET)
-        .withPrefixPath("/created"),
+        .withPrefixPath("/created/"),
+      HelidonUrlTargetInfo.create("/foo", psiElement)
+        .ofType(HelidonRequestMethods.GET)
+        .withPrefixPath(null),
+      HelidonUrlTargetInfo.create("/files/*", psiElement)
+        .ofType(HelidonRequestMethods.GET)
+        .withMatcherPatternPath(),
+      HelidonUrlTargetInfo.create("/docs[/{section}]", psiElement)
+        .ofType(HelidonRequestMethods.GET)
+        .withMatcherPatternPath(),
+      HelidonUrlTargetInfo.create("/deep/{+path}", psiElement)
+        .ofType(HelidonRequestMethods.GET)
+        .withMatcherPatternPath(),
       HelidonUrlTargetInfo.create("/api", psiElement).ofType(HelidonRequestMethods.REGISTER),
       HelidonUrlTargetInfo.create("/multi", psiElement)
         .ofType(HelidonRequestMethods.ANY_OF)

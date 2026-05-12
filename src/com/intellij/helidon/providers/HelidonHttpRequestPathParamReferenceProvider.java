@@ -13,6 +13,7 @@ import com.intellij.pom.PomTargetPsiElement;
 import com.intellij.psi.*;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.searches.MethodReferencesSearch;
+import com.intellij.psi.search.searches.ReferencesSearch;
 import com.intellij.psi.util.PartiallyKnownString;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.StringEntry;
@@ -33,6 +34,17 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
 
   private HelidonHttpRequestPathParamReferenceProvider() {}
 
+  private enum PathParameterLookup {
+    NONE,
+    HELIDON_PATH_PARAMETERS,
+    LEGACY_RELATIVE_PATH,
+    LEGACY_ABSOLUTE_PATH;
+
+    private boolean includesParentPathVariables() {
+      return this != LEGACY_RELATIVE_PATH;
+    }
+  }
+
   @Override
   public PathVariableDefinitionsSearcher getSearcher() {
     return new MyPathVariableDefinitionsSearcher();
@@ -42,44 +54,51 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
     @Override
     public boolean processDefinitions(@NotNull PsiElement context,
                                       @NotNull Processor<? super PomTargetPsiElement> processor) {
-      if (!isPathParameterLookup(context)) return true;
+      PathParameterLookup lookup = getPathParameterLookup(context);
+      if (lookup == PathParameterLookup.NONE) return true;
 
       PsiMethod declaration = PsiTreeUtil.getParentOfType(context, PsiMethod.class);
       if (isHandlerMethodCandidate(declaration)) {
         return MethodReferencesSearch.search(declaration, declaration.getResolveScope(), true).forEach(reference -> {
           PsiMethodCallExpression methodCallExpression =
             PsiTreeUtil.getParentOfType(reference.getElement(), PsiMethodCallExpression.class);
-          return methodCallExpression == null || processRoutePathVariables(methodCallExpression, processor);
+          return methodCallExpression == null ||
+                 processRoutePathVariables(methodCallExpression, processor, lookup.includesParentPathVariables());
         });
       }
 
       PsiLambdaExpression lambdaExpression = PsiTreeUtil.getParentOfType(context, PsiLambdaExpression.class);
       if (lambdaExpression != null) {
         PsiMethodCallExpression methodCallExpression = PsiTreeUtil.getParentOfType(lambdaExpression, PsiMethodCallExpression.class);
-        return methodCallExpression == null || processRoutePathVariables(methodCallExpression, processor);
+        return methodCallExpression == null ||
+               processRoutePathVariables(methodCallExpression, processor, lookup.includesParentPathVariables());
       }
       return true;
     }
   }
 
-  private static boolean isPathParameterLookup(@NotNull PsiElement context) {
+  private static @NotNull PathParameterLookup getPathParameterLookup(@NotNull PsiElement context) {
     PsiMethodCallExpression methodCallExpression = PsiTreeUtil.getParentOfType(context, PsiMethodCallExpression.class);
-    if (methodCallExpression == null) return false;
+    if (methodCallExpression == null) return PathParameterLookup.NONE;
     PsiMethod method = methodCallExpression.resolveMethod();
-    if (method == null) return false;
+    if (method == null) return PathParameterLookup.NONE;
 
     PsiClass containingClass = method.getContainingClass();
     String containingClassName = containingClass != null ? containingClass.getQualifiedName() : null;
     if ("param".equals(method.getName()) && HelidonConstants.HTTP_REQUEST_PATH.equals(containingClassName)) {
-      return true;
+      return isAbsoluteLegacyPathExpression(methodCallExpression.getMethodExpression().getQualifierExpression())
+             ? PathParameterLookup.LEGACY_ABSOLUTE_PATH
+             : PathParameterLookup.LEGACY_RELATIVE_PATH;
     }
 
     if (!("get".equals(method.getName()) || "first".equals(method.getName())) ||
         !HelidonConstants.HTTP_PARAMETERS.equals(containingClassName)) {
-      return false;
+      return PathParameterLookup.NONE;
     }
 
-    return isPathParametersExpression(methodCallExpression.getMethodExpression().getQualifierExpression());
+    return isPathParametersExpression(methodCallExpression.getMethodExpression().getQualifierExpression())
+           ? PathParameterLookup.HELIDON_PATH_PARAMETERS
+           : PathParameterLookup.NONE;
   }
 
   private static boolean isPathParametersExpression(@Nullable PsiExpression expression) {
@@ -99,18 +118,38 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
     return false;
   }
 
+  private static boolean isAbsoluteLegacyPathExpression(@Nullable PsiExpression expression) {
+    expression = HelidonCommonUtils.unwrapExpression(expression);
+    if (expression instanceof PsiMethodCallExpression) {
+      PsiMethod method = ((PsiMethodCallExpression)expression).resolveMethod();
+      return method != null &&
+             "absolute".equals(method.getName()) &&
+             isAssignableToAny(method.getReturnType(), method.getProject(), HelidonConstants.HTTP_REQUEST_PATH);
+    }
+    if (expression instanceof PsiReferenceExpression) {
+      PsiElement resolved = ((PsiReferenceExpression)expression).resolve();
+      if (resolved instanceof PsiLocalVariable) {
+        return isAbsoluteLegacyPathExpression(((PsiLocalVariable)resolved).getInitializer());
+      }
+    }
+    return false;
+  }
+
   private static boolean processRoutePathVariables(@NotNull PsiMethodCallExpression methodCallExpression,
-                                                   @NotNull Processor<? super PomTargetPsiElement> processor) {
+                                                   @NotNull Processor<? super PomTargetPsiElement> processor,
+                                                   boolean includeParentPathVariables) {
     PsiMethod routeMethod = methodCallExpression.resolveMethod();
     if (routeMethod == null) return true;
 
     if (isHelidonHttpRouteBuilderHandlerMethod(routeMethod)) {
-      return processHttpRouteBuilderHandlerPathVariables(methodCallExpression, processor);
+      return processHttpRouteBuilderHandlerPathVariables(methodCallExpression, processor, includeParentPathVariables);
     }
 
     int pathArgumentIndex = getHelidonRoutePathArgumentIndex(routeMethod);
     if (pathArgumentIndex < 0) {
-      return !isHelidonPathlessRouteMethod(routeMethod) || processParentRoutePathVariables(methodCallExpression, processor);
+      return !includeParentPathVariables ||
+             !isHelidonPathlessRouteMethod(routeMethod) ||
+             processParentRoutePathVariables(methodCallExpression, processor);
     }
 
     PsiExpression[] expressions = methodCallExpression.getArgumentList().getExpressions();
@@ -118,6 +157,7 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
         !processPathExpressionVariableDefinitions(expressions[pathArgumentIndex], processor)) {
       return false;
     }
+    if (!includeParentPathVariables) return true;
     return processParentRoutePathVariables(methodCallExpression, processor) &&
            processHttpRouteFactoryCallSiteParentPathVariables(methodCallExpression, processor);
   }
@@ -134,11 +174,13 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
   }
 
   private static boolean processHttpRouteBuilderHandlerPathVariables(@NotNull PsiMethodCallExpression methodCallExpression,
-                                                                     @NotNull Processor<? super PomTargetPsiElement> processor) {
+                                                                     @NotNull Processor<? super PomTargetPsiElement> processor,
+                                                                     boolean includeParentPathVariables) {
     PsiExpression pathExpression = findHttpRouteBuilderPathExpression(getHttpRouteBuilderChainExpression(methodCallExpression));
     if (pathExpression != null && !processPathExpressionVariableDefinitions(pathExpression, processor)) {
       return false;
     }
+    if (!includeParentPathVariables) return true;
     return processParentRoutePathVariables(methodCallExpression, processor) &&
            processHttpRouteFactoryCallSiteParentPathVariables(methodCallExpression, processor);
   }
@@ -162,6 +204,12 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
           return processParentRoutePathVariables(routeCallExpression, processor);
         }
 
+        Boolean variableRegistrationResult =
+          processRouteObjectVariableRegistrationCallSiteParentPathVariables(referenceElement, processor);
+        if (variableRegistrationResult != null) {
+          return variableRegistrationResult;
+        }
+
         PsiMethod callerMethod = PsiTreeUtil.getParentOfType(referenceElement, PsiMethod.class);
         return callerMethod == null ||
                !isReturnedRouteHelperReference(referenceElement, callerMethod) ||
@@ -174,13 +222,18 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
   }
 
   private static boolean isReturnedRouteHelperReference(@NotNull PsiElement referenceElement, @NotNull PsiMethod method) {
-    PsiReturnStatement returnStatement = PsiTreeUtil.getParentOfType(referenceElement, PsiReturnStatement.class);
-    if (returnStatement != null && PsiTreeUtil.isAncestor(method, returnStatement, true)) {
+    PsiReturnStatement returnStatement =
+      PsiTreeUtil.getParentOfType(referenceElement, PsiReturnStatement.class, true, PsiLambdaExpression.class, PsiClass.class);
+    PsiMethod returnOwner = returnStatement == null
+                            ? null
+                            : PsiTreeUtil.getParentOfType(returnStatement, PsiMethod.class, false, PsiLambdaExpression.class, PsiClass.class);
+    if (returnStatement != null && returnOwner == method) {
       PsiExpression returnValue = returnStatement.getReturnValue();
       return returnValue != null && PsiTreeUtil.isAncestor(returnValue, referenceElement, false);
     }
 
-    PsiLocalVariable localVariable = PsiTreeUtil.getParentOfType(referenceElement, PsiLocalVariable.class);
+    PsiLocalVariable localVariable =
+      PsiTreeUtil.getParentOfType(referenceElement, PsiLocalVariable.class, true, PsiLambdaExpression.class, PsiClass.class);
     if (localVariable == null ||
         !PsiTreeUtil.isAncestor(method, localVariable, true) ||
         !PsiTreeUtil.isAncestor(localVariable.getInitializer(), referenceElement, false)) {
@@ -194,6 +247,9 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
     if (body == null) return false;
 
     for (PsiReturnStatement returnStatement : PsiTreeUtil.findChildrenOfType(body, PsiReturnStatement.class)) {
+      PsiMethod owner = PsiTreeUtil.getParentOfType(returnStatement, PsiMethod.class, false, PsiLambdaExpression.class, PsiClass.class);
+      if (owner != method) continue;
+
       PsiExpression returnValue = HelidonCommonUtils.unwrapExpression(returnStatement.getReturnValue());
       if (returnValue instanceof PsiReferenceExpression &&
           ((PsiReferenceExpression)returnValue).resolve() == localVariable) {
@@ -229,6 +285,27 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
     }
   }
 
+  private static @Nullable Boolean processRouteObjectVariableRegistrationCallSiteParentPathVariables(
+    @NotNull PsiElement referenceElement,
+    @NotNull Processor<? super PomTargetPsiElement> processor) {
+    PsiLocalVariable localVariable =
+      PsiTreeUtil.getParentOfType(referenceElement, PsiLocalVariable.class, true, PsiLambdaExpression.class, PsiClass.class);
+    if (localVariable == null ||
+        !PsiTreeUtil.isAncestor(localVariable.getInitializer(), referenceElement, false)) {
+      return null;
+    }
+
+    boolean[] found = {false};
+    boolean processed = ReferencesSearch.search(localVariable, localVariable.getUseScope()).forEach(reference -> {
+      PsiMethodCallExpression routeCallExpression = findRouteObjectRegistrationCall(reference.getElement());
+      if (routeCallExpression == null) return true;
+
+      found[0] = true;
+      return processParentRoutePathVariables(routeCallExpression, processor);
+    });
+    return found[0] ? processed : null;
+  }
+
   private static boolean isDirectRouteObjectRegistrationArgument(@NotNull PsiMethodCallExpression routeCallExpression,
                                                                  @NotNull PsiElement referenceElement) {
     PsiExpression[] arguments = routeCallExpression.getArgumentList().getExpressions();
@@ -247,6 +324,14 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
     }
     if (routeArgument instanceof PsiLambdaExpression) {
       return isDirectRouteSupplierLambdaReference((PsiLambdaExpression)routeArgument, referenceElement);
+    }
+    if (routeArgument instanceof PsiReferenceExpression) {
+      if (isSameReference(routeArgument, referenceElement)) return true;
+
+      PsiElement resolved = ((PsiReferenceExpression)routeArgument).resolve();
+      if (resolved instanceof PsiVariable) {
+        return isDirectRouteObjectExpression(((PsiVariable)resolved).getInitializer(), referenceElement);
+      }
     }
     return false;
   }

@@ -8,6 +8,7 @@ import com.intellij.java.library.JavaLibraryModificationTracker;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleUtilCore;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.roots.ProjectRootModificationTracker;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.RecursionManager;
@@ -60,6 +61,8 @@ public final class HelidonCommonUtils {
     Key.create("METHOD_INVOCATIONS_KEY");
   private static final Key<CachedValue<List<ServiceRegistration>>> SERVICE_REGISTRATIONS_KEY =
     Key.create("SERVICE_REGISTRATIONS_KEY");
+  private static final Key<CachedValue<Map<String, Collection<RestServerEndpointTarget>>>> REST_SERVER_ENDPOINT_TARGETS_KEY =
+    Key.create("REST_SERVER_ENDPOINT_TARGETS_KEY");
 
   private HelidonCommonUtils() {
   }
@@ -456,6 +459,59 @@ public final class HelidonCommonUtils {
     return true;
   }
 
+  public static @NotNull Collection<RestServerEndpointTarget> getRestServerEndpointTargets(@NotNull PsiAnnotation httpMethodAnnotation) {
+    String httpMethod = getHttpMethod(httpMethodAnnotation);
+    if (httpMethod == null) return Collections.emptyList();
+
+    PsiMethod declarationMethod = PsiTreeUtil.getParentOfType(httpMethodAnnotation, PsiMethod.class);
+    if (declarationMethod == null) return Collections.emptyList();
+
+    Map<String, Collection<RestServerEndpointTarget>> targetsByMethod =
+      CachedValuesManager.getManager(declarationMethod.getProject()).getCachedValue(declarationMethod,
+                                                                                    REST_SERVER_ENDPOINT_TARGETS_KEY,
+                                                                                    () -> Result.create(
+                                                                                      calculateRestServerEndpointTargets(declarationMethod),
+                                                                                      UastModificationTracker.getInstance(declarationMethod.getProject()),
+                                                                                      JavaLibraryModificationTracker.getInstance(declarationMethod.getProject()),
+                                                                                      ProjectRootModificationTracker.getInstance(declarationMethod.getProject())),
+                                                                                    false);
+    return targetsByMethod.getOrDefault(httpMethod, Collections.emptyList());
+  }
+
+  private static @NotNull Map<String, Collection<RestServerEndpointTarget>> calculateRestServerEndpointTargets(@NotNull PsiMethod declarationMethod) {
+    Project project = declarationMethod.getProject();
+    PsiClass endpointAnnotation = JavaPsiFacade.getInstance(project)
+      .findClass(HelidonConstants.REST_SERVER_ENDPOINT, GlobalSearchScope.allScope(project));
+    if (endpointAnnotation == null) return Collections.emptyMap();
+
+    Map<String, Collection<RestServerEndpointTarget>> result = new LinkedHashMap<>();
+    for (PsiClass endpointClass : getRestServerEndpointCandidateClasses(declarationMethod, endpointAnnotation)) {
+      Module endpointModule = ModuleUtilCore.findModuleForPsiElement(endpointClass);
+      Processor<HelidonUrlTargetInfo> processor = targetInfo -> {
+        RestServerEndpointTarget target = new RestServerEndpointTarget(targetInfo, endpointModule);
+        for (String method : targetInfo.getMethods()) {
+          result.computeIfAbsent(method, ignored -> new ArrayList<>()).add(target);
+        }
+        return true;
+      };
+      if (!processRestServerEndpointClass(processor, endpointClass, (method, methodHierarchy, httpMethods) ->
+        methodHierarchyContains(declarationMethod, methodHierarchy))) {
+        break;
+      }
+    }
+    return result;
+  }
+
+  private static @NotNull Collection<PsiClass> getRestServerEndpointCandidateClasses(@NotNull PsiMethod declarationMethod,
+                                                                                     @NotNull PsiClass endpointAnnotation) {
+    PsiClass containingClass = declarationMethod.getContainingClass();
+    if (containingClass != null && findAnnotation(containingClass, HelidonConstants.REST_SERVER_ENDPOINT) != null) {
+      return Collections.singletonList(containingClass);
+    }
+
+    return AnnotatedElementsSearch.searchPsiClasses(endpointAnnotation, GlobalSearchScope.projectScope(declarationMethod.getProject())).findAll();
+  }
+
   public static boolean isHelidonHttpServiceClass(@NotNull PsiClass psiClass) {
     return InheritanceUtil.isInheritor(psiClass, HelidonConstants.HTTP_SERVICE) ||
            InheritanceUtil.isInheritor(psiClass, HelidonConstants.SERVICE);
@@ -471,6 +527,18 @@ public final class HelidonCommonUtils {
 
   private static boolean processRestServerEndpointClass(@NotNull Processor<? super HelidonUrlTargetInfo> processor,
                                                         @NotNull PsiClass endpointClass) {
+    return processRestServerEndpointClass(processor, endpointClass, (method, methodHierarchy, httpMethods) -> true);
+  }
+
+  private interface RestServerEndpointMethodFilter {
+    boolean accepts(@NotNull PsiMethod method,
+                    @NotNull List<PsiMethod> methodHierarchy,
+                    @NotNull Set<String> httpMethods);
+  }
+
+  private static boolean processRestServerEndpointClass(@NotNull Processor<? super HelidonUrlTargetInfo> processor,
+                                                        @NotNull PsiClass endpointClass,
+                                                        @NotNull RestServerEndpointMethodFilter filter) {
     List<PathDefinition> parentPaths = getEndpointTypePaths(endpointClass);
     Set<String> processed = new HashSet<>();
 
@@ -480,6 +548,7 @@ public final class HelidonCommonUtils {
       List<PsiMethod> methodHierarchy = getMethodHierarchy(method);
       Set<String> httpMethods = getHttpMethods(methodHierarchy);
       if (httpMethods.isEmpty()) continue;
+      if (!filter.accepts(method, methodHierarchy, httpMethods)) continue;
 
       List<PathDefinition> methodPaths = getMethodPaths(method, methodHierarchy);
       for (PathDefinition methodPath : methodPaths) {
@@ -497,6 +566,16 @@ public final class HelidonCommonUtils {
       }
     }
     return true;
+  }
+
+  private static boolean methodHierarchyContains(@NotNull PsiMethod targetMethod, @NotNull List<PsiMethod> methodHierarchy) {
+    PsiManager psiManager = targetMethod.getManager();
+    for (PsiMethod hierarchyMethod : methodHierarchy) {
+      if (psiManager.areElementsEquivalent(targetMethod, hierarchyMethod)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static boolean processRestServerEndpoint(@NotNull Processor<? super HelidonUrlTargetInfo> processor,
@@ -1835,6 +1914,24 @@ public final class HelidonCommonUtils {
     private PathDefinition(@NotNull String path, @Nullable PsiElement source) {
       this.path = path;
       this.source = source;
+    }
+  }
+
+  public static final class RestServerEndpointTarget {
+    private final HelidonUrlTargetInfo endpoint;
+    private final @Nullable Module module;
+
+    private RestServerEndpointTarget(@NotNull HelidonUrlTargetInfo endpoint, @Nullable Module module) {
+      this.endpoint = endpoint;
+      this.module = module;
+    }
+
+    public @NotNull HelidonUrlTargetInfo getEndpoint() {
+      return endpoint;
+    }
+
+    public @Nullable Module getModule() {
+      return module;
     }
   }
 

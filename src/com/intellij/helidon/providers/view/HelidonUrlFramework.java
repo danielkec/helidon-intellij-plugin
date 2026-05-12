@@ -142,7 +142,7 @@ final class HelidonUrlFramework implements EndpointsUrlTargetProvider<HelidonUrl
 
   @Override
   public @NotNull ItemPresentation getEndpointPresentation(@NotNull HelidonUrlTargetInfo group, @NotNull HelidonUrlTargetInfo endpoint) {
-    return getPresentation(endpoint, joinSegments(endpoint.getPath()));
+    return getPresentation(endpoint, endpoint.getPresentationPath());
   }
 
   private static String joinSegments(@NotNull UrlPath path) {

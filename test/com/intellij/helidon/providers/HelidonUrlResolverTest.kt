@@ -34,6 +34,43 @@ class HelidonUrlResolverTest : HelidonHighlightingTestCase() {
     assertEquals("/items/{id}", (targets.single() as HelidonUrlTargetInfo).urlDefinition)
   }
 
+  fun testResolveKeepsLiteralPathMatcherExactRouteLiteral() {
+    assertSize(1, resolve("/literal/{name}"))
+    assertEmpty(resolve("/literal/bob"))
+  }
+
+  fun testResolveMatchesLiteralPathMatcherPrefixRouteChildren() {
+    assertSize(1, resolve("/prefix/{name}"))
+    assertSize(1, resolve("/prefix/{name}/child"))
+    assertSize(1, resolve("/prefix/{name}-suffix"))
+    assertEmpty(resolve("/prefix/bob"))
+  }
+
+  fun testResolveMatchesCreateWildcardPrefixRouteChildren() {
+    assertSize(1, resolve("/created"))
+    assertSize(1, resolve("/created/file"))
+    assertEmpty(resolve("/created-suffix"))
+  }
+
+  fun testResolveMatchesRawPrefixPathMatcherSegmentPrefix() {
+    assertSize(1, resolve("/foo"))
+    assertSize(1, resolve("/foo/bar"))
+    assertSize(1, resolve("/foobar"))
+  }
+
+  fun testResolveMatchesPathMatcherPatternSyntax() {
+    assertSize(1, resolve("/files/readme.txt"))
+    assertSize(1, resolve("/docs"))
+    assertSize(1, resolve("/docs/api"))
+    assertSize(1, resolve("/deep/a/b"))
+  }
+
+  fun testResolveMatchesPathMatcherCustomRegexWithNestedBraces() {
+    assertSize(1, resolve("/bounded/ab/name"))
+    assertEmpty(resolve("/bounded/a/name"))
+    assertEmpty(resolve("/bounded/abc/name"))
+  }
+
   fun testResolveMatchesRegisterTargetAsAnyMethod() {
     val targets = resolve("/api", "GET")
 
@@ -58,6 +95,30 @@ class HelidonUrlResolverTest : HelidonHighlightingTestCase() {
     return listOf(
       HelidonUrlTargetInfo.create("greet", psiElement).ofType(HelidonRequestMethods.GET),
       HelidonUrlTargetInfo.create("/items/{id}", psiElement).ofType(HelidonRequestMethods.GET),
+      HelidonUrlTargetInfo.create("/literal/{name}", psiElement)
+        .ofType(HelidonRequestMethods.GET)
+        .withLiteralPath(),
+      HelidonUrlTargetInfo.create("/prefix/{name}", psiElement)
+        .ofType(HelidonRequestMethods.GET)
+        .withPrefixPath(null),
+      HelidonUrlTargetInfo.create("/created/*", psiElement)
+        .ofType(HelidonRequestMethods.GET)
+        .withPrefixPath("/created/"),
+      HelidonUrlTargetInfo.create("/foo", psiElement)
+        .ofType(HelidonRequestMethods.GET)
+        .withPrefixPath(null),
+      HelidonUrlTargetInfo.create("/files/*", psiElement)
+        .ofType(HelidonRequestMethods.GET)
+        .withMatcherPatternPath(),
+      HelidonUrlTargetInfo.create("/docs[/{section}]", psiElement)
+        .ofType(HelidonRequestMethods.GET)
+        .withMatcherPatternPath(),
+      HelidonUrlTargetInfo.create("/deep/{+path}", psiElement)
+        .ofType(HelidonRequestMethods.GET)
+        .withMatcherPatternPath(),
+      HelidonUrlTargetInfo.create("/bounded/{id:\\w{2}}/name", psiElement)
+        .ofType(HelidonRequestMethods.GET)
+        .withMatcherPatternPath(),
       HelidonUrlTargetInfo.create("/api", psiElement).ofType(HelidonRequestMethods.REGISTER),
       HelidonUrlTargetInfo.create("/multi", psiElement)
         .ofType(HelidonRequestMethods.ANY_OF)

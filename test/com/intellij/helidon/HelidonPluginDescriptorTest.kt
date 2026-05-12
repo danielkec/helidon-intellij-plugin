@@ -54,11 +54,18 @@ class HelidonPluginDescriptorTest {
 
   @Test
   fun testInternalMicroservicesYamlConfigModuleIsNotDeclared() {
-    val document = parseDescriptor(Path.of("resources/META-INF/helidon-microservices.xml"))
+    val document = parseDescriptor(Path.of("resources/META-INF/plugin.xml"))
     val dependencies = document.getElementsByTagName("dependencies").item(0) as Element
     val moduleNames = dependencies.getElementsByTagName("module").attributes("name")
 
     assertFalse(moduleNames.contains("intellij.microservices.jvm.config.yaml"))
+  }
+
+  @Test
+  fun testMicroservicesSubDescriptorDoesNotDeclareDependencies() {
+    val document = parseDescriptor(Path.of("resources/META-INF/helidon-microservices.xml"))
+
+    assertFalse(document.getElementsByTagName("dependencies").elements().isNotEmpty())
   }
 
   @Test

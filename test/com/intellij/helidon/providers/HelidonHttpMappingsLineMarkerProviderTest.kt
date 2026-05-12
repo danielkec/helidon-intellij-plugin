@@ -5,7 +5,9 @@ import com.intellij.codeInsight.daemon.RelatedItemLineMarkerInfo
 import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.utils.HelidonBundle
 import com.intellij.java.ultimate.icons.JavaUltimateIcons
+import com.intellij.microservices.endpoints.EndpointsViewOpener
 import com.intellij.psi.PsiAnnotation
+import com.intellij.psi.PsiElement
 
 class HelidonHttpMappingsLineMarkerProviderTest : HelidonHighlightingTestCase() {
 
@@ -76,7 +78,7 @@ class HelidonHttpMappingsLineMarkerProviderTest : HelidonHighlightingTestCase() 
     assertSame(JavaUltimateIcons.Web.Gutter.RequestMapping, markers.single().icon)
   }
 
-  fun testInterfaceHttpMethodAnnotationHasHttpMappingsGutterMarkerForEndpointImplementation() {
+  fun testInterfaceHttpMethodAnnotationHasHttpMappingsGutterMarkerOnInterfaceDeclaration() {
     addHelidonDeclarativeStubs()
     myFixture.configureByText("Main.java", """
       import io.helidon.http.Http;
@@ -102,6 +104,60 @@ class HelidonHttpMappingsLineMarkerProviderTest : HelidonHighlightingTestCase() 
     assertSame(JavaUltimateIcons.Web.Gutter.RequestMapping, markers.single().icon)
   }
 
+  fun testNavigationUsesEndpointHttpMethodFilterAttribute() {
+    addHelidonDeclarativeStubs()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Http;
+      import io.helidon.webserver.http.RestServer;
+
+      @RestServer.Endpoint
+      @Http.Path("/greet")
+      class GreetingEndpoint {
+        @Http.GET
+        @Http.Path("/{name}")
+        String get(String name) { return ""; }
+      }
+    """.trimIndent())
+
+    val navigation = navigateFrom(httpAnnotation("GreetingEndpoint", "get"))
+
+    assertEquals(module.name, navigation.moduleName)
+    assertEquals(HelidonBundle.HELIDON_LIBRARY, navigation.framework)
+    assertEquals("http-method: GET greet/{name}", navigation.searchText)
+  }
+
+  fun testNavigationForMultipleEndpointsKeepsAllMappingsVisible() {
+    addHelidonDeclarativeStubs()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Http;
+      import io.helidon.webserver.http.RestServer;
+
+      interface GreetingResource {
+        @Http.GET
+        @Http.Path("/{name}")
+        String get(String name);
+      }
+
+      @RestServer.Endpoint
+      @Http.Path("/alpha")
+      class AlphaEndpoint implements GreetingResource {
+        public String get(String name) { return ""; }
+      }
+
+      @RestServer.Endpoint
+      @Http.Path("/bravo")
+      class BravoEndpoint implements GreetingResource {
+        public String get(String name) { return ""; }
+      }
+    """.trimIndent())
+
+    val navigation = navigateFrom(httpAnnotation("GreetingResource", "get"))
+
+    assertEquals(module.name, navigation.moduleName)
+    assertEquals(HelidonBundle.HELIDON_LIBRARY, navigation.framework)
+    assertEquals("http-method: GET", navigation.searchText)
+  }
+
   fun testHttpMethodAnnotationOutsideRestServerEndpointHasNoHttpMappingsGutterMarker() {
     addHelidonDeclarativeStubs()
     myFixture.configureByText("Main.java", """
@@ -125,6 +181,29 @@ class HelidonHttpMappingsLineMarkerProviderTest : HelidonHighlightingTestCase() 
     HelidonHttpMappingsLineMarkerProvider().collectNavigationMarkers(listOf(anchor), result, true)
 
     return result
+  }
+
+  private fun navigateFrom(annotation: PsiAnnotation): EndpointsNavigation {
+    return navigateFrom(collectMarkers(annotation).single())
+  }
+
+  private fun navigateFrom(marker: RelatedItemLineMarkerInfo<*>): EndpointsNavigation {
+    val requests = mutableListOf<EndpointsNavigation>()
+    project.messageBus.connect(testRootDisposable).subscribe(EndpointsViewOpener.Companion.TOPIC, object : EndpointsViewOpener {
+      override fun showEndpoints(filter: String?) {
+        requests += EndpointsNavigation(null, null, filter)
+      }
+
+      override fun showEndpoints(module: String?, framework: String?, filter: String?) {
+        requests += EndpointsNavigation(module, framework, filter)
+      }
+    })
+
+    @Suppress("UNCHECKED_CAST")
+    val typedMarker = marker as RelatedItemLineMarkerInfo<PsiElement>
+    typedMarker.navigationHandler.navigate(null, typedMarker.element)
+
+    return requests.single()
   }
 
   private fun httpAnnotation(className: String, methodName: String): PsiAnnotation {
@@ -230,4 +309,10 @@ class HelidonHttpMappingsLineMarkerProviderTest : HelidonHighlightingTestCase() 
       }
     """.trimIndent())
   }
+
+  private data class EndpointsNavigation(
+    val moduleName: String?,
+    val framework: String?,
+    val searchText: String?,
+  )
 }

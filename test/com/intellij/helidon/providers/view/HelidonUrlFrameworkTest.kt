@@ -99,6 +99,7 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
   fun testRegisteredServiceGroupExpandsRouteOverloadEndpoints() {
     myFixture.configureByText("Main.java", """
       import io.helidon.http.Method;
+      import io.helidon.http.PathMatchers;
       import io.helidon.webserver.http.HttpRoute;
       import io.helidon.webserver.http.HttpRouting;
       import io.helidon.webserver.http.HttpRules;
@@ -116,6 +117,9 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
         @Override
         public void routing(HttpRules rules) {
           rules.route(Method.GET, "/route/{name}", this::hello);
+          rules.route(Method.GET, PathMatchers.exact("/exact/{name}"), this::hello);
+          rules.route(Method.GET, PathMatchers.prefix("/prefix/{name}"), this::hello);
+          rules.route(Method.GET, PathMatchers.create("/created/*"), this::hello);
           rules.route(HttpRoute.builder()
             .methods(Method.POST)
             .path("/built/{name}")
@@ -142,6 +146,21 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
       it.type == HelidonRequestMethods.GET &&
       it.parentUrl == "/api/{tenant}" &&
       it.urlDefinition == "/route/{name}"
+    })
+    assertTrue(endpoints.any {
+      it.type == HelidonRequestMethods.GET &&
+      it.parentUrl == "/api/{tenant}" &&
+      it.urlDefinition == "/exact/{name}"
+    })
+    assertTrue(endpoints.any {
+      it.type == HelidonRequestMethods.GET &&
+      it.parentUrl == "/api/{tenant}" &&
+      it.urlDefinition == "/prefix/{name}"
+    })
+    assertTrue(endpoints.any {
+      it.type == HelidonRequestMethods.GET &&
+      it.parentUrl == "/api/{tenant}" &&
+      it.urlDefinition == "/created/*"
     })
     assertTrue(endpoints.any {
       it.type == HelidonRequestMethods.POST &&

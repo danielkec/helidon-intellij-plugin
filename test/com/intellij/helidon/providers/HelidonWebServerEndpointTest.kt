@@ -989,6 +989,29 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     assertNull(reference.resolve())
   }
 
+  fun testHelidon4PathMatcherPrefixPathParameterReferenceDoesNotResolve() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Method;
+      import io.helidon.http.PathMatchers;
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.ServerRequest;
+      import io.helidon.webserver.http.ServerResponse;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.route(Method.GET, PathMatchers.prefix("/hello/{name}"), Main::hello);
+        }
+
+        static void hello(ServerRequest request, ServerResponse response) {
+          request.path().pathParameters().get("na<caret>me");
+        }
+      }
+    """.trimIndent())
+
+    val reference = myFixture.getReferenceAtCaretPositionWithAssertion()
+    assertNull(reference.resolve())
+  }
+
   fun testPathMatcherLiteralFactoriesKeepLiteralEndpointPaths() {
     myFixture.configureByText("Main.java", """
       import io.helidon.http.Method;
@@ -999,6 +1022,7 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
         static void routing(HttpRouting.Builder routing) {
           routing.route(Method.GET, PathMatchers.exact("/exact/{name}"), (req, res) -> {});
           routing.route(Method.GET, PathMatchers.prefix("/prefix/{name}"), (req, res) -> {});
+          routing.route(Method.GET, PathMatchers.create("/created/*"), (req, res) -> {});
         }
       }
     """.trimIndent())
@@ -1006,17 +1030,27 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     val endpoints = collectBuilderEndpoints()
     val exactEndpoints = endpoints.filter { it.urlDefinition == "/exact/{name}" }
     val prefixEndpoints = endpoints.filter { it.urlDefinition == "/prefix/{name}" }
+    val createEndpoints = endpoints.filter { it.urlDefinition == "/created/*" }
 
     assertTrue(endpointSummary(exactEndpoints), exactEndpoints.isNotEmpty())
     assertTrue(endpointSummary(exactEndpoints),
-               exactEndpoints.all { it.path.isCompatibleWith(UrlPath.fromExactString("/exact/{name}")) })
+               exactEndpoints.all { it.matchesPath(UrlPath.fromExactString("/exact/{name}")) })
     assertTrue(endpointSummary(exactEndpoints),
-               exactEndpoints.none { it.path.isCompatibleWith(UrlPath.fromExactString("/exact/bob")) })
+               exactEndpoints.none { it.matchesPath(UrlPath.fromExactString("/exact/bob")) })
     assertTrue(endpointSummary(prefixEndpoints), prefixEndpoints.isNotEmpty())
     assertTrue(endpointSummary(prefixEndpoints),
-               prefixEndpoints.all { it.path.isCompatibleWith(UrlPath.fromExactString("/prefix/{name}")) })
+               prefixEndpoints.all { it.matchesPath(UrlPath.fromExactString("/prefix/{name}")) })
     assertTrue(endpointSummary(prefixEndpoints),
-               prefixEndpoints.none { it.path.isCompatibleWith(UrlPath.fromExactString("/prefix/bob")) })
+               prefixEndpoints.all { it.matchesPath(UrlPath.fromExactString("/prefix/{name}/child")) })
+    assertTrue(endpointSummary(prefixEndpoints),
+               prefixEndpoints.none { it.matchesPath(UrlPath.fromExactString("/prefix/bob")) })
+    assertTrue(endpointSummary(createEndpoints), createEndpoints.isNotEmpty())
+    assertTrue(endpointSummary(createEndpoints),
+               createEndpoints.all { it.matchesPath(UrlPath.fromExactString("/created")) })
+    assertTrue(endpointSummary(createEndpoints),
+               createEndpoints.all { it.matchesPath(UrlPath.fromExactString("/created/file")) })
+    assertTrue(endpointSummary(createEndpoints),
+               createEndpoints.none { it.matchesPath(UrlPath.fromExactString("/created-suffix")) })
   }
 
   fun testPathMatcherLiteralFactoryConstantPathKeepsLiteralEndpointPath() {
@@ -1060,15 +1094,22 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
         @Override
         public void routing(HttpRules rules) {
           rules.route(Method.GET, PathMatchers.exact("/literal/{name}"), (req, res) -> {});
+          rules.route(Method.GET, PathMatchers.prefix("/prefix/{name}"), (req, res) -> {});
+          rules.route(Method.GET, PathMatchers.create("/created/*"), (req, res) -> {});
         }
       }
     """.trimIndent())
 
     val endpoints = collectServiceEndpoints(myFixture.findClass("GreetingService"))
     val endpoint = endpoints.single { it.parentUrl == "/api/{tenant}" && it.urlDefinition == "/literal/{name}" }
+    val prefixEndpoint = endpoints.single { it.parentUrl == "/api/{tenant}" && it.urlDefinition == "/prefix/{name}" }
+    val createEndpoint = endpoints.single { it.parentUrl == "/api/{tenant}" && it.urlDefinition == "/created/*" }
 
-    assertTrue(endpoint.path.isCompatibleWith(UrlPath.fromExactString("/api/acme/literal/{name}")))
-    assertFalse(endpoint.path.isCompatibleWith(UrlPath.fromExactString("/api/acme/literal/bob")))
+    assertTrue(endpoint.matchesPath(UrlPath.fromExactString("/api/acme/literal/{name}")))
+    assertFalse(endpoint.matchesPath(UrlPath.fromExactString("/api/acme/literal/bob")))
+    assertTrue(prefixEndpoint.matchesPath(UrlPath.fromExactString("/api/acme/prefix/{name}/child")))
+    assertFalse(prefixEndpoint.matchesPath(UrlPath.fromExactString("/api/acme/prefix/bob/child")))
+    assertTrue(createEndpoint.matchesPath(UrlPath.fromExactString("/api/acme/created/file")))
   }
 
   fun testPathMatcherLiteralFactoriesAreNotVariableBearingDeclarationPatterns() {
@@ -1083,6 +1124,11 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     assertTrue(pathMatcherFactoryMethodPattern.accepts(pathMatcherMethod(pathMatchers, "pattern")))
     assertFalse(pathMatcherFactoryMethodPattern.accepts(pathMatcherMethod(pathMatchers, "exact")))
     assertFalse(pathMatcherFactoryMethodPattern.accepts(pathMatcherMethod(pathMatchers, "prefix")))
+  }
+
+  fun testPathMatcherLiteralFactoriesHaveUrlReferences() {
+    assertPathMatcherFactoryHasUrlReference("exact")
+    assertPathMatcherFactoryHasUrlReference("prefix")
   }
 
   fun testHelidon4PathMatcherWildcardPathParameterReferenceFromConstantRoutePath() {
@@ -1350,6 +1396,56 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     assertEquals("tenant", target.textRange.substring(target.scope.text))
   }
 
+  fun testNestedHelperUsageInsideUnrelatedRouteDoesNotResolveParentPathParameter() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Method;
+      import io.helidon.webserver.http.HttpRoute;
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.HttpRules;
+      import io.helidon.webserver.http.HttpService;
+      import io.helidon.webserver.http.ServerRequest;
+      import io.helidon.webserver.http.ServerResponse;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.register("/api/{tenant}", new GreetingService());
+        }
+      }
+
+      class GreetingService implements HttpService {
+        @Override
+        public void routing(HttpRules rules) {
+          rules.route(Routes.decorated(Routes.hello()));
+        }
+      }
+
+      class Routes {
+        static HttpRoute decorated(HttpRoute ignored) {
+          return HttpRoute.builder()
+            .methods(Method.GET)
+            .path("/decorated")
+            .handler((req, res) -> {})
+            .build();
+        }
+
+        static HttpRoute hello() {
+          return HttpRoute.builder()
+            .methods(Method.GET)
+            .path("/helper/{name}")
+            .handler(Routes::handle)
+            .build();
+        }
+
+        static void handle(ServerRequest request, ServerResponse response) {
+          request.path().pathParameters().get("ten<caret>ant");
+        }
+      }
+    """.trimIndent())
+
+    val reference = myFixture.getReferenceAtCaretPositionWithAssertion()
+    assertNull(reference.resolve())
+  }
+
   fun testPathlessHelidon4RouteResolvesParentPathParameterReference() {
     myFixture.configureByText("Main.java", """
       import io.helidon.webserver.http.HttpRouting;
@@ -1588,8 +1684,10 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     return endpoints.joinToString("\n") {
       "${it.type} parent=${it.parentUrl} path=${it.urlDefinition} " +
         "methods=${it.methods} " +
-        "exactBob=${it.path.isCompatibleWith(UrlPath.fromExactString("/exact/bob"))} " +
-        "prefixBob=${it.path.isCompatibleWith(UrlPath.fromExactString("/prefix/bob"))} " +
+        "semantics=${it.pathSemantics} " +
+        "exactBob=${it.matchesPath(UrlPath.fromExactString("/exact/bob"))} " +
+        "prefixBob=${it.matchesPath(UrlPath.fromExactString("/prefix/bob"))} " +
+        "createdFile=${it.matchesPath(UrlPath.fromExactString("/created/file"))} " +
         "source=${it.resolveToPsiElement()?.textRange}"
     }
   }
@@ -1618,6 +1716,20 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     """.trimIndent())
 
     val resolved = myFixture.getReferenceAtCaretPosition()?.resolve()
+    assertFalse(resolved is PomTargetPsiElement && resolved.target is PathVariablePomTarget)
+  }
+
+  private fun assertPathMatcherFactoryHasUrlReference(factoryMethod: String) {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.PathMatchers;
+
+      class Main {
+        static final Object MATCHER = PathMatchers.$factoryMethod("/hello/{na<caret>me}");
+      }
+    """.trimIndent())
+
+    val reference = myFixture.getReferenceAtCaretPositionWithAssertion()
+    val resolved = reference.resolve()
     assertFalse(resolved is PomTargetPsiElement && resolved.target is PathVariablePomTarget)
   }
 

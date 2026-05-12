@@ -48,7 +48,14 @@ public final class HelidonUrlResolver extends HttpUrlResolver {
   private static boolean matches(@NotNull UrlResolveRequest request, @NotNull UrlTargetInfo targetInfo) {
     return matchesScheme(request, targetInfo) &&
            matchesMethod(request, targetInfo) &&
-           targetInfo.getPath().isCompatibleWith(request.getPath());
+           matchesPath(request, targetInfo);
+  }
+
+  private static boolean matchesPath(@NotNull UrlResolveRequest request, @NotNull UrlTargetInfo targetInfo) {
+    if (targetInfo instanceof HelidonUrlTargetInfo) {
+      return ((HelidonUrlTargetInfo)targetInfo).matchesPath(request.getPath());
+    }
+    return targetInfo.getPath().isCompatibleWith(request.getPath());
   }
 
   private static boolean matchesScheme(@NotNull UrlResolveRequest request, @NotNull UrlTargetInfo targetInfo) {

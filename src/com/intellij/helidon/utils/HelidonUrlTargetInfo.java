@@ -24,13 +24,20 @@ import java.util.*;
 import static com.intellij.microservices.url.UrlConstants.HTTP_SCHEMES;
 
 public final class HelidonUrlTargetInfo implements UrlTargetInfo {
+  public enum PathSemantics {
+    PATTERN,
+    LITERAL,
+    PREFIX
+  }
+
   private final String urlDefinition;
+  private String myPathDefinition = null;
 
   private final SmartPsiElementPointer<PsiElement> myElementPointer;
   private HelidonRequestMethods myType = HelidonRequestMethods.UNKNOWN;
   private Set<String> myMethods = null;
   private String myParentUrl = null;
-  private boolean myLiteralPath = false;
+  private PathSemantics myPathSemantics = PathSemantics.PATTERN;
   private final NotNullLazyValue<UrlPath> myUrlPath = NotNullLazyValue.createValue(() -> {
     return computeUrlPath();
   });
@@ -77,7 +84,13 @@ public final class HelidonUrlTargetInfo implements UrlTargetInfo {
   }
 
   public HelidonUrlTargetInfo withLiteralPath() {
-    myLiteralPath = true;
+    myPathSemantics = PathSemantics.LITERAL;
+    return this;
+  }
+
+  public HelidonUrlTargetInfo withPrefixPath(@Nullable String pathDefinition) {
+    myPathSemantics = PathSemantics.PREFIX;
+    myPathDefinition = pathDefinition;
     return this;
   }
 
@@ -87,14 +100,14 @@ public final class HelidonUrlTargetInfo implements UrlTargetInfo {
   }
 
   private @NotNull UrlPath computeUrlPath() {
-    if (myLiteralPath) {
-      return computeUrlPathWithLiteralChild();
+    if (myPathSemantics == PathSemantics.LITERAL || myPathSemantics == PathSemantics.PREFIX) {
+      return computeUrlPathWithLiteralChild(getPathDefinition());
     }
     return parseUrlPath(getFullUrlDefinition());
   }
 
-  private @NotNull UrlPath computeUrlPathWithLiteralChild() {
-    UrlPath childPath = UrlPath.fromExactString(withoutLeadingSlash(urlDefinition));
+  private @NotNull UrlPath computeUrlPathWithLiteralChild(@NotNull String childUrlDefinition) {
+    UrlPath childPath = UrlPath.fromExactString(withoutLeadingSlash(childUrlDefinition));
     if (myParentUrl == null) {
       return childPath;
     }
@@ -120,6 +133,63 @@ public final class HelidonUrlTargetInfo implements UrlTargetInfo {
       sb.append(urlDefinition);
     }
     return withoutLeadingSlash(sb.toString());
+  }
+
+  private @NotNull String getPathDefinition() {
+    return myPathDefinition == null ? urlDefinition : myPathDefinition;
+  }
+
+  public boolean matchesPath(@NotNull UrlPath requestPath) {
+    UrlPath path = getPath();
+    if (path.isCompatibleWith(requestPath)) {
+      return true;
+    }
+    return myPathSemantics == PathSemantics.PREFIX && isPrefixCompatibleWith(path, requestPath);
+  }
+
+  private static boolean isPrefixCompatibleWith(@NotNull UrlPath prefixPath, @NotNull UrlPath requestPath) {
+    List<UrlPath.PathSegment> prefixSegments = meaningfulSegments(prefixPath);
+    List<UrlPath.PathSegment> requestSegments = meaningfulSegments(requestPath);
+    if (prefixSegments.size() > requestSegments.size()) return false;
+
+    for (int i = 0; i < prefixSegments.size(); i++) {
+      if (!segmentsAreCompatible(prefixSegments.get(i), requestSegments.get(i))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private static @NotNull List<UrlPath.PathSegment> meaningfulSegments(@NotNull UrlPath path) {
+    List<UrlPath.PathSegment> result = new ArrayList<>();
+    for (UrlPath.PathSegment segment : path.getSegments()) {
+      if (!segment.isEmpty()) {
+        result.add(segment);
+      }
+    }
+    return result;
+  }
+
+  private static boolean segmentsAreCompatible(@NotNull UrlPath.PathSegment targetSegment,
+                                               @NotNull UrlPath.PathSegment requestSegment) {
+    if (targetSegment instanceof UrlPath.PathSegment.Exact && requestSegment instanceof UrlPath.PathSegment.Exact) {
+      return Objects.equals(targetSegment.getValueIfExact(), requestSegment.getValueIfExact());
+    }
+    if (targetSegment instanceof UrlPath.PathSegment.Variable && requestSegment instanceof UrlPath.PathSegment.Exact) {
+      String value = requestSegment.getValueIfExact();
+      return value != null && ((UrlPath.PathSegment.Variable)targetSegment).accepts(value);
+    }
+    if (targetSegment instanceof UrlPath.PathSegment.Exact && requestSegment instanceof UrlPath.PathSegment.Variable) {
+      String value = targetSegment.getValueIfExact();
+      return value != null && ((UrlPath.PathSegment.Variable)requestSegment).accepts(value);
+    }
+    if (targetSegment instanceof UrlPath.PathSegment.Variable && requestSegment instanceof UrlPath.PathSegment.Variable) {
+      return true;
+    }
+    if (targetSegment instanceof UrlPath.PathSegment.Undefined || requestSegment instanceof UrlPath.PathSegment.Undefined) {
+      return true;
+    }
+    return new UrlPath(Collections.singletonList(targetSegment)).isCompatibleWith(new UrlPath(Collections.singletonList(requestSegment)));
   }
 
   private static @NotNull UrlPath parseUrlPath(@NotNull String url) {
@@ -167,6 +237,10 @@ public final class HelidonUrlTargetInfo implements UrlTargetInfo {
 
   public @NotNull String getUrlDefinition() {
     return urlDefinition;
+  }
+
+  public @NotNull PathSemantics getPathSemantics() {
+    return myPathSemantics;
   }
 
   @Override

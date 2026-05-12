@@ -26,7 +26,7 @@ internal class HelidonInlaySemContributor : SemContributor() {
       routeMethod(uExpression()),
       routeObjectFactoryMethod(uExpression()),
       httpRouteBuilderPathMethod(uExpression()),
-      pathMatcherFactoryMethod(uExpression()),
+      urlPathMatcherFactoryMethod(uExpression()),
       serviceMethodCallPattern(uExpression())
     )
     registrar.registerUastSemProvider(

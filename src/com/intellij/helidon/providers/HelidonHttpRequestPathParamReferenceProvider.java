@@ -220,11 +220,57 @@ public final class HelidonHttpRequestPathParamReferenceProvider extends PathVari
       if (callExpression == null) return null;
 
       PsiMethod method = callExpression.resolveMethod();
-      if (method != null && isHelidonRouteObjectRegistrationMethod(method)) {
+      if (method != null &&
+          isHelidonRouteObjectRegistrationMethod(method) &&
+          isDirectRouteObjectRegistrationArgument(callExpression, element)) {
         return callExpression;
       }
       current = callExpression;
     }
+  }
+
+  private static boolean isDirectRouteObjectRegistrationArgument(@NotNull PsiMethodCallExpression routeCallExpression,
+                                                                 @NotNull PsiElement referenceElement) {
+    PsiExpression[] arguments = routeCallExpression.getArgumentList().getExpressions();
+    if (arguments.length != 1) return false;
+
+    PsiExpression routeArgument = HelidonCommonUtils.unwrapExpression(arguments[0]);
+    return isDirectRouteObjectExpression(routeArgument, referenceElement);
+  }
+
+  private static boolean isDirectRouteObjectExpression(@Nullable PsiExpression routeArgument, @NotNull PsiElement referenceElement) {
+    if (routeArgument instanceof PsiMethodCallExpression) {
+      return isSameReference(((PsiMethodCallExpression)routeArgument).getMethodExpression(), referenceElement);
+    }
+    if (routeArgument instanceof PsiMethodReferenceExpression) {
+      return isSameReference(routeArgument, referenceElement);
+    }
+    if (routeArgument instanceof PsiLambdaExpression) {
+      return isDirectRouteSupplierLambdaReference((PsiLambdaExpression)routeArgument, referenceElement);
+    }
+    return false;
+  }
+
+  private static boolean isDirectRouteSupplierLambdaReference(@NotNull PsiLambdaExpression lambdaExpression,
+                                                              @NotNull PsiElement referenceElement) {
+    PsiElement body = lambdaExpression.getBody();
+    if (body instanceof PsiExpression) {
+      return isDirectRouteObjectExpression((PsiExpression)body, referenceElement);
+    }
+    if (!(body instanceof PsiCodeBlock)) return false;
+
+    for (PsiStatement statement : ((PsiCodeBlock)body).getStatements()) {
+      if (statement instanceof PsiReturnStatement &&
+          isDirectRouteObjectExpression(((PsiReturnStatement)statement).getReturnValue(), referenceElement)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static boolean isSameReference(@NotNull PsiElement routeReferenceElement, @NotNull PsiElement referenceElement) {
+    return PsiTreeUtil.isAncestor(routeReferenceElement, referenceElement, false) ||
+           PsiTreeUtil.isAncestor(referenceElement, routeReferenceElement, false);
   }
 
   private static @NotNull PsiMethodCallExpression getHttpRouteBuilderChainExpression(@NotNull PsiMethodCallExpression methodCallExpression) {

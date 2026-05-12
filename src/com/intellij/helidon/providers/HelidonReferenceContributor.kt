@@ -110,6 +110,17 @@ internal val pathMatcherFactoryMethodPattern = or(
     .withParameters(JAVA_LANG_STRING)
 )
 
+internal val urlPathMatcherFactoryMethodPattern = or(
+  psiMethod()
+    .withName(StandardPatterns.string().oneOf("create", "exact", "prefix", "pattern"))
+    .definedInClass(HelidonConstants.HTTP_PATH_MATCHERS)
+    .withParameters(JAVA_LANG_STRING),
+  psiMethod()
+    .withName("create")
+    .definedInClass(HelidonConstants.LEGACY_PATH_MATCHER)
+    .withParameters(JAVA_LANG_STRING)
+)
+
 internal val registerMethodPattern = psiMethod()
   .withName("register")
   .with(object : PatternCondition<PsiMethod>("pathBasedHelidonRegisterMethod") {
@@ -371,6 +382,9 @@ internal fun httpRouteBuilderPathMethod(elementPattern: UExpressionPattern<UExpr
 internal fun pathMatcherFactoryMethod(elementPattern: UExpressionPattern<UExpression, *>): UExpressionPattern<*, *> =
   elementPattern.callParameter(0, callExpression().withResolvedMethod(pathMatcherFactoryMethodPattern, false))
 
+internal fun urlPathMatcherFactoryMethod(elementPattern: UExpressionPattern<UExpression, *>): UExpressionPattern<*, *> =
+  elementPattern.callParameter(0, callExpression().withResolvedMethod(urlPathMatcherFactoryMethodPattern, false))
+
 internal fun serviceMethodCallPattern(elementPattern: UExpressionPattern<UExpression, *>): UExpressionPattern<*, *> =
   elementPattern.callParameter(0, callExpression().withResolvedMethod(registerMethodPattern, false))
 
@@ -382,11 +396,12 @@ internal class HelidonReferenceContributor : PsiReferenceContributor() {
     val routeObjectFactoryMethod = routeObjectFactoryMethod(injectionHostUExpression())
     val httpRouteBuilderPathMethod = httpRouteBuilderPathMethod(injectionHostUExpression())
     val pathMatcherFactoryMethod = pathMatcherFactoryMethod(injectionHostUExpression())
+    val urlPathMatcherFactoryMethod = urlPathMatcherFactoryMethod(injectionHostUExpression())
     val serviceMethodCallPattern = serviceMethodCallPattern(injectionHostUExpression())
 
     registrar.registerUastReferenceProvider(
       or(httpRulesMethods, serviceMethodCallPattern, anyOfMethod, routeMethod, routeObjectFactoryMethod, httpRouteBuilderPathMethod,
-         pathMatcherFactoryMethod),
+         urlPathMatcherFactoryMethod),
       UastUrlPathReferenceProvider { uExpression, psiElement ->
         val injector = uastUrlPathReferenceInjectorForScheme(HTTP_SCHEMES)
           .withDefaultRootContextProviderFactory { HelidonUrlPathSpecification.getUrlPathContext(psiElement) }

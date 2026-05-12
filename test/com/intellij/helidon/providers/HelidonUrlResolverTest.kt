@@ -34,6 +34,23 @@ class HelidonUrlResolverTest : HelidonHighlightingTestCase() {
     assertEquals("/items/{id}", (targets.single() as HelidonUrlTargetInfo).urlDefinition)
   }
 
+  fun testResolveKeepsLiteralPathMatcherExactRouteLiteral() {
+    assertSize(1, resolve("/literal/{name}"))
+    assertEmpty(resolve("/literal/bob"))
+  }
+
+  fun testResolveMatchesLiteralPathMatcherPrefixRouteChildren() {
+    assertSize(1, resolve("/prefix/{name}"))
+    assertSize(1, resolve("/prefix/{name}/child"))
+    assertEmpty(resolve("/prefix/bob"))
+  }
+
+  fun testResolveMatchesCreateWildcardPrefixRouteChildren() {
+    assertSize(1, resolve("/created"))
+    assertSize(1, resolve("/created/file"))
+    assertEmpty(resolve("/created-suffix"))
+  }
+
   fun testResolveMatchesRegisterTargetAsAnyMethod() {
     val targets = resolve("/api", "GET")
 
@@ -58,6 +75,15 @@ class HelidonUrlResolverTest : HelidonHighlightingTestCase() {
     return listOf(
       HelidonUrlTargetInfo.create("greet", psiElement).ofType(HelidonRequestMethods.GET),
       HelidonUrlTargetInfo.create("/items/{id}", psiElement).ofType(HelidonRequestMethods.GET),
+      HelidonUrlTargetInfo.create("/literal/{name}", psiElement)
+        .ofType(HelidonRequestMethods.GET)
+        .withLiteralPath(),
+      HelidonUrlTargetInfo.create("/prefix/{name}", psiElement)
+        .ofType(HelidonRequestMethods.GET)
+        .withPrefixPath(null),
+      HelidonUrlTargetInfo.create("/created/*", psiElement)
+        .ofType(HelidonRequestMethods.GET)
+        .withPrefixPath("/created"),
       HelidonUrlTargetInfo.create("/api", psiElement).ofType(HelidonRequestMethods.REGISTER),
       HelidonUrlTargetInfo.create("/multi", psiElement)
         .ofType(HelidonRequestMethods.ANY_OF)

@@ -1375,6 +1375,79 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     assertNotNull(reference.resolve())
   }
 
+  fun testHelidon4ParameterizedHttpRouteHelperPathParameterReferenceFromHandlerArgument() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Method;
+      import io.helidon.webserver.http.Handler;
+      import io.helidon.webserver.http.HttpRoute;
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.ServerRequest;
+      import io.helidon.webserver.http.ServerResponse;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.route(Routes.route(Method.GET, "/parameterized/{name}", Main::hello));
+        }
+
+        static void hello(ServerRequest request, ServerResponse response) {
+          request.path().pathParameters().get("na<caret>me");
+        }
+      }
+
+      class Routes {
+        static HttpRoute route(Method method, String path, Handler handler) {
+          return HttpRoute.builder()
+            .methods(method)
+            .path(path)
+            .handler(handler)
+            .build();
+        }
+      }
+    """.trimIndent())
+
+    val reference = myFixture.getReferenceAtCaretPositionWithAssertion()
+    val target = assertInstanceOf(assertInstanceOf(reference.resolve(), PomTargetPsiElement::class.java).target,
+                                  PathVariablePomTarget::class.java)
+    assertTrue(target.scope.isPhysical)
+    assertEquals("name", target.textRange.substring(target.scope.text))
+  }
+
+  fun testHelidon4HttpRouteBuilderHelperPathParameterReferenceFromPathArgument() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Method;
+      import io.helidon.webserver.http.HttpRoute;
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.ServerRequest;
+      import io.helidon.webserver.http.ServerResponse;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.route(Routes.route("/helper/{name}"));
+        }
+
+        static void hello(ServerRequest request, ServerResponse response) {
+          request.path().pathParameters().get("na<caret>me");
+        }
+      }
+
+      class Routes {
+        static HttpRoute route(String path) {
+          return HttpRoute.builder()
+            .methods(Method.GET)
+            .path(path)
+            .handler(Main::hello)
+            .build();
+        }
+      }
+    """.trimIndent())
+
+    val reference = myFixture.getReferenceAtCaretPositionWithAssertion()
+    val target = assertInstanceOf(assertInstanceOf(reference.resolve(), PomTargetPsiElement::class.java).target,
+                                  PathVariablePomTarget::class.java)
+    assertTrue(target.scope.isPhysical)
+    assertEquals("name", target.textRange.substring(target.scope.text))
+  }
+
   fun testHelidon4HttpRouteBuilderHelperPathParameterReferenceKeepsRegisteredServiceParentPath() {
     myFixture.configureByText("Main.java", """
       import io.helidon.http.Method;

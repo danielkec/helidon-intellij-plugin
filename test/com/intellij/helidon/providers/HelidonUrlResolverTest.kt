@@ -65,6 +65,12 @@ class HelidonUrlResolverTest : HelidonHighlightingTestCase() {
     assertSize(1, resolve("/deep/a/b"))
   }
 
+  fun testResolveMatchesPathMatcherCustomRegexWithNestedBraces() {
+    assertSize(1, resolve("/bounded/ab/name"))
+    assertEmpty(resolve("/bounded/a/name"))
+    assertEmpty(resolve("/bounded/abc/name"))
+  }
+
   fun testResolveMatchesRegisterTargetAsAnyMethod() {
     val targets = resolve("/api", "GET")
 
@@ -108,6 +114,9 @@ class HelidonUrlResolverTest : HelidonHighlightingTestCase() {
         .ofType(HelidonRequestMethods.GET)
         .withMatcherPatternPath(),
       HelidonUrlTargetInfo.create("/deep/{+path}", psiElement)
+        .ofType(HelidonRequestMethods.GET)
+        .withMatcherPatternPath(),
+      HelidonUrlTargetInfo.create("/bounded/{id:\\w{2}}/name", psiElement)
         .ofType(HelidonRequestMethods.GET)
         .withMatcherPatternPath(),
       HelidonUrlTargetInfo.create("/api", psiElement).ofType(HelidonRequestMethods.REGISTER),

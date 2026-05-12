@@ -148,8 +148,8 @@ public final class HelidonUrlTargetInfo implements UrlTargetInfo {
   }
 
   public boolean matchesPath(@NotNull UrlPath requestPath) {
-    if (myPathSemantics == PathSemantics.MATCHER_PATTERN && matchesPathMatcherPattern(requestPath)) {
-      return true;
+    if (myPathSemantics == PathSemantics.MATCHER_PATTERN) {
+      return matchesPathMatcherPattern(requestPath);
     }
 
     UrlPath path = getPath();
@@ -261,7 +261,7 @@ public final class HelidonUrlTargetInfo implements UrlTargetInfo {
         sb.append(")?");
       }
       else if (c == '{') {
-        int end = pattern.indexOf('}', i + 1);
+        int end = findParameterEnd(pattern, i + 1);
         if (end < 0) {
           appendLiteral(sb, c);
         }
@@ -278,6 +278,27 @@ public final class HelidonUrlTargetInfo implements UrlTargetInfo {
       appendLiteral(sb, '\\');
     }
     return sb.toString();
+  }
+
+  private static int findParameterEnd(@NotNull String pattern, int start) {
+    int regexStart = -1;
+    int nestedBraces = 0;
+    for (int i = start; i < pattern.length(); i++) {
+      char c = pattern.charAt(i);
+      if (c == ':' && regexStart < 0) {
+        regexStart = i;
+      }
+      else if (regexStart >= 0 && c == '{') {
+        nestedBraces++;
+      }
+      else if (c == '}') {
+        if (nestedBraces == 0) {
+          return i;
+        }
+        nestedBraces--;
+      }
+    }
+    return -1;
   }
 
   private static void appendParameterRegex(@NotNull StringBuilder sb, @NotNull String parameter) {

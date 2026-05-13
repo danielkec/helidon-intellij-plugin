@@ -649,9 +649,17 @@ public final class HelidonCommonUtils {
   }
 
   public static @NotNull Collection<String> getRestServerConsumedMediaTypes(@NotNull PsiMethod method) {
+    return getRestServerMediaTypes(method, HelidonConstants.HTTP_CONSUMES);
+  }
+
+  public static @NotNull Collection<String> getRestServerProducedMediaTypes(@NotNull PsiMethod method) {
+    return getRestServerMediaTypes(method, HelidonConstants.HTTP_PRODUCES);
+  }
+
+  private static @NotNull Collection<String> getRestServerMediaTypes(@NotNull PsiMethod method, @NotNull String annotationName) {
     List<PsiMethod> methodHierarchy = getMethodHierarchy(method);
     for (PsiMethod hierarchyMethod : methodHierarchy) {
-      PsiAnnotation annotation = findAnnotation(hierarchyMethod, HelidonConstants.HTTP_CONSUMES);
+      PsiAnnotation annotation = findAnnotation(hierarchyMethod, annotationName);
       if (annotation != null) {
         Collection<String> values = getAnnotationStringValues(annotation);
         if (!values.isEmpty()) return values;
@@ -659,7 +667,7 @@ public final class HelidonCommonUtils {
     }
     for (PsiMethod hierarchyMethod : methodHierarchy) {
       PsiClass containingClass = hierarchyMethod.getContainingClass();
-      PsiAnnotation annotation = containingClass == null ? null : findAnnotation(containingClass, HelidonConstants.HTTP_CONSUMES);
+      PsiAnnotation annotation = containingClass == null ? null : findAnnotation(containingClass, annotationName);
       if (annotation != null) {
         Collection<String> values = getAnnotationStringValues(annotation);
         if (!values.isEmpty()) return values;

@@ -248,6 +248,7 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
 
     myFixture.configureByText("GreetingService.java", """
       import io.helidon.http.Http;
+      import io.helidon.http.MediaTypes;
       import io.helidon.webserver.http.RestServer;
 
       @RestServer.Endpoint
@@ -256,11 +257,12 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
         @Http.POST
         @Http.Path("/{name}")
         @Http.Consumes("application/json")
-        String getMessage(@Http.PathParam("name") String name,
+        @Http.Produces(MediaTypes.APPLICATION_JSON_VALUE)
+        Message getMessage(@Http.PathParam("name") String name,
                           @Http.HeaderParam("test") String test,
                           @Http.QueryParam("locale") String locale,
                           @Http.Entity Message message) {
-          return name + test + locale;
+          return message;
         }
       }
 
@@ -295,13 +297,8 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
     assertTrue(parameters.any { it.name == "locale" && it.inPlace == OasParameterIn.QUERY })
     val requestBody = requireNotNull(operation.requestBody)
     assertTrue(requestBody.required)
-    val schema = resolveSchema(specification, requireNotNull(requestBody.content["application/json"]))
-    assertEquals(OasSchemaType.OBJECT, schema.type)
-    assertNull(schema.`enum`)
-    assertNull(schema.required)
-    val properties = requireNotNull(schema.properties).associateBy { it.name }
-    assertEquals(OasSchemaType.STRING, properties["message"]?.schema?.type)
-    assertEquals(OasSchemaType.STRING, properties["greeting"]?.schema?.type)
+    assertMessageSchema(specification, requireNotNull(requestBody.content["application/json"]))
+    assertMessageSchema(specification, requireNotNull(operation.responses.single().content["application/json"]?.schema))
   }
 
   fun testInheritedDeclarativeParametersAreAddedToOpenApiSpecification() {
@@ -309,13 +306,15 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
 
     myFixture.configureByText("GreetingService.java", """
       import io.helidon.http.Http;
+      import io.helidon.http.MediaTypes;
       import io.helidon.webserver.http.RestServer;
 
       interface GreetingApi {
         @Http.POST
         @Http.Path("/{name}")
         @Http.Consumes("application/json")
-        String getMessage(@Http.PathParam("name") String name,
+        @Http.Produces(MediaTypes.APPLICATION_JSON_VALUE)
+        Message getMessage(@Http.PathParam("name") String name,
                           @Http.HeaderParam("test") String test,
                           @Http.QueryParam("locale") String locale,
                           @Http.Entity Message message);
@@ -324,8 +323,8 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
       @RestServer.Endpoint
       @Http.Path("/greet")
       class GreetingService implements GreetingApi {
-        public String getMessage(String name, String test, String locale, Message message) {
-          return name + test + locale;
+        public Message getMessage(String name, String test, String locale, Message message) {
+          return message;
         }
       }
 
@@ -360,7 +359,12 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
     assertTrue(parameters.any { it.name == "locale" && it.inPlace == OasParameterIn.QUERY })
     val requestBody = requireNotNull(operation.requestBody)
     assertTrue(requestBody.required)
-    val schema = resolveSchema(specification, requireNotNull(requestBody.content["application/json"]))
+    assertMessageSchema(specification, requireNotNull(requestBody.content["application/json"]))
+    assertMessageSchema(specification, requireNotNull(operation.responses.single().content["application/json"]?.schema))
+  }
+
+  private fun assertMessageSchema(specification: OpenApiSpecification, bodySchema: OasSchema) {
+    val schema = resolveSchema(specification, bodySchema)
     assertEquals(OasSchemaType.OBJECT, schema.type)
     assertNull(schema.`enum`)
     assertNull(schema.required)
@@ -463,6 +467,12 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
         }
 
         @Retention(RetentionPolicy.CLASS)
+        @Target({ElementType.TYPE, ElementType.METHOD})
+        public @interface Produces {
+          String[] value();
+        }
+
+        @Retention(RetentionPolicy.CLASS)
         @Target({ElementType.METHOD, ElementType.ANNOTATION_TYPE})
         public @interface HttpMethod {
           String value();
@@ -474,6 +484,16 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
 
         @HttpMethod("POST")
         public @interface POST {
+        }
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package io.helidon.http;
+
+      public final class MediaTypes {
+        public static final String APPLICATION_JSON_VALUE = "application/json";
+
+        private MediaTypes() {
         }
       }
     """.trimIndent())

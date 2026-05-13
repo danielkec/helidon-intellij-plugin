@@ -751,8 +751,9 @@ public final class HelidonCommonUtils {
                                                @NotNull HelidonRequestMethods requestMethods,
                                                int expressionNum,
                                                boolean skipServiceClasses) {
+    Map<PsiClass, Boolean> generatedRestServerHttpFeatureCache = new HashMap<>();
     for (UCallExpression callExpression : getUCallExpressions(scope, psiMethod)) {
-      if (isGeneratedRestServerHttpFeatureCall(callExpression)) continue;
+      if (isGeneratedRestServerHttpFeatureCall(callExpression, generatedRestServerHttpFeatureCache)) continue;
       if (skipServiceClasses && isInsideHttpServiceClass(callExpression)) continue;
       UExpression expression = callExpression.getArgumentForParameter(expressionNum);
       if (expression == null) continue;
@@ -771,8 +772,9 @@ public final class HelidonCommonUtils {
                                                @NotNull SearchScope scope,
                                                @NotNull RouteMethod routeMethod,
                                                boolean skipServiceClasses) {
+    Map<PsiClass, Boolean> generatedRestServerHttpFeatureCache = new HashMap<>();
     for (UCallExpression callExpression : getUCallExpressions(scope, routeMethod.method)) {
-      if (isGeneratedRestServerHttpFeatureCall(callExpression)) continue;
+      if (isGeneratedRestServerHttpFeatureCall(callExpression, generatedRestServerHttpFeatureCache)) continue;
       if (skipServiceClasses && isInsideHttpServiceClass(callExpression)) continue;
       if (routeMethod.routeObjectRegistration) {
         if (!processHttpRouteObjectTargets(processor, routeMethod, callExpression)) return false;
@@ -798,13 +800,19 @@ public final class HelidonCommonUtils {
     return true;
   }
 
-  private static boolean isGeneratedRestServerHttpFeatureCall(@NotNull UCallExpression callExpression) {
+  private static boolean isGeneratedRestServerHttpFeatureCall(@NotNull UCallExpression callExpression,
+                                                             @NotNull Map<PsiClass, Boolean> generatedRestServerHttpFeatureCache) {
     PsiElement sourcePsi = callExpression.getSourcePsi();
     if (sourcePsi == null) return false;
 
     PsiClass containingClass = PsiTreeUtil.getParentOfType(sourcePsi, PsiClass.class);
     if (containingClass == null) return false;
 
+    return generatedRestServerHttpFeatureCache.computeIfAbsent(containingClass,
+                                                               HelidonCommonUtils::isGeneratedRestServerHttpFeatureClass);
+  }
+
+  private static boolean isGeneratedRestServerHttpFeatureClass(@NotNull PsiClass containingClass) {
     String className = containingClass.getName();
     if (className == null || !className.endsWith(HELIDON_REST_SERVER_HTTP_FEATURE_SUFFIX)) return false;
 

@@ -5,8 +5,11 @@ import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.providers.HelidonRequestMethods
 import com.intellij.helidon.utils.HelidonCommonUtils
 import com.intellij.helidon.utils.HelidonUrlTargetInfo
+import com.intellij.microservices.endpoints.ModuleEndpointsFilter
 import com.intellij.openapi.module.ModuleUtilCore
+import com.intellij.psi.PsiClass
 import com.intellij.psi.search.GlobalSearchScope
+import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.util.CommonProcessors.CollectProcessor
 
 class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
@@ -181,11 +184,152 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
     })
   }
 
+  fun testGeneratedRestServerHttpFeatureDoesNotDuplicateDeclarativeEndpointGroup() {
+    addHelidonDeclarativeStubs()
+    addHelidonGeneratedAnnotationStub()
+
+    myFixture.configureByText("SecretService.java", """
+      package test;
+
+      import io.helidon.common.Generated;
+      import io.helidon.http.Http;
+      import io.helidon.service.registry.Service;
+      import io.helidon.webserver.http.HttpFeature;
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.HttpRules;
+      import io.helidon.webserver.http.RestServer;
+      import io.helidon.webserver.http.ServerRequest;
+      import io.helidon.webserver.http.ServerResponse;
+
+      @RestServer.Endpoint
+      @Service.Singleton
+      class SecretService {
+        @Http.GET
+        @Http.Path("/get-secret")
+        String getSecret() {
+          return "secret";
+        }
+      }
+
+      @Generated(value = "io.helidon.declarative.codegen.http.webserver.RestServerExtension",
+                 trigger = "test.SecretService")
+      @Service.Singleton
+      class SecretService__HttpFeature implements HttpFeature {
+        @Override
+        public void setup(HttpRouting.Builder routing) {
+          routing.register("/", this::routing);
+        }
+
+        private void routing(HttpRules rules) {
+          rules.get("/get-secret", this::getSecret);
+        }
+
+        private void getSecret(ServerRequest request, ServerResponse response) {
+        }
+      }
+    """.trimIndent())
+
+    val framework = HelidonUrlFramework()
+    val module = ModuleUtilCore.findModuleForPsiElement(myFixture.file)!!
+    val endpoints = framework.getEndpointGroups(project, ModuleEndpointsFilter(module, false, false))
+      .flatMap { framework.getEndpoints(it).toList() }
+      .filter { it.type == HelidonRequestMethods.GET && it.urlDefinition == "/get-secret" }
+
+    assertEquals(endpoints.joinToString { "${it.type} ${it.urlDefinition} ${containingClassName(it)}" }, 1, endpoints.size)
+    assertEquals("SecretService", containingClassName(endpoints.single()))
+  }
+
   private fun collectBuilderEndpoints(): Collection<HelidonUrlTargetInfo> {
     val processor = CollectProcessor<HelidonUrlTargetInfo>()
     val module = ModuleUtilCore.findModuleForPsiElement(myFixture.file)!!
     val scope = GlobalSearchScope.fileScope(myFixture.file)
     assertTrue(HelidonCommonUtils.processBuilderRegisterMethods(processor, scope, module))
     return processor.results
+  }
+
+  private fun containingClassName(endpoint: HelidonUrlTargetInfo): String? {
+    return PsiTreeUtil.getParentOfType(endpoint.resolveToPsiElement(), PsiClass::class.java)?.name
+  }
+
+  private fun addHelidonDeclarativeStubs() {
+    myFixture.addClass("""
+      package io.helidon.service.registry;
+
+      import java.lang.annotation.ElementType;
+      import java.lang.annotation.Retention;
+      import java.lang.annotation.RetentionPolicy;
+      import java.lang.annotation.Target;
+
+      public final class Service {
+        private Service() {
+        }
+
+        @Retention(RetentionPolicy.CLASS)
+        @Target({ElementType.TYPE, ElementType.ANNOTATION_TYPE})
+        public @interface Singleton {
+        }
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package io.helidon.http;
+
+      import java.lang.annotation.ElementType;
+      import java.lang.annotation.Retention;
+      import java.lang.annotation.RetentionPolicy;
+      import java.lang.annotation.Target;
+
+      public final class Http {
+        private Http() {
+        }
+
+        @Retention(RetentionPolicy.CLASS)
+        @Target({ElementType.TYPE, ElementType.METHOD})
+        public @interface Path {
+          String value() default "/";
+        }
+
+        @Retention(RetentionPolicy.CLASS)
+        @Target({ElementType.METHOD, ElementType.ANNOTATION_TYPE})
+        public @interface HttpMethod {
+          String value();
+        }
+
+        @HttpMethod("GET")
+        public @interface GET {
+        }
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package io.helidon.webserver.http;
+
+      import java.lang.annotation.ElementType;
+      import java.lang.annotation.Retention;
+      import java.lang.annotation.RetentionPolicy;
+      import java.lang.annotation.Target;
+
+      import io.helidon.service.registry.Service;
+
+      public final class RestServer {
+        private RestServer() {
+        }
+
+        @Retention(RetentionPolicy.CLASS)
+        @Target(ElementType.TYPE)
+        @Service.Singleton
+        public @interface Endpoint {
+        }
+      }
+    """.trimIndent())
+  }
+
+  private fun addHelidonGeneratedAnnotationStub() {
+    myFixture.addClass("""
+      package io.helidon.common;
+
+      public @interface Generated {
+        String value();
+        String trigger() default "";
+      }
+    """.trimIndent())
   }
 }

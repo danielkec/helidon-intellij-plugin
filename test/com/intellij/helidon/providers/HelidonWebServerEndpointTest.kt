@@ -15,6 +15,7 @@ import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.LocalSearchScope
+import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.util.CommonProcessors.CollectProcessor
 
 class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
@@ -1979,6 +1980,61 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     })
   }
 
+  fun testGeneratedRestServerHttpFeatureRouteDoesNotDuplicateDeclarativeEndpoint() {
+    addHelidonDeclarativeStubs()
+    addHelidonGeneratedAnnotationStub()
+
+    myFixture.configureByText("SecretService.java", """
+      package test;
+
+      import io.helidon.common.Generated;
+      import io.helidon.http.Http;
+      import io.helidon.service.registry.Service;
+      import io.helidon.webserver.http.HttpFeature;
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.HttpRules;
+      import io.helidon.webserver.http.RestServer;
+      import io.helidon.webserver.http.ServerRequest;
+      import io.helidon.webserver.http.ServerResponse;
+
+      @RestServer.Endpoint
+      @Service.Singleton
+      class SecretService {
+        @Http.GET
+        @Http.Path("/get-secret")
+        String getSecret() {
+          return "secret";
+        }
+      }
+
+      @Generated(value = "io.helidon.declarative.codegen.http.webserver.RestServerExtension",
+                 trigger = "test.SecretService")
+      @Service.Singleton
+      class SecretService__HttpFeature implements HttpFeature {
+        @Override
+        public void setup(HttpRouting.Builder routing) {
+          routing.register("/", this::routing);
+        }
+
+        private void routing(HttpRules rules) {
+          rules.get("/get-secret", this::getSecret);
+        }
+
+        private void getSecret(ServerRequest request, ServerResponse response) {
+        }
+      }
+    """.trimIndent())
+
+    val generatedClass = JavaPsiFacade.getInstance(project)
+      .findClass("test.SecretService__HttpFeature", GlobalSearchScope.fileScope(myFixture.file))!!
+    val endpoints = (collectBuilderEndpoints() + collectServiceEndpoints(generatedClass) + collectRestServerEndpoints()).filter {
+      it.type == HelidonRequestMethods.GET && it.urlDefinition == "/get-secret"
+    }
+
+    assertEquals(endpoints.joinToString { "${it.type} ${it.urlDefinition} ${containingClassName(it)}" }, 1, endpoints.size)
+    assertEquals("SecretService", containingClassName(endpoints.single()))
+  }
+
   private fun collectBuilderEndpoints(): Collection<HelidonUrlTargetInfo> {
     return collectBuilderEndpoints(GlobalSearchScope.fileScope(myFixture.file), myFixture.file)
   }
@@ -2003,6 +2059,10 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     val module = ModuleUtilCore.findModuleForPsiElement(myFixture.file)!!
     assertTrue(HelidonCommonUtils.processRestServerEndpointMethods(processor, GlobalSearchScope.fileScope(myFixture.file), module))
     return processor.results
+  }
+
+  private fun containingClassName(endpoint: HelidonUrlTargetInfo): String? {
+    return PsiTreeUtil.getParentOfType(endpoint.resolveToPsiElement(), PsiClass::class.java)?.name
   }
 
   private fun endpointSummary(endpoints: Collection<HelidonUrlTargetInfo>): String {
@@ -2371,6 +2431,17 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
         @Service.Singleton
         public @interface Endpoint {
         }
+      }
+    """.trimIndent())
+  }
+
+  private fun addHelidonGeneratedAnnotationStub() {
+    myFixture.addClass("""
+      package io.helidon.common;
+
+      public @interface Generated {
+        String value();
+        String trigger() default "";
       }
     """.trimIndent())
   }

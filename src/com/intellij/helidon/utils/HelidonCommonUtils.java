@@ -48,8 +48,11 @@ public final class HelidonCommonUtils {
   private static final String JAVA_UTIL_LIST = "java.util.List";
   private static final String JAVA_UTIL_SET = "java.util.Set";
   private static final String HELIDON_COMMON_HTTP_REQUEST_METHOD = "io.helidon.common.http.Http.RequestMethod";
+  private static final String HELIDON_COMMON_GENERATED = "io.helidon.common.Generated";
   private static final String HELIDON_HTTP_METHOD = "io.helidon.http.Method";
   private static final String HELIDON_HTTP_METHODS = "io.helidon.http.Methods";
+  private static final String HELIDON_REST_SERVER_EXTENSION = "io.helidon.declarative.codegen.http.webserver.RestServerExtension";
+  private static final String HELIDON_REST_SERVER_HTTP_FEATURE_SUFFIX = "__HttpFeature";
   private static final Map<String, String> HTTP_METHOD_ANNOTATIONS = Map.of(HelidonConstants.HTTP_GET, "GET",
                                                                             HelidonConstants.HTTP_HEAD, "HEAD",
                                                                             HelidonConstants.HTTP_POST, "POST",
@@ -716,7 +719,11 @@ public final class HelidonCommonUtils {
   }
 
   private static @Nullable String getAnnotationStringValue(@NotNull PsiAnnotation annotation) {
-    PsiAnnotationMemberValue value = annotation.findAttributeValue("value");
+    return getAnnotationStringValue(annotation, "value");
+  }
+
+  private static @Nullable String getAnnotationStringValue(@NotNull PsiAnnotation annotation, @NotNull String attributeName) {
+    PsiAnnotationMemberValue value = annotation.findAttributeValue(attributeName);
     if (value instanceof PsiExpression) {
       Pair<PsiElement, String> evaluated = StringExpressionHelper.evaluateExpression((PsiExpression)value);
       if (evaluated != null) {
@@ -744,7 +751,9 @@ public final class HelidonCommonUtils {
                                                @NotNull HelidonRequestMethods requestMethods,
                                                int expressionNum,
                                                boolean skipServiceClasses) {
+    Map<PsiClass, Boolean> generatedRestServerHttpFeatureCache = new HashMap<>();
     for (UCallExpression callExpression : getUCallExpressions(scope, psiMethod)) {
+      if (isGeneratedRestServerHttpFeatureCall(callExpression, generatedRestServerHttpFeatureCache)) continue;
       if (skipServiceClasses && isInsideHttpServiceClass(callExpression)) continue;
       UExpression expression = callExpression.getArgumentForParameter(expressionNum);
       if (expression == null) continue;
@@ -763,7 +772,9 @@ public final class HelidonCommonUtils {
                                                @NotNull SearchScope scope,
                                                @NotNull RouteMethod routeMethod,
                                                boolean skipServiceClasses) {
+    Map<PsiClass, Boolean> generatedRestServerHttpFeatureCache = new HashMap<>();
     for (UCallExpression callExpression : getUCallExpressions(scope, routeMethod.method)) {
+      if (isGeneratedRestServerHttpFeatureCall(callExpression, generatedRestServerHttpFeatureCache)) continue;
       if (skipServiceClasses && isInsideHttpServiceClass(callExpression)) continue;
       if (routeMethod.routeObjectRegistration) {
         if (!processHttpRouteObjectTargets(processor, routeMethod, callExpression)) return false;
@@ -787,6 +798,33 @@ public final class HelidonCommonUtils {
       }
     }
     return true;
+  }
+
+  private static boolean isGeneratedRestServerHttpFeatureCall(@NotNull UCallExpression callExpression,
+                                                             @NotNull Map<PsiClass, Boolean> generatedRestServerHttpFeatureCache) {
+    PsiElement sourcePsi = callExpression.getSourcePsi();
+    if (sourcePsi == null) return false;
+
+    PsiClass containingClass = PsiTreeUtil.getParentOfType(sourcePsi, PsiClass.class);
+    if (containingClass == null) return false;
+
+    return generatedRestServerHttpFeatureCache.computeIfAbsent(containingClass,
+                                                               HelidonCommonUtils::isGeneratedRestServerHttpFeatureClass);
+  }
+
+  private static boolean isGeneratedRestServerHttpFeatureClass(@NotNull PsiClass containingClass) {
+    String className = containingClass.getName();
+    if (className == null || !className.endsWith(HELIDON_REST_SERVER_HTTP_FEATURE_SUFFIX)) return false;
+
+    PsiAnnotation generated = findAnnotation(containingClass, HELIDON_COMMON_GENERATED);
+    if (generated == null || !HELIDON_REST_SERVER_EXTENSION.equals(getAnnotationStringValue(generated))) return false;
+
+    String triggerClassName = getAnnotationStringValue(generated, "trigger");
+    if (triggerClassName == null) return false;
+
+    PsiClass triggerClass = JavaPsiFacade.getInstance(containingClass.getProject()).findClass(triggerClassName,
+                                                                                              containingClass.getResolveScope());
+    return triggerClass != null && findAnnotation(triggerClass, HelidonConstants.REST_SERVER_ENDPOINT) != null;
   }
 
   private static boolean processHttpRouteObjectTargets(@NotNull Processor<? super HelidonUrlTargetInfo> processor,

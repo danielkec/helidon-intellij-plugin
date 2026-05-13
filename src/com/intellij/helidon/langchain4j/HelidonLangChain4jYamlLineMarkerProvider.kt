@@ -28,17 +28,21 @@ internal class HelidonLangChain4jYamlLineMarkerProvider : RelatedItemLineMarkerP
     val processed = HashSet<PsiElement>()
     for (element in elements) {
       val target = langChain4jTarget(element) ?: continue
-      if (!processed.add(target.first)) continue
+      if (!processed.add(target.anchor)) continue
 
-      val builder = NavigationGutterIconBuilder.create(HelidonIcons.HelidonGutter, HelidonBundle.HELIDON_LIBRARY)
-        .setTargets(target.second)
+      val builder = NavigationGutterIconBuilder.create(gutterIcon(target), HelidonBundle.HELIDON_LIBRARY)
+        .setTargets(target.targets)
         .setPopupTitle(HelidonBundle.message("gutter.choose.langchain4j.target"))
         .setTooltipText(HelidonBundle.message("gutter.navigate.to.langchain4j.target"))
-      result.add(builder.createLineMarkerInfo(target.first))
+      result.add(builder.createLineMarkerInfo(target.anchor))
     }
   }
 
-  private fun langChain4jTarget(element: PsiElement): Pair<PsiElement, List<PsiElement>>? {
+  private fun gutterIcon(target: HelidonLangChain4jConfigResolver.MarkerTargets): Icon {
+    return if (target.modelReference) HelidonIcons.RobotGutter else HelidonIcons.HelidonGutter
+  }
+
+  private fun langChain4jTarget(element: PsiElement): HelidonLangChain4jConfigResolver.MarkerTargets? {
     if (element is YAMLKeyValue || element is YAMLScalar) {
       return HelidonLangChain4jConfigResolver.markerTargets(element)
     }

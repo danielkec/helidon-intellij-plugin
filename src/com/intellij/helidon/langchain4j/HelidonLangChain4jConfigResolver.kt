@@ -2,9 +2,14 @@
 package com.intellij.helidon.langchain4j
 
 import com.intellij.helidon.constants.HelidonConstants
+import com.intellij.helidon.config.HelidonConfigFileContributor
+import com.intellij.helidon.config.properties.HelidonPropertiesUtils
 import com.intellij.java.library.JavaLibraryModificationTracker
+import com.intellij.lang.properties.psi.PropertiesFile
+import com.intellij.lang.properties.psi.impl.PropertyImpl
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleUtilCore
+import com.intellij.openapi.roots.ModuleRootManager
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.ElementManipulators
@@ -13,8 +18,11 @@ import com.intellij.psi.PsiAnnotation
 import com.intellij.psi.PsiArrayInitializerMemberValue
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiElement
+import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiLiteralExpression
 import com.intellij.psi.PsiModifierListOwner
+import com.intellij.psi.PsiNameValuePair
+import com.intellij.psi.PsiManager
 import com.intellij.psi.PsiReference
 import com.intellij.psi.PsiReferenceExpression
 import com.intellij.psi.search.PsiShortNamesCache
@@ -27,6 +35,7 @@ import com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.yaml.psi.YAMLFile
 import org.jetbrains.yaml.psi.YAMLKeyValue
 import org.jetbrains.yaml.psi.YAMLScalar
+import org.jetbrains.yaml.psi.YAMLSequence
 
 internal object HelidonLangChain4jConfigResolver {
   private const val ROOT = "langchain4j"
@@ -75,6 +84,34 @@ internal object HelidonLangChain4jConfigResolver {
   )
 
   private val CLASS_VALUED_KEYS: Set<String> = setOf("tools", "input-guardrails", "output-guardrails")
+
+  private val MODEL_VALUE_KEYS: Set<String> = setOf("chat-model", "streaming-chat-model", "moderation-model", "embedding-model")
+
+  private val ANNOTATION_CONFIG_SECTIONS: Map<String, String> = mapOf(
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_SERVICE to SERVICES,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_SERVICE to SERVICES,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_AGENT to AGENTS,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_AGENT to AGENTS,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_CHAT_MODEL to MODELS,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_CHAT_MODEL to MODELS,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_STREAMING_CHAT_MODEL to MODELS,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_STREAMING_CHAT_MODEL to MODELS,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_MODERATION_MODEL to MODELS,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_MODERATION_MODEL to MODELS,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_CONTENT_RETRIEVER to CONTENT_RETRIEVERS,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_CONTENT_RETRIEVER to CONTENT_RETRIEVERS,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_MCP_CLIENTS to MCP_CLIENTS,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_MCP_CLIENTS to MCP_CLIENTS,
+  )
+
+  private val ANNOTATION_CONFIG_VALUE_KEYS: Map<String, Set<String>> = mapOf(
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_CHAT_MEMORY_PROVIDER to setOf("chat-memory-provider"),
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_CHAT_MEMORY_PROVIDER to setOf("chat-memory-provider"),
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_RETRIEVAL_AUGMENTOR to setOf("retrieval-augmentor"),
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_RETRIEVAL_AUGMENTOR to setOf("retrieval-augmentor"),
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_TOOL_PROVIDER to setOf("tool-provider"),
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_TOOL_PROVIDER to setOf("tool-provider"),
+  )
 
   private val ANNOTATION_KINDS: Map<LangChain4jComponentKind, Set<String>> = mapOf(
     LangChain4jComponentKind.SERVICE to setOf(
@@ -144,20 +181,43 @@ internal object HelidonLangChain4jConfigResolver {
     return arrayOf(reference)
   }
 
-  fun markerTargets(element: PsiElement): Pair<PsiElement, List<PsiElement>>? {
+  fun markerTargets(element: PsiElement): MarkerTargets? {
     if (element is YAMLKeyValue) {
       val anchor = element.key ?: element
       val targets = keyTargets(element)
-      return targets.takeIf { it.isNotEmpty() }?.let { anchor to it }
+      return targets.takeIf { it.isNotEmpty() }
+        ?.let { MarkerTargets(anchor, it, isModelKeyReference(element)) }
     }
 
     if (element is YAMLScalar) {
       val yamlKeyValue = PsiTreeUtil.getParentOfType(element, YAMLKeyValue::class.java) ?: return null
-      val targets = valueTargets(element, yamlKeyValue, qualifiedConfigKeyName(yamlKeyValue), element.textValue.trim())
-      return targets.takeIf { it.isNotEmpty() }?.let { element to it }
+      val path = qualifiedConfigKeyName(yamlKeyValue)
+      val targets = valueTargets(element, yamlKeyValue, path, element.textValue.trim())
+      return targets.takeIf { it.isNotEmpty() }
+        ?.let { MarkerTargets(element.firstChild ?: element, it, isModelValueReference(path)) }
     }
 
     return null
+  }
+
+  fun annotationValueReferences(element: PsiElement, range: TextRange): Array<PsiReference> {
+    val annotationName = annotationName(element) ?: return PsiReference.EMPTY_ARRAY
+    if (annotationName !in ANNOTATION_CONFIG_SECTIONS && annotationName !in ANNOTATION_CONFIG_VALUE_KEYS) {
+      return PsiReference.EMPTY_ARRAY
+    }
+
+    val value = ElementManipulators.getValueText(element).trim()
+    if (value.isEmpty()) return PsiReference.EMPTY_ARRAY
+
+    val reference = HelidonLangChain4jConfigReference(element, range) {
+      val targets = LinkedHashSet<PsiElement>()
+      ANNOTATION_CONFIG_SECTIONS[annotationName]
+        ?.let { section -> targets.addAll(findConfigKeys(element, "$ROOT.$section.$value")) }
+      ANNOTATION_CONFIG_VALUE_KEYS[annotationName]
+        ?.let { keyNames -> targets.addAll(findConfigValueUsages(element, keyNames, value)) }
+      targets.toList()
+    }
+    return arrayOf(reference)
   }
 
   private fun keyTargets(yamlKeyValue: YAMLKeyValue): List<PsiElement> {
@@ -175,6 +235,15 @@ internal object HelidonLangChain4jConfigResolver {
     val parent = PsiTreeUtil.getParentOfType(yamlKeyValue, YAMLKeyValue::class.java) ?: return false
     val parentPath = qualifiedConfigKeyName(parent)
     return CONFIG_SECTION_KINDS.keys.any { section -> parentPath == "$ROOT.$section" }
+  }
+
+  private fun isModelKeyReference(yamlKeyValue: YAMLKeyValue): Boolean {
+    val parent = PsiTreeUtil.getParentOfType(yamlKeyValue, YAMLKeyValue::class.java) ?: return false
+    return qualifiedConfigKeyName(parent) == "$ROOT.$MODELS"
+  }
+
+  private fun isModelValueReference(path: String): Boolean {
+    return path.substringAfterLast('.') in MODEL_VALUE_KEYS
   }
 
   private fun isSupportedValueReference(path: String, yamlKeyValue: YAMLKeyValue): Boolean {
@@ -214,6 +283,14 @@ internal object HelidonLangChain4jConfigResolver {
     }
 
     return targets.toList()
+  }
+
+  private fun annotationName(element: PsiElement): String? {
+    val attribute = PsiTreeUtil.getParentOfType(element, PsiNameValuePair::class.java) ?: return null
+    if (attribute.name != null && attribute.name != VALUE_ATTRIBUTE) return null
+
+    val annotation = PsiTreeUtil.getParentOfType(attribute, PsiAnnotation::class.java) ?: return null
+    return annotation.qualifiedName
   }
 
   private fun componentTargets(module: Module,
@@ -314,6 +391,66 @@ internal object HelidonLangChain4jConfigResolver {
       .firstOrNull { qualifiedConfigKeyName(it) == qualifiedName }
   }
 
+  private fun findConfigKeys(context: PsiElement, qualifiedName: String): List<PsiElement> {
+    return processConfigFiles(context) { psiFile, contributor ->
+      contributor.findKey(psiFile, qualifiedName)?.let(::listOf) ?: emptyList()
+    }
+  }
+
+  private fun findConfigValueUsages(context: PsiElement, keyNames: Set<String>, value: String): List<PsiElement> {
+    return processConfigFiles(context) { psiFile, _ ->
+      when (psiFile) {
+        is YAMLFile -> findYamlValueUsages(psiFile, keyNames, value)
+        is PropertiesFile -> findPropertiesValueUsages(psiFile, keyNames, value)
+        else -> emptyList()
+      }
+    }
+  }
+
+  private fun processConfigFiles(context: PsiElement,
+                                 processor: (PsiFile, HelidonConfigFileContributor) -> List<PsiElement>): List<PsiElement> {
+    val module = ModuleUtilCore.findModuleForPsiElement(context) ?: return emptyList()
+    val containingFile = context.containingFile?.originalFile?.virtualFile
+    val includeTests = containingFile != null &&
+                       ModuleRootManager.getInstance(module).fileIndex.isInTestSourceContent(containingFile)
+    val psiManager = PsiManager.getInstance(module.project)
+    return HelidonConfigFileContributor.findConfigFiles(module, includeTests)
+      .flatMap { (configFile, contributor) ->
+        val psiFile = psiManager.findFile(configFile) ?: return@flatMap emptyList()
+        processor(psiFile, contributor)
+      }
+  }
+
+  private fun findYamlValueUsages(file: YAMLFile, keyNames: Set<String>, value: String): List<PsiElement> {
+    val result = ArrayList<PsiElement>()
+    for (keyValue in PsiTreeUtil.findChildrenOfType(file, YAMLKeyValue::class.java)) {
+      val qualifiedName = qualifiedConfigKeyName(keyValue)
+      if (!qualifiedName.startsWith("$ROOT.") || qualifiedName.substringAfterLast('.') !in keyNames) continue
+
+      when (val yamlValue = keyValue.value) {
+        is YAMLScalar -> if (yamlValue.textValue == value) result.add(yamlValue)
+        is YAMLSequence -> yamlValue.items.mapNotNull { it.value as? YAMLScalar }
+          .filterTo(result) { it.textValue == value }
+      }
+    }
+    return result
+  }
+
+  private fun findPropertiesValueUsages(file: PropertiesFile, keyNames: Set<String>, value: String): List<PsiElement> {
+    return file.properties.mapNotNull { property ->
+      val propertyImpl = property.psiElement as? PropertyImpl ?: return@mapNotNull null
+      val key = propertyImpl.key ?: return@mapNotNull null
+      if (key.startsWith("$ROOT.") &&
+          key.substringAfterLast('.') in keyNames &&
+          propertyImpl.value == value) {
+        HelidonPropertiesUtils.getPropertyValue(propertyImpl) ?: propertyImpl
+      }
+      else {
+        null
+      }
+    }
+  }
+
   private fun qualifiedConfigKeyName(yamlKeyValue: YAMLKeyValue): String {
     return com.intellij.helidon.config.yaml.getQualifiedConfigKeyName(yamlKeyValue)
   }
@@ -322,6 +459,12 @@ internal object HelidonLangChain4jConfigResolver {
     val kind: LangChain4jComponentKind,
     val key: String,
     val target: PsiElement,
+  )
+
+  data class MarkerTargets(
+    val anchor: PsiElement,
+    val targets: List<PsiElement>,
+    val modelReference: Boolean,
   )
 
   private enum class LangChain4jComponentKind {

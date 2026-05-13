@@ -18,4 +18,5 @@ public final class HelidonIcons {
   /** 12x12 */ public static final @NotNull Icon HelidonBeanGutter = load("icons/helidonBeanGutter.svg");
   /** 12x12 */ public static final @NotNull Icon HelidonGutter = load("icons/helidonGutter.svg");
   /** 13x13 */ public static final @NotNull Icon HelidonToolWindow = load("icons/helidonToolWindow.svg");
+  /** 12x12 */ public static final @NotNull Icon RobotGutter = load("icons/robotGutter.svg");
 }

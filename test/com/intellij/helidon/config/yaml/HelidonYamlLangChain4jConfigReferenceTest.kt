@@ -6,10 +6,13 @@ import com.intellij.helidon.HelidonIcons
 import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.config.HELIDON_APPLICATION_YAML
 import com.intellij.helidon.langchain4j.HelidonLangChain4jYamlLineMarkerProvider
+import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiNamedElement
+import com.intellij.psi.PsiPolyVariantReference
 import com.intellij.psi.PsiReference
 import com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.yaml.psi.YAMLKeyValue
+import org.jetbrains.yaml.psi.YAMLScalar
 
 class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() {
   fun testServiceKeyResolvesToAiServiceInterface() {
@@ -151,19 +154,172 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     assertSame(HelidonIcons.HelidonGutter, markers.single().icon)
   }
 
+  fun testLangChain4jModelReferenceHasRobotGutterNavigation() {
+    addLangChain4jStubs()
+    addLangChain4jApplicationClasses()
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      langchain4j:
+        agents:
+          planner:
+            chat-model: ch<caret>at
+        models:
+          chat:
+            provider: openai
+    """.trimIndent())
+
+    val scalar = PsiTreeUtil.getParentOfType(myFixture.file.findElementAt(myFixture.caretOffset), YAMLScalar::class.java)!!
+    val markers = mutableListOf<RelatedItemLineMarkerInfo<*>>()
+    HelidonLangChain4jYamlLineMarkerProvider().collectNavigationMarkers(listOf(scalar), markers, true)
+
+    assertSize(1, markers)
+    assertSame(HelidonIcons.RobotGutter, markers.single().icon)
+  }
+
+  fun testAiServiceAnnotationValueResolvesToServiceConfigKey() {
+    addLangChain4jStubs()
+    configureLangChain4jConfig()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.extensions.langchain4j.Ai;
+
+      @Ai.Service("assistant-<caret>service")
+      interface AssistantService {
+      }
+    """.trimIndent())
+
+    assertResolvesToConfigKey("langchain4j.services.assistant-service")
+  }
+
+  fun testAiAgentAnnotationValueResolvesToAgentConfigKey() {
+    addLangChain4jStubs()
+    configureLangChain4jConfig()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.integrations.langchain4j.Ai;
+
+      @Ai.Agent("helidon-se-<caret>expert")
+      interface HelidonSeExpert {
+      }
+    """.trimIndent())
+
+    assertResolvesToConfigKey("langchain4j.agents.helidon-se-expert")
+  }
+
+  fun testAiChatModelAnnotationValueResolvesToModelConfigKey() {
+    addLangChain4jStubs()
+    configureLangChain4jConfig()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.extensions.langchain4j.Ai;
+
+      @Ai.ChatModel("expensive-<caret>model")
+      interface HelidonSeExpert {
+      }
+    """.trimIndent())
+
+    assertResolvesToConfigKey("langchain4j.models.expensive-model")
+  }
+
+  fun testAiContentRetrieverAnnotationValueResolvesToRetrieverConfigKey() {
+    addLangChain4jStubs()
+    configureLangChain4jConfig()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.extensions.langchain4j.Ai;
+
+      @Ai.ContentRetriever("se-content-<caret>retriever")
+      interface HelidonSeExpert {
+      }
+    """.trimIndent())
+
+    assertResolvesToConfigKey("langchain4j.content-retrievers.se-content-retriever")
+  }
+
+  fun testAiMcpClientsAnnotationValueResolvesToMcpClientConfigKey() {
+    addLangChain4jStubs()
+    configureLangChain4jConfig()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.integrations.langchain4j.Ai;
+
+      @Ai.McpClients({"cli-<caret>tools", "filesystem"})
+      interface HelidonSeExpert {
+      }
+    """.trimIndent())
+
+    assertResolvesToConfigKey("langchain4j.mcp-clients.cli-tools")
+  }
+
+  fun testAiChatMemoryProviderAnnotationValueResolvesToConfigValue() {
+    addLangChain4jStubs()
+    configureLangChain4jConfig()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.extensions.langchain4j.Ai;
+
+      @Ai.ChatMemoryProvider("conversation-<caret>memory")
+      interface HelidonSeExpert {
+      }
+    """.trimIndent())
+
+    assertResolvesToConfigValue("conversation-memory")
+  }
+
+  fun testAiToolProviderAnnotationValueResolvesToConfigValue() {
+    addLangChain4jStubs()
+    configureLangChain4jConfig()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.integrations.langchain4j.Ai;
+
+      @Ai.ToolProvider("cli-tool-<caret>provider")
+      interface HelidonSeExpert {
+      }
+    """.trimIndent())
+
+    assertResolvesToConfigValue("cli-tool-provider")
+  }
+
   private fun assertResolvesToNamedElement(name: String) {
-    val target = assertInstanceOf(resolveAtCaret(), PsiNamedElement::class.java)
-    assertEquals(name, target.name)
+    val target = resolveTargetsAtCaret()
+      .filterIsInstance<PsiNamedElement>()
+      .firstOrNull { it.name == name }
+    assertNotNull("Expected named target '$name', got ${resolvedTargetsAtCaretText()}", target)
+  }
+
+  private fun assertResolvesToConfigKey(qualifiedName: String) {
+    val target = resolveTargetsAtCaret()
+      .filterIsInstance<YAMLKeyValue>()
+      .firstOrNull { getQualifiedConfigKeyName(it) == qualifiedName }
+    assertNotNull("Expected config key '$qualifiedName', got ${resolvedTargetsAtCaretText()}", target)
+  }
+
+  private fun assertResolvesToConfigValue(value: String) {
+    val target = resolveTargetsAtCaret()
+      .filterIsInstance<YAMLScalar>()
+      .firstOrNull { it.textValue == value }
+    assertNotNull("Expected config value '$value', got ${resolvedTargetsAtCaretText()}", target)
   }
 
   private fun resolveAtCaret(): Any? {
-    val element = myFixture.file.findElementAt(myFixture.caretOffset) ?: return null
+    return resolveTargetsAtCaret().firstOrNull()
+  }
+
+  private fun resolveTargetsAtCaret(): List<PsiElement> {
+    val element = myFixture.file.findElementAt(myFixture.caretOffset) ?: return emptyList()
     return generateSequence(element) { it.parent }
       .flatMap { parent ->
         parent.references.asSequence().filter { reference -> reference.coversCaret() }
       }
-      .mapNotNull(PsiReference::resolve)
-      .firstOrNull()
+      .flatMap { reference ->
+        if (reference is PsiPolyVariantReference) {
+          reference.multiResolve(false).asSequence().mapNotNull { it.element }
+        }
+        else {
+          sequenceOf(reference.resolve()).filterNotNull()
+        }
+      }
+      .distinct()
+      .toList()
+  }
+
+  private fun resolvedTargetsAtCaretText(): String {
+    val targets = resolveTargetsAtCaret()
+    if (targets.isEmpty()) return "no targets"
+    return targets.joinToString { target -> "${target.javaClass.simpleName} '${target.text}'" }
   }
 
   private fun PsiReference.coversCaret(): Boolean {
@@ -174,6 +330,39 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
   private fun addLangChain4jStubs() {
     addLangChain4jAiStub("io.helidon.extensions.langchain4j")
     addLangChain4jAiStub("io.helidon.integrations.langchain4j")
+  }
+
+  private fun configureLangChain4jConfig() {
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      langchain4j:
+        services:
+          assistant-service:
+            chat-model: expensive-model
+            chat-memory-provider: conversation-memory
+            tool-provider: cli-tool-provider
+        agents:
+          helidon-se-expert:
+            chat-model: expensive-model
+            chat-memory-provider: conversation-memory
+            content-retriever: se-content-retriever
+            tool-provider: cli-tool-provider
+            mcp-clients:
+              - cli-tools
+        models:
+          expensive-model:
+            provider: openai
+        providers:
+          openai:
+            type: open-ai
+        content-retrievers:
+          se-content-retriever:
+            embedding-model: expensive-model
+        mcp-clients:
+          cli-tools:
+            key: cli-tools
+          filesystem:
+            key: filesystem
+    """.trimIndent())
   }
 
   private fun addLangChain4jAiStub(packageName: String) {

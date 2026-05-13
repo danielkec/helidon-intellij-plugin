@@ -3,6 +3,7 @@ package com.intellij.helidon.config.yaml
 
 import com.intellij.helidon.config.createHelidonPlaceholderReferences
 import com.intellij.helidon.config.hints.HelidonHintReferencesProvider
+import com.intellij.helidon.langchain4j.HelidonLangChain4jConfigResolver
 import com.intellij.microservices.jvm.config.MetaConfigKey
 import com.intellij.microservices.jvm.config.MetaConfigKeyReference
 import com.intellij.microservices.jvm.config.MicroservicesConfigUtils
@@ -13,7 +14,6 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiReference
 import com.intellij.psi.PsiReferenceProvider
 import com.intellij.psi.util.PsiTreeUtil
-import com.intellij.util.ArrayUtil
 import com.intellij.util.ProcessingContext
 import org.jetbrains.yaml.psi.YAMLKeyValue
 import org.jetbrains.yaml.psi.YAMLScalar
@@ -27,7 +27,8 @@ internal class HelidonYamlValueReferenceProvider : PsiReferenceProvider() {
     if (yamlScalar.isMultiline) return PsiReference.EMPTY_ARRAY
 
     val placeholderReferences = createHelidonPlaceholderReferences(element)
-    val key = MetaConfigKeyReference.getResolvedMetaConfigKey(yamlKeyValue) ?: return placeholderReferences
+    val langChain4jReferences = HelidonLangChain4jConfigResolver.valueReferences(yamlScalar)
+    val key = MetaConfigKeyReference.getResolvedMetaConfigKey(yamlKeyValue) ?: return placeholderReferences + langChain4jReferences
     val valueTextRanges: List<TextRange> =
       if (canHaveMultipleValues(yamlKeyValue.value, key)) {
         MicroservicesConfigUtils.getListValueRanges(element)
@@ -37,7 +38,7 @@ internal class HelidonYamlValueReferenceProvider : PsiReferenceProvider() {
       }
     context.put(NumberHintReferenceBase.NUMBER_VALUE_SANITIZER_KEY, getYamlNumberValueSanitizer())
     val providerReferences = HelidonHintReferencesProvider.getInstance().getValueReferences(key, null, element, valueTextRanges, context)
-    return ArrayUtil.mergeArrays(providerReferences, placeholderReferences)
+    return providerReferences + placeholderReferences + langChain4jReferences
   }
 
   private fun canHaveMultipleValues(valueElement: YAMLValue?, key: MetaConfigKey): Boolean {

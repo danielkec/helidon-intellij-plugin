@@ -65,6 +65,9 @@
       implementationClass="com.intellij.helidon.config.properties.HelidonPropertiesConfigInspection"/>
 
     <annotator language="yaml" implementationClass="com.intellij.helidon.config.yaml.HelidonYamlAnnotator"/>
+    <codeInsight.lineMarkerProvider
+            language="yaml"
+            implementationClass="com.intellij.helidon.langchain4j.HelidonLangChain4jYamlLineMarkerProvider"/>
 
     <completion.contributor
             language="yaml"

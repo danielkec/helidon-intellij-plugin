@@ -1,6 +1,7 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.helidon.config.yaml
 
+import com.intellij.helidon.langchain4j.HelidonLangChain4jConfigResolver
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiReference
 import com.intellij.psi.PsiReferenceProvider
@@ -12,6 +13,7 @@ internal class HelidonYamlKeyReferenceProvider : PsiReferenceProvider() {
     val yamlKeyValue = element as YAMLKeyValue
     if (yamlKeyValue.key == null) return PsiReference.EMPTY_ARRAY
 
-    return arrayOf(HelidonYamlKeyMetaConfigKeyReference(yamlKeyValue))
+    return arrayOf(*HelidonLangChain4jConfigResolver.keyReferences(yamlKeyValue),
+                   HelidonYamlKeyMetaConfigKeyReference(yamlKeyValue))
   }
 }

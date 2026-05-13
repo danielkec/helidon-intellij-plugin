@@ -11,6 +11,7 @@ import com.intellij.microservices.url.UrlPath;
 import com.intellij.microservices.url.UrlTargetInfo;
 import com.intellij.openapi.util.NotNullLazyValue;
 import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiMethod;
 import com.intellij.psi.SmartPointerManager;
 import com.intellij.psi.SmartPsiElementPointer;
 import com.intellij.psi.util.PartiallyKnownString;
@@ -40,6 +41,8 @@ public final class HelidonUrlTargetInfo implements UrlTargetInfo {
   private HelidonRequestMethods myType = HelidonRequestMethods.UNKNOWN;
   private Set<String> myMethods = null;
   private String myParentUrl = null;
+  private boolean myRestServerEndpoint = false;
+  private SmartPsiElementPointer<PsiMethod> myDeclarationMethodPointer = null;
   private PathSemantics myPathSemantics = PathSemantics.PATTERN;
   private final NotNullLazyValue<UrlPath> myUrlPath = NotNullLazyValue.createValue(() -> {
     return computeUrlPath();
@@ -84,6 +87,24 @@ public final class HelidonUrlTargetInfo implements UrlTargetInfo {
   public HelidonUrlTargetInfo withParentUrl(String parentUrl) {
     myParentUrl = parentUrl;
     return this;
+  }
+
+  public HelidonUrlTargetInfo asRestServerEndpoint() {
+    myRestServerEndpoint = true;
+    return this;
+  }
+
+  public boolean isRestServerEndpoint() {
+    return myRestServerEndpoint;
+  }
+
+  public HelidonUrlTargetInfo withDeclarationMethod(@NotNull PsiMethod method) {
+    myDeclarationMethodPointer = SmartPointerManager.getInstance(method.getProject()).createSmartPsiElementPointer(method);
+    return this;
+  }
+
+  public @Nullable PsiMethod getDeclarationMethod() {
+    return myDeclarationMethodPointer == null ? null : myDeclarationMethodPointer.getElement();
   }
 
   public HelidonUrlTargetInfo withLiteralPath() {

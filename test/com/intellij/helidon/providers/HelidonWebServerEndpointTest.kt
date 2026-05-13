@@ -1949,6 +1949,45 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     })
   }
 
+  fun testRestServerEndpointStoresConcreteDeclarationMethodForInterfaceEndpoint() {
+    addHelidonDeclarativeStubs()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Http;
+      import io.helidon.service.registry.Service;
+      import io.helidon.webserver.http.RestServer;
+
+      interface GreetingResource {
+        @Http.GET
+        @Http.Path("/message")
+        Message get();
+      }
+
+      @RestServer.Endpoint
+      @Http.Path("/greet")
+      @Service.Singleton
+      class GreetingEndpoint implements GreetingResource {
+        public DetailedMessage get() {
+          return new DetailedMessage();
+        }
+      }
+
+      class Message {
+      }
+
+      class DetailedMessage extends Message {
+      }
+    """.trimIndent())
+
+    val endpoints = collectRestServerEndpoints().filter {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/greet" && it.urlDefinition == "/message"
+    }
+
+    assertEquals(endpoints.joinToString { "${it.type} ${it.parentUrl}${it.urlDefinition} ${it.declarationMethod?.containingClass?.name}" },
+                 1,
+                 endpoints.size)
+    assertEquals("GreetingEndpoint", endpoints.single().declarationMethod?.containingClass?.name)
+  }
+
   fun testRestServerEndpointUsesCustomHttpMethodMetaAnnotation() {
     addHelidonDeclarativeStubs()
     myFixture.configureByText("Main.java", """

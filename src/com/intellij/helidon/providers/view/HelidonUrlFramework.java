@@ -10,6 +10,8 @@ import com.intellij.ide.projectView.PresentationData;
 import com.intellij.microservices.endpoints.*;
 import com.intellij.microservices.endpoints.presentation.HttpMethodPresentation;
 import com.intellij.microservices.jvm.cache.SourceTestLibSearcher;
+import com.intellij.microservices.jvm.oas.JvmSwaggerUtilsKt;
+import com.intellij.microservices.oas.*;
 import com.intellij.microservices.url.UrlPath;
 import com.intellij.microservices.url.UrlTargetInfo;
 import com.intellij.navigation.ItemPresentation;
@@ -24,15 +26,19 @@ import com.intellij.psi.search.LocalSearchScope;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.uast.UastModificationTracker;
 import com.intellij.util.CommonProcessors.CollectProcessor;
+import kotlin.Pair;
 import kotlin.text.StringsKt;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.uast.UCallExpression;
 import org.jetbrains.uast.UastContextKt;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static com.intellij.helidon.utils.HelidonCommonUtils.hasHelidonLibrary;
 import static com.intellij.microservices.endpoints.EndpointTypes.HTTP_SERVER_TYPE;
@@ -167,6 +173,226 @@ final class HelidonUrlFramework implements EndpointsUrlTargetProvider<HelidonUrl
   @Override
   public @NotNull Iterable<UrlTargetInfo> getUrlTargetInfo(@NotNull HelidonUrlTargetInfo group, @NotNull HelidonUrlTargetInfo endpoint) {
     return List.of(endpoint);
+  }
+
+  @Override
+  public @NotNull OpenApiSpecification getOpenApiSpecification(@NotNull HelidonUrlTargetInfo group,
+                                                               @NotNull HelidonUrlTargetInfo endpoint) {
+    OpenApiSpecification specification = OasExportUtilsKt.getSpecificationByUrls(List.of(endpoint));
+    if (!endpoint.isRestServerEndpoint()) return specification;
+
+    PsiMethod declarationMethod = endpoint.getDeclarationMethod();
+    if (declarationMethod == null) return specification;
+
+    Collection<OasParameter> parameters = getRestServerOpenApiParameters(declarationMethod);
+    RequestBodyInfo requestBodyInfo = getRestServerRequestBody(declarationMethod);
+    ResponseBodyInfo responseBodyInfo = getRestServerResponseBody(declarationMethod);
+    if (parameters.isEmpty() && requestBodyInfo == null && responseBodyInfo == null) return specification;
+
+    return withOpenApiDetails(specification, parameters, requestBodyInfo, responseBodyInfo);
+  }
+
+  private static @NotNull Collection<OasParameter> getRestServerOpenApiParameters(@NotNull PsiMethod declarationMethod) {
+    Collection<OasParameter> parameters = new ArrayList<>();
+    addParameters(parameters, HelidonCommonUtils.getRestServerHeaderParameters(declarationMethod), OasParameterIn.HEADER);
+    addParameters(parameters, HelidonCommonUtils.getRestServerQueryParameters(declarationMethod), OasParameterIn.QUERY);
+    return parameters;
+  }
+
+  private static void addParameters(@NotNull Collection<? super OasParameter> parameters,
+                                    @NotNull Collection<String> names,
+                                    @NotNull OasParameterIn inPlace) {
+    for (String name : names) {
+      parameters.add(new OasParameter(name, inPlace, null, false, false, null, null));
+    }
+  }
+
+  private static @Nullable RequestBodyInfo getRestServerRequestBody(@NotNull PsiMethod declarationMethod) {
+    PsiType entityType = HelidonCommonUtils.getRestServerEntityParameterType(declarationMethod);
+    if (entityType == null) return null;
+
+    Collection<String> mediaTypes = HelidonCommonUtils.getRestServerConsumedMediaTypes(declarationMethod);
+    if (mediaTypes.isEmpty()) {
+      mediaTypes = Collections.singletonList("application/json");
+    }
+
+    Pair<OasSchema, Map<String, OasSchema>> schemaAndComponents =
+      JvmSwaggerUtilsKt.getOasSchemaForPsiType(getOpenApiSchemaType(entityType, declarationMethod), false);
+    OasSchema schema = schemaAndComponents.getFirst();
+    Map<String, OasSchema> content = new LinkedHashMap<>();
+    for (String mediaType : mediaTypes) {
+      content.put(mediaType, schema);
+    }
+    return new RequestBodyInfo(new OasRequestBody(content, !isOptionalType(entityType)), schemaAndComponents.getSecond());
+  }
+
+  private static @Nullable ResponseBodyInfo getRestServerResponseBody(@NotNull PsiMethod declarationMethod) {
+    PsiType responseType = declarationMethod.getReturnType();
+    if (responseType == null || PsiTypes.voidType().equals(responseType) ||
+        CommonClassNames.JAVA_LANG_VOID.equals(responseType.getCanonicalText())) {
+      return null;
+    }
+
+    Collection<String> mediaTypes = HelidonCommonUtils.getRestServerProducedMediaTypes(declarationMethod);
+    if (mediaTypes.isEmpty()) {
+      mediaTypes = Collections.singletonList("application/json");
+    }
+
+    Pair<OasSchema, Map<String, OasSchema>> schemaAndComponents =
+      JvmSwaggerUtilsKt.getOasSchemaForPsiType(getOpenApiSchemaType(responseType, declarationMethod), false);
+    Map<String, OasMediaTypeObject> content = new LinkedHashMap<>();
+    for (String mediaType : mediaTypes) {
+      content.put(mediaType, new OasMediaTypeObject(schemaAndComponents.getFirst(), Collections.emptyMap()));
+    }
+    return new ResponseBodyInfo(content, schemaAndComponents.getSecond());
+  }
+
+  private static boolean isOptionalType(@NotNull PsiType type) {
+    String canonicalText = type.getCanonicalText();
+    return CommonClassNames.JAVA_UTIL_OPTIONAL.equals(canonicalText) ||
+           canonicalText.startsWith(CommonClassNames.JAVA_UTIL_OPTIONAL + "<");
+  }
+
+  private static @NotNull PsiType getOpenApiSchemaType(@NotNull PsiType type, @NotNull PsiMethod context) {
+    if (isOptionalType(type)) {
+      if (type instanceof PsiClassType) {
+        PsiType[] parameters = ((PsiClassType)type).getParameters();
+        if (parameters.length > 0) return parameters[0];
+      }
+      return JavaPsiFacade.getElementFactory(context.getProject())
+        .createTypeByFQClassName(CommonClassNames.JAVA_LANG_OBJECT, context.getResolveScope());
+    }
+    return type;
+  }
+
+  private static @NotNull OpenApiSpecification withOpenApiDetails(@NotNull OpenApiSpecification specification,
+                                                                  @NotNull Collection<OasParameter> additionalParameters,
+                                                                  @Nullable RequestBodyInfo requestBodyInfo,
+                                                                  @Nullable ResponseBodyInfo responseBodyInfo) {
+    Collection<OasEndpointPath> paths = new ArrayList<>();
+    for (OasEndpointPath path : specification.getPaths()) {
+      Collection<OasOperation> operations = new ArrayList<>();
+      for (OasOperation operation : path.getOperations()) {
+        operations.add(withOpenApiDetails(operation, additionalParameters, requestBodyInfo, responseBodyInfo));
+      }
+      paths.add(new OasEndpointPath(path.getPath(), path.getSummary(), operations));
+    }
+    return new OpenApiSpecification(paths, getComponents(specification.getComponents(), requestBodyInfo, responseBodyInfo),
+                                    specification.getTags());
+  }
+
+  private static @NotNull OasOperation withOpenApiDetails(@NotNull OasOperation operation,
+                                                         @NotNull Collection<OasParameter> additionalParameters,
+                                                         @Nullable RequestBodyInfo requestBodyInfo,
+                                                         @Nullable ResponseBodyInfo responseBodyInfo) {
+    Collection<OasParameter> parameters = new ArrayList<>(operation.getParameters());
+    for (OasParameter additionalParameter : additionalParameters) {
+      if (!hasParameter(parameters, additionalParameter.getName(), additionalParameter.getInPlace())) {
+        parameters.add(additionalParameter);
+      }
+    }
+
+    return new OasOperation(operation.getMethod(),
+                            operation.getTags(),
+                            operation.getDescription(),
+                            operation.getSummary(),
+                            operation.getOperationId(),
+                            operation.isDeprecated(),
+                            parameters,
+                            operation.getRequestBody() == null && requestBodyInfo != null ? requestBodyInfo.requestBody : operation.getRequestBody(),
+                            withResponseBody(operation.getResponses(), responseBodyInfo));
+  }
+
+  private static @Nullable OasComponents getComponents(@Nullable OasComponents components,
+                                                       @Nullable RequestBodyInfo requestBodyInfo,
+                                                       @Nullable ResponseBodyInfo responseBodyInfo) {
+    Map<String, OasSchema> additionalSchemas = new LinkedHashMap<>();
+    if (requestBodyInfo != null) {
+      additionalSchemas.putAll(requestBodyInfo.components);
+    }
+    if (responseBodyInfo != null) {
+      additionalSchemas.putAll(responseBodyInfo.components);
+    }
+    if (additionalSchemas.isEmpty()) return components;
+
+    Map<String, OasSchema> schemas = new LinkedHashMap<>();
+    if (components != null && components.getSchemas() != null) {
+      schemas.putAll(components.getSchemas());
+    }
+    for (Map.Entry<String, OasSchema> entry : additionalSchemas.entrySet()) {
+      schemas.putIfAbsent(entry.getKey(), entry.getValue());
+    }
+    return new OasComponents(schemas);
+  }
+
+  private static @NotNull Collection<OasResponse> withResponseBody(@NotNull Collection<OasResponse> responses,
+                                                                   @Nullable ResponseBodyInfo responseBodyInfo) {
+    if (responseBodyInfo == null) return responses;
+
+    Collection<OasResponse> result = new ArrayList<>();
+    boolean applied = false;
+    for (OasResponse response : responses) {
+      if (!applied && canHaveResponseBody(response)) {
+        result.add(withResponseContent(response, responseBodyInfo.content));
+        applied = true;
+      }
+      else {
+        result.add(response);
+      }
+    }
+    if (!applied) {
+      result.add(new OasResponse("200", "OK", responseBodyInfo.content, null));
+    }
+    return result;
+  }
+
+  private static boolean canHaveResponseBody(@NotNull OasResponse response) {
+    String code = response.getCode();
+    return code != null && code.startsWith("2") && !"204".equals(code) && !"205".equals(code);
+  }
+
+  private static @NotNull OasResponse withResponseContent(@NotNull OasResponse response,
+                                                          @NotNull Map<String, OasMediaTypeObject> additionalContent) {
+    Map<String, OasMediaTypeObject> content = new LinkedHashMap<>();
+    Map<String, OasMediaTypeObject> existingContent = response.getContent();
+    if (existingContent != null) {
+      content.putAll(existingContent);
+    }
+    for (Map.Entry<String, OasMediaTypeObject> entry : additionalContent.entrySet()) {
+      content.putIfAbsent(entry.getKey(), entry.getValue());
+    }
+    return new OasResponse(response.getCode(), response.getDescription(), content, response.getHeaders());
+  }
+
+  private static boolean hasParameter(@NotNull Collection<OasParameter> parameters,
+                                      @NotNull String name,
+                                      @NotNull OasParameterIn inPlace) {
+    for (OasParameter parameter : parameters) {
+      if (name.equals(parameter.getName()) && inPlace == parameter.getInPlace()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static final class RequestBodyInfo {
+    private final OasRequestBody requestBody;
+    private final Map<String, OasSchema> components;
+
+    private RequestBodyInfo(@NotNull OasRequestBody requestBody, @NotNull Map<String, OasSchema> components) {
+      this.requestBody = requestBody;
+      this.components = components;
+    }
+  }
+
+  private static final class ResponseBodyInfo {
+    private final Map<String, OasMediaTypeObject> content;
+    private final Map<String, OasSchema> components;
+
+    private ResponseBodyInfo(@NotNull Map<String, OasMediaTypeObject> content, @NotNull Map<String, OasSchema> components) {
+      this.content = content;
+      this.components = components;
+    }
   }
 
   @Override

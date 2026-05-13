@@ -25,6 +25,7 @@ import com.intellij.psi.util.CachedValue;
 import com.intellij.psi.util.CachedValueProvider.Result;
 import com.intellij.psi.util.CachedValuesManager;
 import com.intellij.psi.util.InheritanceUtil;
+import com.intellij.psi.util.MethodSignatureUtil;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.uast.UastModificationTracker;
 import com.intellij.uast.UastSmartPointer;
@@ -546,29 +547,35 @@ public final class HelidonCommonUtils {
     Set<String> processed = new HashSet<>();
 
     for (PsiMethod method : endpointClass.getAllMethods()) {
-      if (shouldSkipRestServerEndpointMethod(method)) continue;
+      PsiMethod endpointMethod = getConcreteRestServerEndpointMethod(endpointClass, method);
+      if (shouldSkipRestServerEndpointMethod(endpointMethod)) continue;
 
-      List<PsiMethod> methodHierarchy = getMethodHierarchy(method);
+      List<PsiMethod> methodHierarchy = getMethodHierarchy(endpointMethod);
       Set<String> httpMethods = getHttpMethods(methodHierarchy);
       if (httpMethods.isEmpty()) continue;
-      if (!filter.accepts(method, methodHierarchy, httpMethods)) continue;
+      if (!filter.accepts(endpointMethod, methodHierarchy, httpMethods)) continue;
 
-      List<PathDefinition> methodPaths = getMethodPaths(method, methodHierarchy);
+      List<PathDefinition> methodPaths = getMethodPaths(endpointMethod, methodHierarchy);
       for (PathDefinition methodPath : methodPaths) {
         if (parentPaths.isEmpty()) {
-          if (!processRestServerEndpoint(processor, processed, method, methodPath, null, httpMethods)) {
+          if (!processRestServerEndpoint(processor, processed, endpointMethod, methodPath, null, httpMethods)) {
             return false;
           }
           continue;
         }
         for (PathDefinition parentPath : parentPaths) {
-          if (!processRestServerEndpoint(processor, processed, method, methodPath, parentPath, httpMethods)) {
+          if (!processRestServerEndpoint(processor, processed, endpointMethod, methodPath, parentPath, httpMethods)) {
             return false;
           }
         }
       }
     }
     return true;
+  }
+
+  private static @NotNull PsiMethod getConcreteRestServerEndpointMethod(@NotNull PsiClass endpointClass, @NotNull PsiMethod method) {
+    PsiMethod implementation = MethodSignatureUtil.findMethodBySuperMethod(endpointClass, method, true);
+    return implementation == null ? method : implementation;
   }
 
   private static boolean methodHierarchyContains(@NotNull PsiMethod targetMethod, @NotNull List<PsiMethod> methodHierarchy) {
@@ -602,7 +609,9 @@ public final class HelidonCommonUtils {
                                                        requestMethod,
                                                        requestMethod == HelidonRequestMethods.UNKNOWN || httpMethods.size() > 1
                                                        ? httpMethods
-                                                       : null);
+                                                       : null)
+      .asRestServerEndpoint()
+      .withDeclarationMethod(method);
     if (parentPath != null) {
       targetInfo.withParentUrl(parentPath.path);
     }
@@ -620,6 +629,79 @@ public final class HelidonCommonUtils {
   private static @NotNull List<PsiMethod> getMethodHierarchy(@NotNull PsiMethod method) {
     List<PsiMethod> result = new ArrayList<>();
     collectMethodHierarchy(method, result, new HashSet<>());
+    return result;
+  }
+
+  public static @NotNull Collection<String> getRestServerHeaderParameters(@NotNull PsiMethod method) {
+    return getRestServerParameterNames(method, HelidonConstants.HTTP_HEADER_PARAM);
+  }
+
+  public static @NotNull Collection<String> getRestServerQueryParameters(@NotNull PsiMethod method) {
+    return getRestServerParameterNames(method, HelidonConstants.HTTP_QUERY_PARAM);
+  }
+
+  public static @Nullable PsiType getRestServerEntityParameterType(@NotNull PsiMethod method) {
+    List<PsiMethod> methodHierarchy = getMethodHierarchy(method);
+    PsiParameter[] methodParameters = method.getParameterList().getParameters();
+    for (int index = 0; index < methodParameters.length; index++) {
+      for (PsiMethod hierarchyMethod : methodHierarchy) {
+        PsiParameter[] parameters = hierarchyMethod.getParameterList().getParameters();
+        if (index >= parameters.length) continue;
+        if (findAnnotation(parameters[index], HelidonConstants.HTTP_ENTITY) != null) {
+          return methodParameters[index].getType();
+        }
+      }
+    }
+    return null;
+  }
+
+  public static @NotNull Collection<String> getRestServerConsumedMediaTypes(@NotNull PsiMethod method) {
+    return getRestServerMediaTypes(method, HelidonConstants.HTTP_CONSUMES);
+  }
+
+  public static @NotNull Collection<String> getRestServerProducedMediaTypes(@NotNull PsiMethod method) {
+    return getRestServerMediaTypes(method, HelidonConstants.HTTP_PRODUCES);
+  }
+
+  private static @NotNull Collection<String> getRestServerMediaTypes(@NotNull PsiMethod method, @NotNull String annotationName) {
+    List<PsiMethod> methodHierarchy = getMethodHierarchy(method);
+    for (PsiMethod hierarchyMethod : methodHierarchy) {
+      PsiAnnotation annotation = findAnnotation(hierarchyMethod, annotationName);
+      if (annotation != null) {
+        Collection<String> values = getAnnotationStringValues(annotation);
+        if (!values.isEmpty()) return values;
+      }
+    }
+    for (PsiMethod hierarchyMethod : methodHierarchy) {
+      PsiClass containingClass = hierarchyMethod.getContainingClass();
+      PsiAnnotation annotation = containingClass == null ? null : findAnnotation(containingClass, annotationName);
+      if (annotation != null) {
+        Collection<String> values = getAnnotationStringValues(annotation);
+        if (!values.isEmpty()) return values;
+      }
+    }
+    return Collections.emptyList();
+  }
+
+  private static @NotNull Collection<String> getRestServerParameterNames(@NotNull PsiMethod method,
+                                                                         @NotNull String annotationName) {
+    List<PsiMethod> methodHierarchy = getMethodHierarchy(method);
+    Set<String> result = new LinkedHashSet<>();
+    int parameterCount = method.getParameterList().getParametersCount();
+    for (int index = 0; index < parameterCount; index++) {
+      for (PsiMethod hierarchyMethod : methodHierarchy) {
+        PsiParameter[] parameters = hierarchyMethod.getParameterList().getParameters();
+        if (index >= parameters.length) continue;
+        PsiAnnotation annotation = findAnnotation(parameters[index], annotationName);
+        if (annotation == null) continue;
+
+        String name = getAnnotationStringValue(annotation);
+        if (StringUtil.isNotEmpty(name)) {
+          result.add(name);
+        }
+        break;
+      }
+    }
     return result;
   }
 
@@ -723,7 +805,27 @@ public final class HelidonCommonUtils {
   }
 
   private static @Nullable String getAnnotationStringValue(@NotNull PsiAnnotation annotation, @NotNull String attributeName) {
-    PsiAnnotationMemberValue value = annotation.findAttributeValue(attributeName);
+    return getAnnotationStringValue(annotation.findAttributeValue(attributeName));
+  }
+
+  private static @NotNull Collection<String> getAnnotationStringValues(@NotNull PsiAnnotation annotation) {
+    PsiAnnotationMemberValue value = annotation.findAttributeValue("value");
+    if (value instanceof PsiArrayInitializerMemberValue) {
+      List<String> result = new ArrayList<>();
+      for (PsiAnnotationMemberValue initializer : ((PsiArrayInitializerMemberValue)value).getInitializers()) {
+        String evaluated = getAnnotationStringValue(initializer);
+        if (StringUtil.isNotEmpty(evaluated)) {
+          result.add(evaluated);
+        }
+      }
+      return result;
+    }
+
+    String singleValue = getAnnotationStringValue(value);
+    return StringUtil.isEmpty(singleValue) ? Collections.emptyList() : Collections.singletonList(singleValue);
+  }
+
+  private static @Nullable String getAnnotationStringValue(@Nullable PsiAnnotationMemberValue value) {
     if (value instanceof PsiExpression) {
       Pair<PsiElement, String> evaluated = StringExpressionHelper.evaluateExpression((PsiExpression)value);
       if (evaluated != null) {

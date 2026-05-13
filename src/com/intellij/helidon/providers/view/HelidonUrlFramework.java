@@ -10,6 +10,7 @@ import com.intellij.ide.projectView.PresentationData;
 import com.intellij.microservices.endpoints.*;
 import com.intellij.microservices.endpoints.presentation.HttpMethodPresentation;
 import com.intellij.microservices.jvm.cache.SourceTestLibSearcher;
+import com.intellij.microservices.oas.*;
 import com.intellij.microservices.url.UrlPath;
 import com.intellij.microservices.url.UrlTargetInfo;
 import com.intellij.navigation.ItemPresentation;
@@ -30,6 +31,7 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.uast.UCallExpression;
 import org.jetbrains.uast.UastContextKt;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -167,6 +169,65 @@ final class HelidonUrlFramework implements EndpointsUrlTargetProvider<HelidonUrl
   @Override
   public @NotNull Iterable<UrlTargetInfo> getUrlTargetInfo(@NotNull HelidonUrlTargetInfo group, @NotNull HelidonUrlTargetInfo endpoint) {
     return List.of(endpoint);
+  }
+
+  @Override
+  public @NotNull OpenApiSpecification getOpenApiSpecification(@NotNull HelidonUrlTargetInfo group,
+                                                               @NotNull HelidonUrlTargetInfo endpoint) {
+    OpenApiSpecification specification = OasExportUtilsKt.getSpecificationByUrls(List.of(endpoint));
+    if (!endpoint.isRestServerEndpoint()) return specification;
+
+    PsiMethod declarationMethod = endpoint.getDeclarationMethod();
+    if (declarationMethod == null) return specification;
+
+    Collection<String> headerParameters = HelidonCommonUtils.getRestServerHeaderParameters(declarationMethod);
+    if (headerParameters.isEmpty()) return specification;
+
+    return withHeaderParameters(specification, headerParameters);
+  }
+
+  private static @NotNull OpenApiSpecification withHeaderParameters(@NotNull OpenApiSpecification specification,
+                                                                    @NotNull Collection<String> headerParameterNames) {
+    Collection<OasEndpointPath> paths = new ArrayList<>();
+    for (OasEndpointPath path : specification.getPaths()) {
+      Collection<OasOperation> operations = new ArrayList<>();
+      for (OasOperation operation : path.getOperations()) {
+        operations.add(withHeaderParameters(operation, headerParameterNames));
+      }
+      paths.add(new OasEndpointPath(path.getPath(), path.getSummary(), operations));
+    }
+    return new OpenApiSpecification(paths, specification.getComponents(), specification.getTags());
+  }
+
+  private static @NotNull OasOperation withHeaderParameters(@NotNull OasOperation operation,
+                                                           @NotNull Collection<String> headerParameterNames) {
+    Collection<OasParameter> parameters = new ArrayList<>(operation.getParameters());
+    for (String headerParameterName : headerParameterNames) {
+      if (!hasParameter(parameters, headerParameterName, OasParameterIn.HEADER)) {
+        parameters.add(new OasParameter(headerParameterName, OasParameterIn.HEADER, "", false, false, null, null));
+      }
+    }
+
+    return new OasOperation(operation.getMethod(),
+                            operation.getTags(),
+                            operation.getDescription(),
+                            operation.getSummary(),
+                            operation.getOperationId(),
+                            operation.isDeprecated(),
+                            parameters,
+                            operation.getRequestBody(),
+                            operation.getResponses());
+  }
+
+  private static boolean hasParameter(@NotNull Collection<OasParameter> parameters,
+                                      @NotNull String name,
+                                      @NotNull OasParameterIn inPlace) {
+    for (OasParameter parameter : parameters) {
+      if (name.equals(parameter.getName()) && inPlace == parameter.getInPlace()) {
+        return true;
+      }
+    }
+    return false;
   }
 
   @Override

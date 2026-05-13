@@ -6,6 +6,8 @@ import com.intellij.helidon.providers.HelidonRequestMethods
 import com.intellij.helidon.utils.HelidonCommonUtils
 import com.intellij.helidon.utils.HelidonUrlTargetInfo
 import com.intellij.microservices.endpoints.ModuleEndpointsFilter
+import com.intellij.microservices.oas.OpenApiSpecification
+import com.intellij.microservices.oas.OasParameterIn
 import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.psi.PsiClass
 import com.intellij.psi.search.GlobalSearchScope
@@ -239,6 +241,75 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
     assertEquals("SecretService", containingClassName(endpoints.single()))
   }
 
+  fun testDeclarativeHeaderParameterIsAddedToOpenApiSpecification() {
+    addHelidonDeclarativeStubs()
+
+    myFixture.configureByText("GreetingService.java", """
+      import io.helidon.http.Http;
+      import io.helidon.webserver.http.RestServer;
+
+      @RestServer.Endpoint
+      @Http.Path("/greet")
+      class GreetingService {
+        @Http.GET
+        @Http.Path("/{name}")
+        String getMessage(@Http.PathParam("name") String name,
+                          @Http.HeaderParam("test") String test) {
+          return name + test;
+        }
+      }
+    """.trimIndent())
+
+    val parameters = getDeclarativeOpenApiParameters("greet/{name}")
+
+    assertTrue(parameters.any { it.name == "name" && it.inPlace == OasParameterIn.PATH })
+    assertTrue(parameters.any { it.name == "test" && it.inPlace == OasParameterIn.HEADER })
+  }
+
+  fun testInheritedDeclarativeHeaderParameterIsAddedToOpenApiSpecification() {
+    addHelidonDeclarativeStubs()
+
+    myFixture.configureByText("GreetingService.java", """
+      import io.helidon.http.Http;
+      import io.helidon.webserver.http.RestServer;
+
+      interface GreetingApi {
+        @Http.GET
+        @Http.Path("/{name}")
+        String getMessage(@Http.PathParam("name") String name,
+                          @Http.HeaderParam("test") String test);
+      }
+
+      @RestServer.Endpoint
+      @Http.Path("/greet")
+      class GreetingService implements GreetingApi {
+        public String getMessage(String name, String test) {
+          return name + test;
+        }
+      }
+    """.trimIndent())
+
+    val parameters = getDeclarativeOpenApiParameters("greet/{name}")
+
+    assertTrue(parameters.any { it.name == "name" && it.inPlace == OasParameterIn.PATH })
+    assertTrue(parameters.any { it.name == "test" && it.inPlace == OasParameterIn.HEADER })
+  }
+
+  private fun getDeclarativeOpenApiParameters(path: String) =
+    getDeclarativeOpenApiOperation(path).parameters
+
+  private fun getDeclarativeOpenApiOperation(path: String) =
+    getDeclarativeOpenApiSpecification(path).paths.single().operations.single()
+
+  private fun getDeclarativeOpenApiSpecification(path: String): OpenApiSpecification {
+    val framework = HelidonUrlFramework()
+    val module = ModuleUtilCore.findModuleForPsiElement(myFixture.file)!!
+    val groupEndpoint = framework.getEndpointGroups(project, ModuleEndpointsFilter(module, false, false))
+      .first { it.presentationPath == path }
+    val endpoint = framework.getEndpoints(groupEndpoint).single()
+    return framework.getOpenApiSpecification(groupEndpoint, endpoint)
+  }
+
   private fun collectBuilderEndpoints(): Collection<HelidonUrlTargetInfo> {
     val processor = CollectProcessor<HelidonUrlTargetInfo>()
     val module = ModuleUtilCore.findModuleForPsiElement(myFixture.file)!!
@@ -286,6 +357,18 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
         @Target({ElementType.TYPE, ElementType.METHOD})
         public @interface Path {
           String value() default "/";
+        }
+
+        @Retention(RetentionPolicy.CLASS)
+        @Target(ElementType.PARAMETER)
+        public @interface PathParam {
+          String value();
+        }
+
+        @Retention(RetentionPolicy.CLASS)
+        @Target(ElementType.PARAMETER)
+        public @interface HeaderParam {
+          String value();
         }
 
         @Retention(RetentionPolicy.CLASS)

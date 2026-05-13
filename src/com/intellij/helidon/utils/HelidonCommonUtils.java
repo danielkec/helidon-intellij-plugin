@@ -602,7 +602,9 @@ public final class HelidonCommonUtils {
                                                        requestMethod,
                                                        requestMethod == HelidonRequestMethods.UNKNOWN || httpMethods.size() > 1
                                                        ? httpMethods
-                                                       : null);
+                                                       : null)
+      .asRestServerEndpoint()
+      .withDeclarationMethod(method);
     if (parentPath != null) {
       targetInfo.withParentUrl(parentPath.path);
     }
@@ -620,6 +622,32 @@ public final class HelidonCommonUtils {
   private static @NotNull List<PsiMethod> getMethodHierarchy(@NotNull PsiMethod method) {
     List<PsiMethod> result = new ArrayList<>();
     collectMethodHierarchy(method, result, new HashSet<>());
+    return result;
+  }
+
+  public static @NotNull Collection<String> getRestServerHeaderParameters(@NotNull PsiMethod method) {
+    return getRestServerParameterNames(method, HelidonConstants.HTTP_HEADER_PARAM);
+  }
+
+  private static @NotNull Collection<String> getRestServerParameterNames(@NotNull PsiMethod method,
+                                                                         @NotNull String annotationName) {
+    List<PsiMethod> methodHierarchy = getMethodHierarchy(method);
+    Set<String> result = new LinkedHashSet<>();
+    int parameterCount = method.getParameterList().getParametersCount();
+    for (int index = 0; index < parameterCount; index++) {
+      for (PsiMethod hierarchyMethod : methodHierarchy) {
+        PsiParameter[] parameters = hierarchyMethod.getParameterList().getParameters();
+        if (index >= parameters.length) continue;
+        PsiAnnotation annotation = findAnnotation(parameters[index], annotationName);
+        if (annotation == null) continue;
+
+        String name = getAnnotationStringValue(annotation);
+        if (StringUtil.isNotEmpty(name)) {
+          result.add(name);
+        }
+        break;
+      }
+    }
     return result;
   }
 

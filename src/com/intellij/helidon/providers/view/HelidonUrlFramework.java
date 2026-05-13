@@ -34,9 +34,11 @@ import org.jetbrains.uast.UastContextKt;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static com.intellij.helidon.utils.HelidonCommonUtils.hasHelidonLibrary;
 import static com.intellij.microservices.endpoints.EndpointTypes.HTTP_SERVER_TYPE;
@@ -222,7 +224,17 @@ final class HelidonUrlFramework implements EndpointsUrlTargetProvider<HelidonUrl
   }
 
   private static @NotNull OasSchema getOpenApiSchema(@NotNull PsiType type) {
+    return getOpenApiSchema(type, new HashSet<>());
+  }
+
+  private static @NotNull OasSchema getOpenApiSchema(@NotNull PsiType type, @NotNull Set<PsiClass> visited) {
     String canonicalText = type.getCanonicalText();
+    if (type instanceof PsiClassType && isOptionalType(type)) {
+      PsiType[] parameters = ((PsiClassType)type).getParameters();
+      if (parameters.length == 1) {
+        return getOpenApiSchema(parameters[0], visited);
+      }
+    }
     if (PsiTypes.booleanType().equals(type) || CommonClassNames.JAVA_LANG_BOOLEAN.equals(canonicalText)) {
       return schema(OasSchemaType.BOOLEAN, null, null);
     }
@@ -247,7 +259,23 @@ final class HelidonUrlFramework implements EndpointsUrlTargetProvider<HelidonUrl
       return schema(OasSchemaType.STRING, null, null);
     }
     if (type instanceof PsiArrayType) {
-      return schema(OasSchemaType.ARRAY, null, getOpenApiSchema(((PsiArrayType)type).getComponentType()));
+      return schema(OasSchemaType.ARRAY, null, getOpenApiSchema(((PsiArrayType)type).getComponentType(), visited));
+    }
+    if (type instanceof PsiClassType) {
+      PsiClass psiClass = ((PsiClassType)type).resolve();
+      if (psiClass != null) {
+        if (psiClass.isEnum()) {
+          List<String> enumValues = getEnumValues(psiClass);
+          if (!enumValues.isEmpty()) {
+            return schema(OasSchemaType.STRING, null, null, null, enumValues, null);
+          }
+        }
+
+        List<OasProperty> properties = getOpenApiProperties(psiClass, visited);
+        if (!properties.isEmpty()) {
+          return schema(OasSchemaType.OBJECT, null, null, properties, null, null);
+        }
+      }
     }
     return schema(OasSchemaType.OBJECT, null, null);
   }
@@ -259,7 +287,94 @@ final class HelidonUrlFramework implements EndpointsUrlTargetProvider<HelidonUrl
   private static @NotNull OasSchema schema(@NotNull OasSchemaType type,
                                            @Nullable OasSchemaFormat format,
                                            @Nullable OasSchema items) {
-    return new OasSchema(type, format, null, items, Collections.emptyList(), null, Collections.emptyList(), Collections.emptyList(), false, false);
+    return schema(type, format, items, null, null, null);
+  }
+
+  private static @NotNull OasSchema schema(@NotNull OasSchemaType type,
+                                           @Nullable OasSchemaFormat format,
+                                           @Nullable OasSchema items,
+                                           @Nullable List<OasProperty> properties,
+                                           @Nullable List<String> enumValues,
+                                           @Nullable List<String> required) {
+    return new OasSchema(type, format, null, items, properties, null, enumValues, required, false, false);
+  }
+
+  private static @NotNull List<OasProperty> getOpenApiProperties(@NotNull PsiClass psiClass,
+                                                                 @NotNull Set<PsiClass> visited) {
+    Set<PsiClass> nextVisited = new HashSet<>(visited);
+    if (!nextVisited.add(psiClass)) return Collections.emptyList();
+
+    Map<String, PsiType> properties = new LinkedHashMap<>();
+    for (PsiMethod method : psiClass.getAllMethods()) {
+      String propertyName = getBeanPropertyName(method);
+      if (propertyName != null) {
+        properties.putIfAbsent(propertyName, getBeanPropertyType(method));
+      }
+    }
+    for (PsiField field : psiClass.getAllFields()) {
+      if (field.hasModifierProperty(PsiModifier.PUBLIC) && !field.hasModifierProperty(PsiModifier.STATIC)) {
+        properties.putIfAbsent(field.getName(), field.getType());
+      }
+    }
+
+    List<OasProperty> result = new ArrayList<>();
+    for (Map.Entry<String, PsiType> entry : properties.entrySet()) {
+      result.add(new OasProperty(entry.getKey(), getOpenApiSchema(entry.getValue(), new HashSet<>(nextVisited))));
+    }
+    return result;
+  }
+
+  private static @Nullable String getBeanPropertyName(@NotNull PsiMethod method) {
+    if (method.hasModifierProperty(PsiModifier.STATIC) || !method.hasModifierProperty(PsiModifier.PUBLIC)) return null;
+    if (method.getContainingClass() == null || CommonClassNames.JAVA_LANG_OBJECT.equals(method.getContainingClass().getQualifiedName())) return null;
+
+    String name = method.getName();
+    if (method.getParameterList().getParametersCount() == 0 && !PsiTypes.voidType().equals(method.getReturnType())) {
+      if (name.startsWith("get") && name.length() > 3 && !"getClass".equals(name)) {
+        return decapitalize(name.substring(3));
+      }
+      if (name.startsWith("is") && name.length() > 2 && isBooleanType(method.getReturnType())) {
+        return decapitalize(name.substring(2));
+      }
+    }
+    if (name.startsWith("set") &&
+        name.length() > 3 &&
+        PsiTypes.voidType().equals(method.getReturnType()) &&
+        method.getParameterList().getParametersCount() == 1) {
+      return decapitalize(name.substring(3));
+    }
+    return null;
+  }
+
+  private static @NotNull PsiType getBeanPropertyType(@NotNull PsiMethod method) {
+    if (method.getParameterList().getParametersCount() == 1) {
+      return method.getParameterList().getParameters()[0].getType();
+    }
+    PsiType returnType = method.getReturnType();
+    return returnType == null ? PsiTypes.voidType() : returnType;
+  }
+
+  private static boolean isBooleanType(@Nullable PsiType type) {
+    if (type == null) return false;
+    String canonicalText = type.getCanonicalText();
+    return PsiTypes.booleanType().equals(type) || CommonClassNames.JAVA_LANG_BOOLEAN.equals(canonicalText);
+  }
+
+  private static @NotNull List<String> getEnumValues(@NotNull PsiClass psiClass) {
+    List<String> result = new ArrayList<>();
+    for (PsiField field : psiClass.getFields()) {
+      if (field instanceof PsiEnumConstant) {
+        result.add(field.getName());
+      }
+    }
+    return result;
+  }
+
+  private static @NotNull String decapitalize(@NotNull String name) {
+    if (name.length() > 1 && Character.isUpperCase(name.charAt(0)) && Character.isUpperCase(name.charAt(1))) {
+      return name;
+    }
+    return Character.toLowerCase(name.charAt(0)) + name.substring(1);
   }
 
   private static @NotNull OpenApiSpecification withOpenApiDetails(@NotNull OpenApiSpecification specification,

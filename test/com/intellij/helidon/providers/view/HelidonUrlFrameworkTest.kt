@@ -264,6 +264,24 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
       }
 
       class Message {
+        private String message;
+        private String greeting;
+
+        public String getMessage() {
+          return message;
+        }
+
+        public void setMessage(String message) {
+          this.message = message;
+        }
+
+        public String getGreeting() {
+          return greeting;
+        }
+
+        public void setGreeting(String greeting) {
+          this.greeting = greeting;
+        }
       }
     """.trimIndent())
 
@@ -275,7 +293,13 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
     assertTrue(parameters.any { it.name == "locale" && it.inPlace == OasParameterIn.QUERY })
     val requestBody = requireNotNull(operation.requestBody)
     assertTrue(requestBody.required)
-    assertEquals(OasSchemaType.OBJECT, requestBody.content["application/json"]?.type)
+    val schema = requireNotNull(requestBody.content["application/json"])
+    assertEquals(OasSchemaType.OBJECT, schema.type)
+    assertNull(schema.`enum`)
+    assertNull(schema.required)
+    val properties = requireNotNull(schema.properties).associateBy { it.name }
+    assertEquals(OasSchemaType.STRING, properties["message"]?.schema?.type)
+    assertEquals(OasSchemaType.STRING, properties["greeting"]?.schema?.type)
   }
 
   fun testInheritedDeclarativeParametersAreAddedToOpenApiSpecification() {
@@ -304,6 +328,24 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
       }
 
       class Message {
+        private String message;
+        private String greeting;
+
+        public String getMessage() {
+          return message;
+        }
+
+        public void setMessage(String message) {
+          this.message = message;
+        }
+
+        public String getGreeting() {
+          return greeting;
+        }
+
+        public void setGreeting(String greeting) {
+          this.greeting = greeting;
+        }
       }
     """.trimIndent())
 
@@ -315,7 +357,13 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
     assertTrue(parameters.any { it.name == "locale" && it.inPlace == OasParameterIn.QUERY })
     val requestBody = requireNotNull(operation.requestBody)
     assertTrue(requestBody.required)
-    assertEquals(OasSchemaType.OBJECT, requestBody.content["application/json"]?.type)
+    val schema = requireNotNull(requestBody.content["application/json"])
+    assertEquals(OasSchemaType.OBJECT, schema.type)
+    assertNull(schema.`enum`)
+    assertNull(schema.required)
+    val properties = requireNotNull(schema.properties).associateBy { it.name }
+    assertEquals(OasSchemaType.STRING, properties["message"]?.schema?.type)
+    assertEquals(OasSchemaType.STRING, properties["greeting"]?.schema?.type)
   }
 
   private fun getDeclarativeOpenApiOperation(path: String) =

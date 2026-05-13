@@ -629,6 +629,10 @@ public final class HelidonCommonUtils {
     return getRestServerParameterNames(method, HelidonConstants.HTTP_HEADER_PARAM);
   }
 
+  public static @NotNull Collection<String> getRestServerQueryParameters(@NotNull PsiMethod method) {
+    return getRestServerParameterNames(method, HelidonConstants.HTTP_QUERY_PARAM);
+  }
+
   private static @NotNull Collection<String> getRestServerParameterNames(@NotNull PsiMethod method,
                                                                          @NotNull String annotationName) {
     List<PsiMethod> methodHierarchy = getMethodHierarchy(method);

@@ -241,7 +241,7 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
     assertEquals("SecretService", containingClassName(endpoints.single()))
   }
 
-  fun testDeclarativeHeaderParameterIsAddedToOpenApiSpecification() {
+  fun testDeclarativeParametersAreAddedToOpenApiSpecification() {
     addHelidonDeclarativeStubs()
 
     myFixture.configureByText("GreetingService.java", """
@@ -254,8 +254,9 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
         @Http.GET
         @Http.Path("/{name}")
         String getMessage(@Http.PathParam("name") String name,
-                          @Http.HeaderParam("test") String test) {
-          return name + test;
+                          @Http.HeaderParam("test") String test,
+                          @Http.QueryParam("locale") String locale) {
+          return name + test + locale;
         }
       }
     """.trimIndent())
@@ -264,9 +265,10 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
 
     assertTrue(parameters.any { it.name == "name" && it.inPlace == OasParameterIn.PATH })
     assertTrue(parameters.any { it.name == "test" && it.inPlace == OasParameterIn.HEADER })
+    assertTrue(parameters.any { it.name == "locale" && it.inPlace == OasParameterIn.QUERY })
   }
 
-  fun testInheritedDeclarativeHeaderParameterIsAddedToOpenApiSpecification() {
+  fun testInheritedDeclarativeParametersAreAddedToOpenApiSpecification() {
     addHelidonDeclarativeStubs()
 
     myFixture.configureByText("GreetingService.java", """
@@ -277,14 +279,15 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
         @Http.GET
         @Http.Path("/{name}")
         String getMessage(@Http.PathParam("name") String name,
-                          @Http.HeaderParam("test") String test);
+                          @Http.HeaderParam("test") String test,
+                          @Http.QueryParam("locale") String locale);
       }
 
       @RestServer.Endpoint
       @Http.Path("/greet")
       class GreetingService implements GreetingApi {
-        public String getMessage(String name, String test) {
-          return name + test;
+        public String getMessage(String name, String test, String locale) {
+          return name + test + locale;
         }
       }
     """.trimIndent())
@@ -293,6 +296,7 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
 
     assertTrue(parameters.any { it.name == "name" && it.inPlace == OasParameterIn.PATH })
     assertTrue(parameters.any { it.name == "test" && it.inPlace == OasParameterIn.HEADER })
+    assertTrue(parameters.any { it.name == "locale" && it.inPlace == OasParameterIn.QUERY })
   }
 
   private fun getDeclarativeOpenApiParameters(path: String) =
@@ -368,6 +372,12 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
         @Retention(RetentionPolicy.CLASS)
         @Target(ElementType.PARAMETER)
         public @interface HeaderParam {
+          String value();
+        }
+
+        @Retention(RetentionPolicy.CLASS)
+        @Target(ElementType.PARAMETER)
+        public @interface QueryParam {
           String value();
         }
 

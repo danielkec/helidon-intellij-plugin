@@ -180,31 +180,46 @@ final class HelidonUrlFramework implements EndpointsUrlTargetProvider<HelidonUrl
     PsiMethod declarationMethod = endpoint.getDeclarationMethod();
     if (declarationMethod == null) return specification;
 
-    Collection<String> headerParameters = HelidonCommonUtils.getRestServerHeaderParameters(declarationMethod);
-    if (headerParameters.isEmpty()) return specification;
+    Collection<OasParameter> parameters = getRestServerOpenApiParameters(declarationMethod);
+    if (parameters.isEmpty()) return specification;
 
-    return withHeaderParameters(specification, headerParameters);
+    return withParameters(specification, parameters);
   }
 
-  private static @NotNull OpenApiSpecification withHeaderParameters(@NotNull OpenApiSpecification specification,
-                                                                    @NotNull Collection<String> headerParameterNames) {
+  private static @NotNull Collection<OasParameter> getRestServerOpenApiParameters(@NotNull PsiMethod declarationMethod) {
+    Collection<OasParameter> parameters = new ArrayList<>();
+    addParameters(parameters, HelidonCommonUtils.getRestServerHeaderParameters(declarationMethod), OasParameterIn.HEADER);
+    addParameters(parameters, HelidonCommonUtils.getRestServerQueryParameters(declarationMethod), OasParameterIn.QUERY);
+    return parameters;
+  }
+
+  private static void addParameters(@NotNull Collection<? super OasParameter> parameters,
+                                    @NotNull Collection<String> names,
+                                    @NotNull OasParameterIn inPlace) {
+    for (String name : names) {
+      parameters.add(new OasParameter(name, inPlace, "", false, false, null, null));
+    }
+  }
+
+  private static @NotNull OpenApiSpecification withParameters(@NotNull OpenApiSpecification specification,
+                                                              @NotNull Collection<OasParameter> additionalParameters) {
     Collection<OasEndpointPath> paths = new ArrayList<>();
     for (OasEndpointPath path : specification.getPaths()) {
       Collection<OasOperation> operations = new ArrayList<>();
       for (OasOperation operation : path.getOperations()) {
-        operations.add(withHeaderParameters(operation, headerParameterNames));
+        operations.add(withParameters(operation, additionalParameters));
       }
       paths.add(new OasEndpointPath(path.getPath(), path.getSummary(), operations));
     }
     return new OpenApiSpecification(paths, specification.getComponents(), specification.getTags());
   }
 
-  private static @NotNull OasOperation withHeaderParameters(@NotNull OasOperation operation,
-                                                           @NotNull Collection<String> headerParameterNames) {
+  private static @NotNull OasOperation withParameters(@NotNull OasOperation operation,
+                                                     @NotNull Collection<OasParameter> additionalParameters) {
     Collection<OasParameter> parameters = new ArrayList<>(operation.getParameters());
-    for (String headerParameterName : headerParameterNames) {
-      if (!hasParameter(parameters, headerParameterName, OasParameterIn.HEADER)) {
-        parameters.add(new OasParameter(headerParameterName, OasParameterIn.HEADER, "", false, false, null, null));
+    for (OasParameter additionalParameter : additionalParameters) {
+      if (!hasParameter(parameters, additionalParameter.getName(), additionalParameter.getInPlace())) {
+        parameters.add(additionalParameter);
       }
     }
 

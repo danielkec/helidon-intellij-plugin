@@ -293,7 +293,8 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
     val parameters = operation.parameters
 
     assertTrue(parameters.any { it.name == "name" && it.inPlace == OasParameterIn.PATH })
-    assertTrue(parameters.any { it.name == "test" && it.inPlace == OasParameterIn.HEADER })
+    val headerParameter = parameters.first { it.name == "test" && it.inPlace == OasParameterIn.HEADER }
+    assertNull(headerParameter.description)
     assertTrue(parameters.any { it.name == "locale" && it.inPlace == OasParameterIn.QUERY })
     val requestBody = requireNotNull(operation.requestBody)
     assertTrue(requestBody.required)
@@ -363,6 +364,75 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
     assertMessageSchema(specification, requireNotNull(operation.responses.single().content["application/json"]?.schema))
   }
 
+  fun testDeclarativeOpenApiUsesConcreteImplementationForInheritedEndpoint() {
+    addHelidonDeclarativeStubs()
+
+    myFixture.configureByText("GreetingService.java", """
+      import io.helidon.http.Http;
+      import io.helidon.webserver.http.RestServer;
+
+      @Http.Produces("application/vnd.api+json")
+      interface GreetingApi {
+        @Http.GET
+        @Http.Path("/message")
+        Message getMessage();
+      }
+
+      @RestServer.Endpoint
+      @Http.Path("/greet")
+      @Http.Produces("application/vnd.service+json")
+      class GreetingService implements GreetingApi {
+        public DetailedMessage getMessage() {
+          return new DetailedMessage();
+        }
+      }
+
+      class Message {
+        public String getMessage() {
+          return "";
+        }
+      }
+
+      class DetailedMessage extends Message {
+        public String getDetail() {
+          return "";
+        }
+      }
+    """.trimIndent())
+
+    val specification = getDeclarativeOpenApiSpecification("greet/message")
+    val responseContent = specification.paths.single().operations.single().responses.single().content
+
+    assertFalse(responseContent.containsKey("application/vnd.api+json"))
+    val responseSchema = requireNotNull(responseContent["application/vnd.service+json"]?.schema)
+    assertTrue(responseSchema.reference?.contains("DetailedMessage") == true)
+  }
+
+  fun testRawOptionalDeclarativeEntityIsNotRequired() {
+    addHelidonDeclarativeStubs()
+
+    myFixture.configureByText("GreetingService.java", """
+      import java.util.Optional;
+      import io.helidon.http.Http;
+      import io.helidon.webserver.http.RestServer;
+
+      @RestServer.Endpoint
+      @Http.Path("/greet")
+      class GreetingService {
+        @Http.POST
+        @Http.Path("/optional")
+        String update(@Http.Entity Optional message) {
+          return "";
+        }
+      }
+    """.trimIndent())
+
+    val specification = getDeclarativeOpenApiSpecification("greet/optional")
+    val requestBody = requireNotNull(specification.paths.single().operations.single().requestBody)
+
+    assertFalse(requestBody.required)
+  }
+
   private fun assertMessageSchema(specification: OpenApiSpecification, bodySchema: OasSchema) {
     val schema = resolveSchema(specification, bodySchema)
     assertEquals(OasSchemaType.OBJECT, schema.type)
@@ -382,9 +452,15 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
   private fun getDeclarativeOpenApiSpecification(path: String): OpenApiSpecification {
     val framework = HelidonUrlFramework()
     val module = ModuleUtilCore.findModuleForPsiElement(myFixture.file)!!
-    val groupEndpoint = framework.getEndpointGroups(project, ModuleEndpointsFilter(module, false, false))
-      .first { it.presentationPath == path }
-    val endpoint = framework.getEndpoints(groupEndpoint).single()
+    val endpoints = framework.getEndpointGroups(project, ModuleEndpointsFilter(module, false, false))
+      .asSequence()
+      .flatMap { groupEndpoint -> framework.getEndpoints(groupEndpoint).asSequence().map { groupEndpoint to it } }
+      .toList()
+    val endpointPair = endpoints.firstOrNull { it.second.presentationPath == path }
+    if (endpointPair == null) {
+      fail("Endpoint $path not found in ${endpoints.joinToString { it.second.presentationPath }}")
+    }
+    val (groupEndpoint, endpoint) = endpointPair!!
     return framework.getOpenApiSpecification(groupEndpoint, endpoint)
   }
 

@@ -25,6 +25,7 @@ import com.intellij.psi.util.CachedValue;
 import com.intellij.psi.util.CachedValueProvider.Result;
 import com.intellij.psi.util.CachedValuesManager;
 import com.intellij.psi.util.InheritanceUtil;
+import com.intellij.psi.util.MethodSignatureUtil;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.uast.UastModificationTracker;
 import com.intellij.uast.UastSmartPointer;
@@ -546,29 +547,35 @@ public final class HelidonCommonUtils {
     Set<String> processed = new HashSet<>();
 
     for (PsiMethod method : endpointClass.getAllMethods()) {
-      if (shouldSkipRestServerEndpointMethod(method)) continue;
+      PsiMethod endpointMethod = getConcreteRestServerEndpointMethod(endpointClass, method);
+      if (shouldSkipRestServerEndpointMethod(endpointMethod)) continue;
 
-      List<PsiMethod> methodHierarchy = getMethodHierarchy(method);
+      List<PsiMethod> methodHierarchy = getMethodHierarchy(endpointMethod);
       Set<String> httpMethods = getHttpMethods(methodHierarchy);
       if (httpMethods.isEmpty()) continue;
-      if (!filter.accepts(method, methodHierarchy, httpMethods)) continue;
+      if (!filter.accepts(endpointMethod, methodHierarchy, httpMethods)) continue;
 
-      List<PathDefinition> methodPaths = getMethodPaths(method, methodHierarchy);
+      List<PathDefinition> methodPaths = getMethodPaths(endpointMethod, methodHierarchy);
       for (PathDefinition methodPath : methodPaths) {
         if (parentPaths.isEmpty()) {
-          if (!processRestServerEndpoint(processor, processed, method, methodPath, null, httpMethods)) {
+          if (!processRestServerEndpoint(processor, processed, endpointMethod, methodPath, null, httpMethods)) {
             return false;
           }
           continue;
         }
         for (PathDefinition parentPath : parentPaths) {
-          if (!processRestServerEndpoint(processor, processed, method, methodPath, parentPath, httpMethods)) {
+          if (!processRestServerEndpoint(processor, processed, endpointMethod, methodPath, parentPath, httpMethods)) {
             return false;
           }
         }
       }
     }
     return true;
+  }
+
+  private static @NotNull PsiMethod getConcreteRestServerEndpointMethod(@NotNull PsiClass endpointClass, @NotNull PsiMethod method) {
+    PsiMethod implementation = MethodSignatureUtil.findMethodBySuperMethod(endpointClass, method, true);
+    return implementation == null ? method : implementation;
   }
 
   private static boolean methodHierarchyContains(@NotNull PsiMethod targetMethod, @NotNull List<PsiMethod> methodHierarchy) {

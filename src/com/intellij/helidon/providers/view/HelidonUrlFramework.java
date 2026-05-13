@@ -203,7 +203,7 @@ final class HelidonUrlFramework implements EndpointsUrlTargetProvider<HelidonUrl
                                     @NotNull Collection<String> names,
                                     @NotNull OasParameterIn inPlace) {
     for (String name : names) {
-      parameters.add(new OasParameter(name, inPlace, "", false, false, null, null));
+      parameters.add(new OasParameter(name, inPlace, null, false, false, null, null));
     }
   }
 
@@ -216,7 +216,8 @@ final class HelidonUrlFramework implements EndpointsUrlTargetProvider<HelidonUrl
       mediaTypes = Collections.singletonList("application/json");
     }
 
-    Pair<OasSchema, Map<String, OasSchema>> schemaAndComponents = JvmSwaggerUtilsKt.getOasSchemaForPsiType(entityType, false);
+    Pair<OasSchema, Map<String, OasSchema>> schemaAndComponents =
+      JvmSwaggerUtilsKt.getOasSchemaForPsiType(getOpenApiSchemaType(entityType, declarationMethod), false);
     OasSchema schema = schemaAndComponents.getFirst();
     Map<String, OasSchema> content = new LinkedHashMap<>();
     for (String mediaType : mediaTypes) {
@@ -237,7 +238,8 @@ final class HelidonUrlFramework implements EndpointsUrlTargetProvider<HelidonUrl
       mediaTypes = Collections.singletonList("application/json");
     }
 
-    Pair<OasSchema, Map<String, OasSchema>> schemaAndComponents = JvmSwaggerUtilsKt.getOasSchemaForPsiType(responseType, false);
+    Pair<OasSchema, Map<String, OasSchema>> schemaAndComponents =
+      JvmSwaggerUtilsKt.getOasSchemaForPsiType(getOpenApiSchemaType(responseType, declarationMethod), false);
     Map<String, OasMediaTypeObject> content = new LinkedHashMap<>();
     for (String mediaType : mediaTypes) {
       content.put(mediaType, new OasMediaTypeObject(schemaAndComponents.getFirst(), Collections.emptyMap()));
@@ -246,7 +248,21 @@ final class HelidonUrlFramework implements EndpointsUrlTargetProvider<HelidonUrl
   }
 
   private static boolean isOptionalType(@NotNull PsiType type) {
-    return type.getCanonicalText().startsWith(CommonClassNames.JAVA_UTIL_OPTIONAL + "<");
+    String canonicalText = type.getCanonicalText();
+    return CommonClassNames.JAVA_UTIL_OPTIONAL.equals(canonicalText) ||
+           canonicalText.startsWith(CommonClassNames.JAVA_UTIL_OPTIONAL + "<");
+  }
+
+  private static @NotNull PsiType getOpenApiSchemaType(@NotNull PsiType type, @NotNull PsiMethod context) {
+    if (isOptionalType(type)) {
+      if (type instanceof PsiClassType) {
+        PsiType[] parameters = ((PsiClassType)type).getParameters();
+        if (parameters.length > 0) return parameters[0];
+      }
+      return JavaPsiFacade.getElementFactory(context.getProject())
+        .createTypeByFQClassName(CommonClassNames.JAVA_LANG_OBJECT, context.getResolveScope());
+    }
+    return type;
   }
 
   private static @NotNull OpenApiSpecification withOpenApiDetails(@NotNull OpenApiSpecification specification,
@@ -303,7 +319,9 @@ final class HelidonUrlFramework implements EndpointsUrlTargetProvider<HelidonUrl
     if (components != null && components.getSchemas() != null) {
       schemas.putAll(components.getSchemas());
     }
-    schemas.putAll(additionalSchemas);
+    for (Map.Entry<String, OasSchema> entry : additionalSchemas.entrySet()) {
+      schemas.putIfAbsent(entry.getKey(), entry.getValue());
+    }
     return new OasComponents(schemas);
   }
 

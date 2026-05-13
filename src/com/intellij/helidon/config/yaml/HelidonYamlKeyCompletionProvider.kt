@@ -7,6 +7,7 @@ import com.intellij.codeInsight.lookup.LookupElement
 import com.intellij.codeInsight.lookup.LookupElementBuilder
 import com.intellij.codeInsight.lookup.LookupElementDecorator
 import com.intellij.helidon.config.HelidonMetaConfigKeyManager
+import com.intellij.helidon.config.YAML_KEY_INSERT_HANDLER
 import com.intellij.microservices.jvm.config.ConfigKeyPathReference
 import com.intellij.microservices.jvm.config.MetaConfigKey
 import com.intellij.microservices.jvm.config.MetaConfigKeyManager.ConfigKeyNameBinder
@@ -276,7 +277,7 @@ internal class HelidonYamlKeyCompletionProvider : CompletionProvider<CompletionP
         keyLookupElements.putIfAbsent(lookupKeyName,
                                       LookupElementBuilder.create(lookupKeyName)
                                         .withIcon(PlatformIcons.PROPERTY_ICON)
-                                        .withInsertHandler(INSERT_COLON_AND_NEW_LINE_INSERT_HANDLER))
+                                        .withInsertHandler(YAML_KEY_INSERT_HANDLER))
         continue
       }
 
@@ -472,7 +473,7 @@ internal class HelidonYamlKeyCompletionProvider : CompletionProvider<CompletionP
     return keyNames.map {
       LookupElementBuilder.create(it)
         .withIcon(PlatformIcons.PROPERTY_ICON)
-        .withInsertHandler(INSERT_COLON_AND_NEW_LINE_INSERT_HANDLER)
+        .withInsertHandler(YAML_KEY_INSERT_HANDLER)
     }
   }
 }

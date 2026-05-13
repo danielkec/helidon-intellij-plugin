@@ -216,7 +216,7 @@ internal class HelidonConfigMetadataBuilder(modulesMetadata: List<ModuleMetadata
   }
 
   private fun parsePsiTypeAndAccessType(configOption: ConfigOption, project: Project): Pair<PsiType, MetaConfigKey.AccessType>? {
-    val optionType = getActualConfigOptionType(configOption)
+    val optionType = configOption.actualType()
 
     val myCachedTypes = CachedValuesManager.getManager(project).getCachedValue(project) {
       val myElementFactory = JavaPsiFacade.getInstance(project).elementFactory
@@ -235,14 +235,6 @@ internal class HelidonConfigMetadataBuilder(modulesMetadata: List<ModuleMetadata
       CachedValueProvider.Result.create(myFactoryMap, PsiModificationTracker.MODIFICATION_COUNT)
     }
     return myCachedTypes[optionType]
-  }
-
-  private fun getActualConfigOptionType(configOption: ConfigOption): String {
-    return when (configOption.kind) {
-      ConfigOptionKind.LIST -> "${CommonClassNames.JAVA_UTIL_LIST}<${configOption.type}>"
-      ConfigOptionKind.MAP -> "${CommonClassNames.JAVA_UTIL_MAP}<${CommonClassNames.JAVA_LANG_STRING}, ${configOption.type}>"
-      ConfigOptionKind.VALUE -> configOption.type
-    }
   }
 
   private class ClassCache(private val project: Project,

@@ -30,6 +30,8 @@ public interface HelidonConstants {
   @NonNls String HTTP_PATH_PARAM = "io.helidon.http.Http.PathParam";
   @NonNls String HTTP_HEADER_PARAM = "io.helidon.http.Http.HeaderParam";
   @NonNls String HTTP_QUERY_PARAM = "io.helidon.http.Http.QueryParam";
+  @NonNls String HTTP_ENTITY = "io.helidon.http.Http.Entity";
+  @NonNls String HTTP_CONSUMES = "io.helidon.http.Http.Consumes";
   @NonNls String HTTP_GET = "io.helidon.http.Http.GET";
   @NonNls String HTTP_HEAD = "io.helidon.http.Http.HEAD";
   @NonNls String HTTP_POST = "io.helidon.http.Http.POST";

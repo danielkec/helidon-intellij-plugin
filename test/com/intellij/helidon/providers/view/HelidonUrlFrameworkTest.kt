@@ -8,6 +8,7 @@ import com.intellij.helidon.utils.HelidonUrlTargetInfo
 import com.intellij.microservices.endpoints.ModuleEndpointsFilter
 import com.intellij.microservices.oas.OpenApiSpecification
 import com.intellij.microservices.oas.OasParameterIn
+import com.intellij.microservices.oas.OasSchemaType
 import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.psi.PsiClass
 import com.intellij.psi.search.GlobalSearchScope
@@ -251,21 +252,30 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
       @RestServer.Endpoint
       @Http.Path("/greet")
       class GreetingService {
-        @Http.GET
+        @Http.POST
         @Http.Path("/{name}")
+        @Http.Consumes("application/json")
         String getMessage(@Http.PathParam("name") String name,
                           @Http.HeaderParam("test") String test,
-                          @Http.QueryParam("locale") String locale) {
+                          @Http.QueryParam("locale") String locale,
+                          @Http.Entity Message message) {
           return name + test + locale;
         }
       }
+
+      class Message {
+      }
     """.trimIndent())
 
-    val parameters = getDeclarativeOpenApiParameters("greet/{name}")
+    val operation = getDeclarativeOpenApiOperation("greet/{name}")
+    val parameters = operation.parameters
 
     assertTrue(parameters.any { it.name == "name" && it.inPlace == OasParameterIn.PATH })
     assertTrue(parameters.any { it.name == "test" && it.inPlace == OasParameterIn.HEADER })
     assertTrue(parameters.any { it.name == "locale" && it.inPlace == OasParameterIn.QUERY })
+    val requestBody = requireNotNull(operation.requestBody)
+    assertTrue(requestBody.required)
+    assertEquals(OasSchemaType.OBJECT, requestBody.content["application/json"]?.type)
   }
 
   fun testInheritedDeclarativeParametersAreAddedToOpenApiSpecification() {
@@ -276,31 +286,37 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
       import io.helidon.webserver.http.RestServer;
 
       interface GreetingApi {
-        @Http.GET
+        @Http.POST
         @Http.Path("/{name}")
+        @Http.Consumes("application/json")
         String getMessage(@Http.PathParam("name") String name,
                           @Http.HeaderParam("test") String test,
-                          @Http.QueryParam("locale") String locale);
+                          @Http.QueryParam("locale") String locale,
+                          @Http.Entity Message message);
       }
 
       @RestServer.Endpoint
       @Http.Path("/greet")
       class GreetingService implements GreetingApi {
-        public String getMessage(String name, String test, String locale) {
+        public String getMessage(String name, String test, String locale, Message message) {
           return name + test + locale;
         }
       }
+
+      class Message {
+      }
     """.trimIndent())
 
-    val parameters = getDeclarativeOpenApiParameters("greet/{name}")
+    val operation = getDeclarativeOpenApiOperation("greet/{name}")
+    val parameters = operation.parameters
 
     assertTrue(parameters.any { it.name == "name" && it.inPlace == OasParameterIn.PATH })
     assertTrue(parameters.any { it.name == "test" && it.inPlace == OasParameterIn.HEADER })
     assertTrue(parameters.any { it.name == "locale" && it.inPlace == OasParameterIn.QUERY })
+    val requestBody = requireNotNull(operation.requestBody)
+    assertTrue(requestBody.required)
+    assertEquals(OasSchemaType.OBJECT, requestBody.content["application/json"]?.type)
   }
-
-  private fun getDeclarativeOpenApiParameters(path: String) =
-    getDeclarativeOpenApiOperation(path).parameters
 
   private fun getDeclarativeOpenApiOperation(path: String) =
     getDeclarativeOpenApiSpecification(path).paths.single().operations.single()
@@ -382,6 +398,17 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
         }
 
         @Retention(RetentionPolicy.CLASS)
+        @Target(ElementType.PARAMETER)
+        public @interface Entity {
+        }
+
+        @Retention(RetentionPolicy.CLASS)
+        @Target({ElementType.TYPE, ElementType.METHOD})
+        public @interface Consumes {
+          String[] value();
+        }
+
+        @Retention(RetentionPolicy.CLASS)
         @Target({ElementType.METHOD, ElementType.ANNOTATION_TYPE})
         public @interface HttpMethod {
           String value();
@@ -389,6 +416,10 @@ class HelidonUrlFrameworkTest : HelidonHighlightingTestCase() {
 
         @HttpMethod("GET")
         public @interface GET {
+        }
+
+        @HttpMethod("POST")
+        public @interface POST {
         }
       }
     """.trimIndent())

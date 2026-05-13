@@ -34,7 +34,9 @@ import org.jetbrains.uast.UastContextKt;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static com.intellij.helidon.utils.HelidonCommonUtils.hasHelidonLibrary;
 import static com.intellij.microservices.endpoints.EndpointTypes.HTTP_SERVER_TYPE;
@@ -181,9 +183,10 @@ final class HelidonUrlFramework implements EndpointsUrlTargetProvider<HelidonUrl
     if (declarationMethod == null) return specification;
 
     Collection<OasParameter> parameters = getRestServerOpenApiParameters(declarationMethod);
-    if (parameters.isEmpty()) return specification;
+    OasRequestBody requestBody = getRestServerRequestBody(declarationMethod);
+    if (parameters.isEmpty() && requestBody == null) return specification;
 
-    return withParameters(specification, parameters);
+    return withOpenApiDetails(specification, parameters, requestBody);
   }
 
   private static @NotNull Collection<OasParameter> getRestServerOpenApiParameters(@NotNull PsiMethod declarationMethod) {
@@ -201,21 +204,81 @@ final class HelidonUrlFramework implements EndpointsUrlTargetProvider<HelidonUrl
     }
   }
 
-  private static @NotNull OpenApiSpecification withParameters(@NotNull OpenApiSpecification specification,
-                                                              @NotNull Collection<OasParameter> additionalParameters) {
+  private static @Nullable OasRequestBody getRestServerRequestBody(@NotNull PsiMethod declarationMethod) {
+    PsiType entityType = HelidonCommonUtils.getRestServerEntityParameterType(declarationMethod);
+    if (entityType == null) return null;
+
+    Collection<String> mediaTypes = HelidonCommonUtils.getRestServerConsumedMediaTypes(declarationMethod);
+    if (mediaTypes.isEmpty()) {
+      mediaTypes = Collections.singletonList("application/json");
+    }
+
+    OasSchema schema = getOpenApiSchema(entityType);
+    Map<String, OasSchema> content = new LinkedHashMap<>();
+    for (String mediaType : mediaTypes) {
+      content.put(mediaType, schema);
+    }
+    return new OasRequestBody(content, !isOptionalType(entityType));
+  }
+
+  private static @NotNull OasSchema getOpenApiSchema(@NotNull PsiType type) {
+    String canonicalText = type.getCanonicalText();
+    if (PsiTypes.booleanType().equals(type) || CommonClassNames.JAVA_LANG_BOOLEAN.equals(canonicalText)) {
+      return schema(OasSchemaType.BOOLEAN, null, null);
+    }
+    if (PsiTypes.intType().equals(type) ||
+        PsiTypes.shortType().equals(type) ||
+        PsiTypes.byteType().equals(type) ||
+        CommonClassNames.JAVA_LANG_INTEGER.equals(canonicalText) ||
+        CommonClassNames.JAVA_LANG_SHORT.equals(canonicalText) ||
+        CommonClassNames.JAVA_LANG_BYTE.equals(canonicalText)) {
+      return schema(OasSchemaType.INTEGER, OasSchemaFormat.INT_32, null);
+    }
+    if (PsiTypes.longType().equals(type) || CommonClassNames.JAVA_LANG_LONG.equals(canonicalText)) {
+      return schema(OasSchemaType.INTEGER, OasSchemaFormat.INT_64, null);
+    }
+    if (PsiTypes.floatType().equals(type) || CommonClassNames.JAVA_LANG_FLOAT.equals(canonicalText)) {
+      return schema(OasSchemaType.NUMBER, OasSchemaFormat.FLOAT, null);
+    }
+    if (PsiTypes.doubleType().equals(type) || CommonClassNames.JAVA_LANG_DOUBLE.equals(canonicalText)) {
+      return schema(OasSchemaType.NUMBER, OasSchemaFormat.DOUBLE, null);
+    }
+    if (CommonClassNames.JAVA_LANG_STRING.equals(canonicalText)) {
+      return schema(OasSchemaType.STRING, null, null);
+    }
+    if (type instanceof PsiArrayType) {
+      return schema(OasSchemaType.ARRAY, null, getOpenApiSchema(((PsiArrayType)type).getComponentType()));
+    }
+    return schema(OasSchemaType.OBJECT, null, null);
+  }
+
+  private static boolean isOptionalType(@NotNull PsiType type) {
+    return type.getCanonicalText().startsWith(CommonClassNames.JAVA_UTIL_OPTIONAL + "<");
+  }
+
+  private static @NotNull OasSchema schema(@NotNull OasSchemaType type,
+                                           @Nullable OasSchemaFormat format,
+                                           @Nullable OasSchema items) {
+    return new OasSchema(type, format, null, items, Collections.emptyList(), null, Collections.emptyList(), Collections.emptyList(), false, false);
+  }
+
+  private static @NotNull OpenApiSpecification withOpenApiDetails(@NotNull OpenApiSpecification specification,
+                                                                  @NotNull Collection<OasParameter> additionalParameters,
+                                                                  @Nullable OasRequestBody requestBody) {
     Collection<OasEndpointPath> paths = new ArrayList<>();
     for (OasEndpointPath path : specification.getPaths()) {
       Collection<OasOperation> operations = new ArrayList<>();
       for (OasOperation operation : path.getOperations()) {
-        operations.add(withParameters(operation, additionalParameters));
+        operations.add(withOpenApiDetails(operation, additionalParameters, requestBody));
       }
       paths.add(new OasEndpointPath(path.getPath(), path.getSummary(), operations));
     }
     return new OpenApiSpecification(paths, specification.getComponents(), specification.getTags());
   }
 
-  private static @NotNull OasOperation withParameters(@NotNull OasOperation operation,
-                                                     @NotNull Collection<OasParameter> additionalParameters) {
+  private static @NotNull OasOperation withOpenApiDetails(@NotNull OasOperation operation,
+                                                         @NotNull Collection<OasParameter> additionalParameters,
+                                                         @Nullable OasRequestBody requestBody) {
     Collection<OasParameter> parameters = new ArrayList<>(operation.getParameters());
     for (OasParameter additionalParameter : additionalParameters) {
       if (!hasParameter(parameters, additionalParameter.getName(), additionalParameter.getInPlace())) {
@@ -230,7 +293,7 @@ final class HelidonUrlFramework implements EndpointsUrlTargetProvider<HelidonUrl
                             operation.getOperationId(),
                             operation.isDeprecated(),
                             parameters,
-                            operation.getRequestBody(),
+                            operation.getRequestBody() == null ? requestBody : operation.getRequestBody(),
                             operation.getResponses());
   }
 

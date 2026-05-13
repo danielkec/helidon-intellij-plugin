@@ -633,6 +633,41 @@ public final class HelidonCommonUtils {
     return getRestServerParameterNames(method, HelidonConstants.HTTP_QUERY_PARAM);
   }
 
+  public static @Nullable PsiType getRestServerEntityParameterType(@NotNull PsiMethod method) {
+    List<PsiMethod> methodHierarchy = getMethodHierarchy(method);
+    PsiParameter[] methodParameters = method.getParameterList().getParameters();
+    for (int index = 0; index < methodParameters.length; index++) {
+      for (PsiMethod hierarchyMethod : methodHierarchy) {
+        PsiParameter[] parameters = hierarchyMethod.getParameterList().getParameters();
+        if (index >= parameters.length) continue;
+        if (findAnnotation(parameters[index], HelidonConstants.HTTP_ENTITY) != null) {
+          return methodParameters[index].getType();
+        }
+      }
+    }
+    return null;
+  }
+
+  public static @NotNull Collection<String> getRestServerConsumedMediaTypes(@NotNull PsiMethod method) {
+    List<PsiMethod> methodHierarchy = getMethodHierarchy(method);
+    for (PsiMethod hierarchyMethod : methodHierarchy) {
+      PsiAnnotation annotation = findAnnotation(hierarchyMethod, HelidonConstants.HTTP_CONSUMES);
+      if (annotation != null) {
+        Collection<String> values = getAnnotationStringValues(annotation);
+        if (!values.isEmpty()) return values;
+      }
+    }
+    for (PsiMethod hierarchyMethod : methodHierarchy) {
+      PsiClass containingClass = hierarchyMethod.getContainingClass();
+      PsiAnnotation annotation = containingClass == null ? null : findAnnotation(containingClass, HelidonConstants.HTTP_CONSUMES);
+      if (annotation != null) {
+        Collection<String> values = getAnnotationStringValues(annotation);
+        if (!values.isEmpty()) return values;
+      }
+    }
+    return Collections.emptyList();
+  }
+
   private static @NotNull Collection<String> getRestServerParameterNames(@NotNull PsiMethod method,
                                                                          @NotNull String annotationName) {
     List<PsiMethod> methodHierarchy = getMethodHierarchy(method);
@@ -755,7 +790,27 @@ public final class HelidonCommonUtils {
   }
 
   private static @Nullable String getAnnotationStringValue(@NotNull PsiAnnotation annotation, @NotNull String attributeName) {
-    PsiAnnotationMemberValue value = annotation.findAttributeValue(attributeName);
+    return getAnnotationStringValue(annotation.findAttributeValue(attributeName));
+  }
+
+  private static @NotNull Collection<String> getAnnotationStringValues(@NotNull PsiAnnotation annotation) {
+    PsiAnnotationMemberValue value = annotation.findAttributeValue("value");
+    if (value instanceof PsiArrayInitializerMemberValue) {
+      List<String> result = new ArrayList<>();
+      for (PsiAnnotationMemberValue initializer : ((PsiArrayInitializerMemberValue)value).getInitializers()) {
+        String evaluated = getAnnotationStringValue(initializer);
+        if (StringUtil.isNotEmpty(evaluated)) {
+          result.add(evaluated);
+        }
+      }
+      return result;
+    }
+
+    String singleValue = getAnnotationStringValue(value);
+    return StringUtil.isEmpty(singleValue) ? Collections.emptyList() : Collections.singletonList(singleValue);
+  }
+
+  private static @Nullable String getAnnotationStringValue(@Nullable PsiAnnotationMemberValue value) {
     if (value instanceof PsiExpression) {
       Pair<PsiElement, String> evaluated = StringExpressionHelper.evaluateExpression((PsiExpression)value);
       if (evaluated != null) {

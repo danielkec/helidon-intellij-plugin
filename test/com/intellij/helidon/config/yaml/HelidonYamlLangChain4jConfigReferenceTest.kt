@@ -171,6 +171,24 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     assertLangChain4jScalarGutter(HelidonIcons.RobotGutter)
   }
 
+  fun testLangChain4jAgentKeyHasRobotGutterNavigation() {
+    addLangChain4jStubs()
+    addLangChain4jApplicationClasses()
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      langchain4j:
+        agents:
+          plan<caret>ner:
+            chat-model: chat
+    """.trimIndent())
+
+    val keyValue = PsiTreeUtil.getParentOfType(myFixture.file.findElementAt(myFixture.caretOffset), YAMLKeyValue::class.java)!!
+    val markers = mutableListOf<RelatedItemLineMarkerInfo<*>>()
+    HelidonLangChain4jYamlLineMarkerProvider().collectNavigationMarkers(listOf(keyValue), markers, true)
+
+    assertSize(1, markers)
+    assertSame(HelidonIcons.RobotGutter, markers.single().icon)
+  }
+
   fun testLangChain4jContentRetrieverKeyHasRobotGutterNavigation() {
     addLangChain4jStubs()
     addLangChain4jApplicationClasses()

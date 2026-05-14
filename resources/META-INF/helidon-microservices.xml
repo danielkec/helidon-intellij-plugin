@@ -21,6 +21,10 @@
     <!-- Config -->
     <psi.referenceContributor language="UAST"
                               implementation="com.intellij.helidon.config.HelidonConfigPropertyReferenceContributor"/>
+    <psi.referenceContributor language="UAST"
+                              implementation="com.intellij.helidon.langchain4j.HelidonLangChain4jJavaReferenceContributor"/>
+    <codeInsight.lineMarkerProvider language="JAVA" order="last"
+                                    implementationClass="com.intellij.helidon.langchain4j.HelidonLangChain4jJavaLineMarkerProvider"/>
 
     <!-- Properties -->
     <annotator language="Properties"
@@ -65,6 +69,9 @@
       implementationClass="com.intellij.helidon.config.properties.HelidonPropertiesConfigInspection"/>
 
     <annotator language="yaml" implementationClass="com.intellij.helidon.config.yaml.HelidonYamlAnnotator"/>
+    <codeInsight.lineMarkerProvider
+            language="yaml"
+            implementationClass="com.intellij.helidon.langchain4j.HelidonLangChain4jYamlLineMarkerProvider"/>
 
     <completion.contributor
             language="yaml"
@@ -73,6 +80,10 @@
             language="yaml"
             order="first"
             implementationClass="com.intellij.helidon.config.yaml.HelidonYamlSmartClassReferenceCompletionContributor"/>
+    <completion.contributor
+            language="yaml"
+            order="before javaClassName"
+            implementationClass="com.intellij.helidon.config.yaml.HelidonYamlValueCompletionContributor"/>
     <completion.contributor
             language="yaml"
             order="last, before javaClassName"

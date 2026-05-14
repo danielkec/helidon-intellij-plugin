@@ -8,7 +8,7 @@ import com.intellij.util.ProcessingContext
 import org.jetbrains.yaml.YAMLElementTypes
 import org.jetbrains.yaml.YAMLTokenTypes
 
-private val VALUE_PATTERN = PlatformPatterns.psiElement(LeafPsiElement::class.java)
+internal val HELIDON_YAML_VALUE_PATTERN = PlatformPatterns.psiElement(LeafPsiElement::class.java)
   .andOr(PlatformPatterns.psiElement().withElementType(YAMLElementTypes.SCALAR_VALUES)
            .andNot(PlatformPatterns.psiElement().afterLeaf(PlatformPatterns.psiElement(YAMLTokenTypes.INDENT))),
          PlatformPatterns.psiElement().afterLeaf(PlatformPatterns.psiElement(YAMLTokenTypes.COLON)))
@@ -19,7 +19,7 @@ private val VALUE_PATTERN = PlatformPatterns.psiElement(LeafPsiElement::class.ja
  */
 internal class HelidonYamlClassNameCompletionSuppressor : CompletionContributor() {
   init {
-    extend(CompletionType.BASIC, VALUE_PATTERN, object : CompletionProvider<CompletionParameters>() {
+    extend(CompletionType.BASIC, HELIDON_YAML_VALUE_PATTERN, object : CompletionProvider<CompletionParameters>() {
       override fun addCompletions(parameters: CompletionParameters,
                                   context: ProcessingContext,
                                   result: CompletionResultSet) {

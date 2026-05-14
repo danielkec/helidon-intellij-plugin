@@ -20,7 +20,11 @@ public final class HelidonCoreUtils {
                                                                                HelidonConstants.SERVICE_PROVIDER,
                                                                                HelidonConstants.SERVICE_PER_LOOKUP,
                                                                                HelidonConstants.SERVICE_PER_REQUEST,
-                                                                               HelidonConstants.REST_SERVER_ENDPOINT);
+                                                                               HelidonConstants.REST_SERVER_ENDPOINT,
+                                                                               HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_SERVICE,
+                                                                               HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_AGENT,
+                                                                               HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_SERVICE,
+                                                                               HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_AGENT);
   private static final Set<String> SERVICE_LOOKUP_METHODS = Set.of("get",
                                                                    "getNamed",
                                                                    "first",
@@ -37,14 +41,18 @@ public final class HelidonCoreUtils {
     return JavaLibraryUtil.hasLibraryClass(project, HelidonConstants.HTTP_ROUTING) ||
            JavaLibraryUtil.hasLibraryClass(project, HelidonConstants.ROUTING) ||
            JavaLibraryUtil.hasLibraryClass(project, HelidonConstants.REST_SERVER_ENDPOINT) ||
-           JavaLibraryUtil.hasLibraryClass(project, HelidonConstants.SERVICE_REGISTRY_SERVICE);
+           JavaLibraryUtil.hasLibraryClass(project, HelidonConstants.SERVICE_REGISTRY_SERVICE) ||
+           JavaLibraryUtil.hasLibraryClass(project, HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI) ||
+           JavaLibraryUtil.hasLibraryClass(project, HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI);
   }
 
   public static boolean hasHelidonLibrary(@Nullable Module module) {
     return JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.HTTP_ROUTING) ||
            JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.ROUTING) ||
            JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.REST_SERVER_ENDPOINT) ||
-           JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.SERVICE_REGISTRY_SERVICE);
+           JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.SERVICE_REGISTRY_SERVICE) ||
+           JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI) ||
+           JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI);
   }
 
   public static boolean hasHelidonMPLibrary(@Nullable Module module) {

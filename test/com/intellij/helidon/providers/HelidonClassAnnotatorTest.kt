@@ -28,6 +28,22 @@ class HelidonClassAnnotatorTest : HelidonHighlightingTestCase() {
     assertSame(HelidonIcons.HelidonBeanGutter, result.single().icon)
   }
 
+  fun testLangChain4jAiServiceHasGutterMarkerForExtensionsPackage() {
+    assertLangChain4jGutterMarker("io.helidon.extensions.langchain4j", "Service")
+  }
+
+  fun testLangChain4jAiAgentHasGutterMarkerForExtensionsPackage() {
+    assertLangChain4jGutterMarker("io.helidon.extensions.langchain4j", "Agent")
+  }
+
+  fun testLangChain4jAiServiceHasGutterMarkerForIntegrationsPackage() {
+    assertLangChain4jGutterMarker("io.helidon.integrations.langchain4j", "Service")
+  }
+
+  fun testLangChain4jAiAgentHasGutterMarkerForIntegrationsPackage() {
+    assertLangChain4jGutterMarker("io.helidon.integrations.langchain4j", "Agent")
+  }
+
   fun testServiceSingletonUsageTargetsIncludeInjectionAndLookup() {
     addServiceRegistryStubs()
     myFixture.configureByText("Main.java", """
@@ -61,6 +77,54 @@ class HelidonClassAnnotatorTest : HelidonHighlightingTestCase() {
 
     assertTrue(targets.any { it.text == "greeting" })
     assertTrue(targets.any { it.text == "Greeting.class" })
+  }
+
+  private fun assertLangChain4jGutterMarker(packageName: String, annotationName: String) {
+    addLangChain4jAiStub(packageName)
+    myFixture.configureByText("Main.java", """
+      import ${packageName}.Ai;
+
+      @Ai.${annotationName}("assistant")
+      interface Assistant {
+      }
+    """.trimIndent())
+
+    val serviceClass = myFixture.findClass("Assistant")
+    val result = mutableListOf<RelatedItemLineMarkerInfo<*>>()
+
+    HelidonClassAnnotator().collectNavigationMarkers(listOf(serviceClass.nameIdentifier!!), result, true)
+
+    assertSize(1, result)
+    assertSame(HelidonIcons.HelidonBeanGutter, result.single().icon)
+  }
+
+  private fun addLangChain4jAiStub(packageName: String) {
+    myFixture.addClass("""
+      package ${packageName};
+
+      import java.lang.annotation.ElementType;
+      import java.lang.annotation.Retention;
+      import java.lang.annotation.RetentionPolicy;
+      import java.lang.annotation.Target;
+
+      public final class Ai {
+        private Ai() {
+        }
+
+        @Retention(RetentionPolicy.RUNTIME)
+        @Target(ElementType.TYPE)
+        public @interface Service {
+          String value() default "";
+          boolean autoDiscovery() default true;
+        }
+
+        @Retention(RetentionPolicy.RUNTIME)
+        @Target(ElementType.TYPE)
+        public @interface Agent {
+          String value();
+        }
+      }
+    """.trimIndent())
   }
 
   private fun addServiceRegistryStubs() {

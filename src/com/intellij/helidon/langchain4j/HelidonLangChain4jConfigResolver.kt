@@ -197,6 +197,8 @@ internal object HelidonLangChain4jConfigResolver {
   fun valueCompletionVariants(element: PsiElement): List<String> {
     val yamlKeyValue = PsiTreeUtil.getParentOfType(element, YAMLKeyValue::class.java) ?: return emptyList()
     val path = qualifiedConfigKeyName(yamlKeyValue)
+    if (!path.startsWith("$ROOT.")) return emptyList()
+
     val lastKey = path.substringAfterLast('.')
     if (lastKey != "provider") return emptyList()
 

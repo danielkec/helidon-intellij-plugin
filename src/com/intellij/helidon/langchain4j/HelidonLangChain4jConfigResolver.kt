@@ -50,8 +50,11 @@ internal object HelidonLangChain4jConfigResolver {
 
   private const val VALUE_ATTRIBUTE = "value"
 
-  private val COMPONENTS_KEY: Key<CachedValue<List<LangChain4jComponent>>> =
-    Key.create("HELIDON_LANGCHAIN4J_COMPONENTS")
+  private val MAIN_COMPONENTS_KEY: Key<CachedValue<List<LangChain4jComponent>>> =
+    Key.create("HELIDON_LANGCHAIN4J_MAIN_COMPONENTS")
+
+  private val TEST_COMPONENTS_KEY: Key<CachedValue<List<LangChain4jComponent>>> =
+    Key.create("HELIDON_LANGCHAIN4J_TEST_COMPONENTS")
 
   private val CONFIG_SECTION_KINDS: Map<String, Set<LangChain4jComponentKind>> = mapOf(
     SERVICES to setOf(LangChain4jComponentKind.SERVICE),
@@ -266,7 +269,7 @@ internal object HelidonLangChain4jConfigResolver {
     val module = ModuleUtilCore.findModuleForPsiElement(yamlKeyValue) ?: return emptyList()
     val path = qualifiedConfigKeyName(yamlKeyValue)
     return CONFIG_SECTION_KINDS.flatMap { (section, kinds) ->
-      getComponents(module).filter { component ->
+      getComponents(module, includeTestSources(yamlKeyValue, module)).filter { component ->
         component.kind in kinds &&
         path == "$ROOT.$section.${component.key}"
       }.map { it.target }
@@ -314,16 +317,17 @@ internal object HelidonLangChain4jConfigResolver {
       ?.let { targets.add(it) }
 
     VALUE_COMPONENT_KINDS[lastKey]?.let { kinds ->
-      targets.addAll(componentTargets(module, kinds, value))
+      targets.addAll(componentTargets(yamlScalar, module, kinds, value))
     }
 
     if (lastKey in CLASS_VALUED_KEYS) {
-      targets.addAll(classTargets(module, value))
+      targets.addAll(classTargets(yamlScalar, module, value))
     }
 
     if (lastKey == MCP_CLIENTS && yamlKeyValue.value != yamlScalar) {
-      targets.addAll(findYamlMcpClientKeyValues(yamlScalar.containingFile as? YAMLFile, value))
-      findYamlKey(yamlScalar.containingFile as? YAMLFile, "$ROOT.$MCP_CLIENTS.$value")?.let { targets.add(it) }
+      val yamlFile = yamlScalar.containingFile as? YAMLFile
+      targets.addAll(findYamlMcpClientKeyValues(yamlFile, value))
+      findYamlMcpClientSectionFallback(yamlFile, value)?.let { targets.add(it) }
     }
 
     return targets.toList()
@@ -348,25 +352,27 @@ internal object HelidonLangChain4jConfigResolver {
     }
   }
 
-  private fun componentTargets(module: Module,
+  private fun componentTargets(context: PsiElement,
+                               module: Module,
                                kinds: Set<LangChain4jComponentKind>,
                                key: String? = null): List<PsiElement> {
-    return getComponents(module)
+    return getComponents(module, includeTestSources(context, module))
       .filter { it.kind in kinds && (key == null || it.key == key) }
       .map { it.target }
   }
 
-  private fun getComponents(module: Module): List<LangChain4jComponent> {
-    return CachedValuesManager.getManager(module.project).getCachedValue(module, COMPONENTS_KEY, {
-      CachedValueProvider.Result.create(calculateComponents(module),
+  private fun getComponents(module: Module, includeTests: Boolean): List<LangChain4jComponent> {
+    val key = if (includeTests) TEST_COMPONENTS_KEY else MAIN_COMPONENTS_KEY
+    return CachedValuesManager.getManager(module.project).getCachedValue(module, key, {
+      CachedValueProvider.Result.create(calculateComponents(module, includeTests),
                                         PsiModificationTracker.MODIFICATION_COUNT,
                                         JavaLibraryModificationTracker.getInstance(module.project))
     }, false)
   }
 
-  private fun calculateComponents(module: Module): List<LangChain4jComponent> {
+  private fun calculateComponents(module: Module, includeTests: Boolean): List<LangChain4jComponent> {
     val project = module.project
-    val scope = module.getModuleWithDependenciesAndLibrariesScope(true)
+    val scope = module.getModuleWithDependenciesAndLibrariesScope(includeTests)
     val result = LinkedHashSet<LangChain4jComponent>()
     val facade = JavaPsiFacade.getInstance(project)
 
@@ -426,8 +432,8 @@ internal object HelidonLangChain4jConfigResolver {
     }
   }
 
-  private fun classTargets(module: Module, value: String): List<PsiElement> {
-    val scope = module.getModuleWithDependenciesAndLibrariesScope(true)
+  private fun classTargets(context: PsiElement, module: Module, value: String): List<PsiElement> {
+    val scope = module.getModuleWithDependenciesAndLibrariesScope(includeTestSources(context, module))
     val classes = if (value.contains('.')) {
       listOfNotNull(JavaPsiFacade.getInstance(module.project).findClass(value, scope))
     }
@@ -458,6 +464,12 @@ internal object HelidonLangChain4jConfigResolver {
     }
   }
 
+  private fun findYamlMcpClientSectionFallback(file: YAMLFile?, value: String): YAMLKeyValue? {
+    val client = findYamlKey(file, "$ROOT.$MCP_CLIENTS.$value") ?: return null
+    val keyScalar = ((client.value as? YAMLMapping)?.getKeyValueByKey("key")?.value as? YAMLScalar)
+    return client.takeIf { keyScalar == null || keyScalar.textValue == value }
+  }
+
   private fun findConfigKeys(context: PsiElement, qualifiedName: String): List<PsiElement> {
     return processConfigFiles(context) { psiFile, contributor ->
       contributor.findKey(psiFile, qualifiedName)?.let(::listOf) ?: emptyList()
@@ -468,12 +480,22 @@ internal object HelidonLangChain4jConfigResolver {
     val targets = LinkedHashSet<PsiElement>()
     if (annotationName in MCP_CLIENT_ANNOTATIONS) {
       targets.addAll(findMcpClientKeyValueUsages(context, value))
+      targets.addAll(findMcpClientSectionFallbackUsages(context, value))
     }
-    ANNOTATION_CONFIG_SECTIONS[annotationName]
-      ?.let { section -> targets.addAll(findConfigKeys(context, "$ROOT.$section.$value")) }
+    else {
+      ANNOTATION_CONFIG_SECTIONS[annotationName]
+        ?.let { section -> targets.addAll(findConfigKeys(context, "$ROOT.$section.$value")) }
+    }
     ANNOTATION_CONFIG_VALUE_KEYS[annotationName]
       ?.let { keyNames -> targets.addAll(findConfigValueUsages(context, keyNames, value)) }
     return targets.toList()
+  }
+
+  private fun findMcpClientSectionFallbackUsages(context: PsiElement, value: String): List<PsiElement> {
+    return processConfigFiles(context) { psiFile, contributor ->
+      if (!mcpClientSectionFallbackAllowed(psiFile, value)) return@processConfigFiles emptyList()
+      contributor.findKey(psiFile, "$ROOT.$MCP_CLIENTS.$value")?.let(::listOf) ?: emptyList()
+    }
   }
 
   private fun findMcpClientKeyValueUsages(context: PsiElement, value: String): List<PsiElement> {
@@ -553,6 +575,27 @@ internal object HelidonLangChain4jConfigResolver {
         null
       }
     }
+  }
+
+  private fun mcpClientSectionFallbackAllowed(psiFile: PsiFile, value: String): Boolean {
+    return when (psiFile) {
+      is YAMLFile -> findYamlMcpClientSectionFallback(psiFile, value) != null
+      is PropertiesFile -> explicitPropertiesMcpClientKey(psiFile, value)?.let { it == value } ?: true
+      else -> true
+    }
+  }
+
+  private fun explicitPropertiesMcpClientKey(file: PropertiesFile, sectionName: String): String? {
+    val keyName = "$ROOT.$MCP_CLIENTS.$sectionName.key"
+    return file.properties
+      .mapNotNull { it.psiElement as? PropertyImpl }
+      .firstOrNull { it.key == keyName }
+      ?.value
+  }
+
+  private fun includeTestSources(context: PsiElement, module: Module): Boolean {
+    val virtualFile = context.containingFile?.originalFile?.virtualFile ?: return false
+    return ModuleRootManager.getInstance(module).fileIndex.isInTestSourceContent(virtualFile)
   }
 
   private fun leafAnchor(element: PsiElement): PsiElement {

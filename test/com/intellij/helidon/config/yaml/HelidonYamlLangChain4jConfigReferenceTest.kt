@@ -7,12 +7,15 @@ import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.config.HELIDON_APPLICATION_YAML
 import com.intellij.helidon.langchain4j.HelidonLangChain4jJavaLineMarkerProvider
 import com.intellij.helidon.langchain4j.HelidonLangChain4jYamlLineMarkerProvider
+import com.intellij.openapi.Disposable
+import com.intellij.openapi.util.Disposer
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiLiteralExpression
 import com.intellij.psi.PsiNamedElement
 import com.intellij.psi.PsiPolyVariantReference
 import com.intellij.psi.PsiReference
 import com.intellij.psi.util.PsiTreeUtil
+import com.intellij.testFramework.PsiTestUtil
 import org.jetbrains.yaml.psi.YAMLKeyValue
 import org.jetbrains.yaml.psi.YAMLScalar
 import javax.swing.Icon
@@ -259,6 +262,57 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     """.trimIndent())
 
     assertResolvesToConfigValue("langchain4j.mcp-clients.filesystem.key", "prod-files")
+  }
+
+  fun testMcpClientListValueDoesNotUseSectionFallbackWhenExplicitKeyDiffers() {
+    addLangChain4jStubs()
+    addLangChain4jApplicationClasses()
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      langchain4j:
+        agents:
+          planner:
+            mcp-clients:
+              - prod-<caret>files
+        mcp-clients:
+          prod-files:
+            key: other-name
+    """.trimIndent())
+
+    assertDoesNotResolveToConfigKey("langchain4j.mcp-clients.prod-files")
+  }
+
+  fun testMcpClientListValueUsesSectionFallbackWhenExplicitKeyMatches() {
+    addLangChain4jStubs()
+    addLangChain4jApplicationClasses()
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      langchain4j:
+        agents:
+          planner:
+            mcp-clients:
+              - prod-<caret>files
+        mcp-clients:
+          prod-files:
+            key: prod-files
+    """.trimIndent())
+
+    assertResolvesToConfigKey("langchain4j.mcp-clients.prod-files")
+  }
+
+  fun testMcpClientListValueUsesSectionFallbackWhenKeyIsMissing() {
+    addLangChain4jStubs()
+    addLangChain4jApplicationClasses()
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      langchain4j:
+        agents:
+          planner:
+            mcp-clients:
+              - prod-<caret>files
+        mcp-clients:
+          prod-files:
+            command: mcp-server
+    """.trimIndent())
+
+    assertResolvesToConfigKey("langchain4j.mcp-clients.prod-files")
   }
 
   fun testClassValuedToolReferenceResolvesToJavaClass() {
@@ -582,6 +636,44 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     assertResolvesToConfigValue("langchain4j.mcp-clients.filesystem.key", "prod-files")
   }
 
+  fun testAiMcpClientsAnnotationValueDoesNotUseSectionFallbackWhenExplicitKeyDiffers() {
+    addLangChain4jStubs()
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      langchain4j:
+        mcp-clients:
+          prod-files:
+            key: other-name
+    """.trimIndent())
+    myFixture.configureByText("Main.java", """
+      import io.helidon.integrations.langchain4j.Ai;
+
+      @Ai.McpClients("prod-<caret>files")
+      interface HelidonSeExpert {
+      }
+    """.trimIndent())
+
+    assertDoesNotResolveToConfigKey("langchain4j.mcp-clients.prod-files")
+  }
+
+  fun testAiMcpClientsAnnotationValueUsesSectionFallbackWhenExplicitKeyMatches() {
+    addLangChain4jStubs()
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      langchain4j:
+        mcp-clients:
+          prod-files:
+            key: prod-files
+    """.trimIndent())
+    myFixture.configureByText("Main.java", """
+      import io.helidon.integrations.langchain4j.Ai;
+
+      @Ai.McpClients("prod-<caret>files")
+      interface HelidonSeExpert {
+      }
+    """.trimIndent())
+
+    assertResolvesToConfigKey("langchain4j.mcp-clients.prod-files")
+  }
+
   fun testAiChatMemoryProviderAnnotationValueResolvesToConfigValue() {
     addLangChain4jStubs()
     configureLangChain4jConfig()
@@ -610,6 +702,72 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     assertResolvesToConfigValue("cli-tool-provider")
   }
 
+  fun testMainConfigDoesNotResolveToTestSourceLangChain4jComponent() {
+    configureMavenLikeRoots()
+    addLangChain4jStubs()
+    myFixture.addFileToProject("src/test/java/demo/TestOnlyModel.java", """
+      package demo;
+
+      import io.helidon.extensions.langchain4j.Ai;
+
+      @Ai.ChatModel("test-only")
+      interface TestOnlyModel {
+      }
+    """.trimIndent())
+    val config = myFixture.addFileToProject("src/main/resources/$HELIDON_APPLICATION_YAML", """
+      langchain4j:
+        models:
+          test-<caret>only:
+            provider: openai
+    """.trimIndent())
+    myFixture.configureFromExistingVirtualFile(config.virtualFile)
+
+    assertDoesNotResolveToNamedElement("TestOnlyModel")
+  }
+
+  fun testTestConfigResolvesToTestSourceLangChain4jComponent() {
+    configureMavenLikeRoots()
+    addLangChain4jStubs()
+    myFixture.addFileToProject("src/test/java/demo/TestOnlyModel.java", """
+      package demo;
+
+      import io.helidon.extensions.langchain4j.Ai;
+
+      @Ai.ChatModel("test-only")
+      interface TestOnlyModel {
+      }
+    """.trimIndent())
+    val config = myFixture.addFileToProject("src/test/resources/$HELIDON_APPLICATION_YAML", """
+      langchain4j:
+        models:
+          test-<caret>only:
+            provider: openai
+    """.trimIndent())
+    myFixture.configureFromExistingVirtualFile(config.virtualFile)
+
+    assertResolvesToNamedElement("TestOnlyModel")
+  }
+
+  fun testMainConfigDoesNotResolveClassValuedReferenceToTestSourceClass() {
+    configureMavenLikeRoots()
+    myFixture.addFileToProject("src/test/java/demo/TestOnlyTools.java", """
+      package demo;
+
+      class TestOnlyTools {
+      }
+    """.trimIndent())
+    val config = myFixture.addFileToProject("src/main/resources/$HELIDON_APPLICATION_YAML", """
+      langchain4j:
+        agents:
+          planner:
+            tools:
+              - demo.Test<caret>OnlyTools
+    """.trimIndent())
+    myFixture.configureFromExistingVirtualFile(config.virtualFile)
+
+    assertDoesNotResolveToNamedElement("TestOnlyTools")
+  }
+
   private fun assertResolvesToNamedElement(name: String) {
     val target = resolveTargetsAtCaret()
       .filterIsInstance<PsiNamedElement>()
@@ -622,6 +780,13 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
       .filterIsInstance<PsiNamedElement>()
       .firstOrNull { it.name == name }
     assertNull("Did not expect named target '$name', got ${resolvedTargetsAtCaretText()}", target)
+  }
+
+  private fun assertDoesNotResolveToConfigKey(qualifiedName: String) {
+    val target = resolveTargetsAtCaret()
+      .filterIsInstance<YAMLKeyValue>()
+      .firstOrNull { getQualifiedConfigKeyName(it) == qualifiedName }
+    assertNull("Did not expect config key '$qualifiedName', got ${resolvedTargetsAtCaretText()}", target)
   }
 
   private fun assertResolvesToConfigKey(qualifiedName: String) {
@@ -719,6 +884,26 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
   private fun addLangChain4jStubs() {
     addLangChain4jAiStub("io.helidon.extensions.langchain4j")
     addLangChain4jAiStub("io.helidon.integrations.langchain4j")
+  }
+
+  private fun configureMavenLikeRoots() {
+    val mainJava = myFixture.tempDirFixture.findOrCreateDir("src/main/java")
+    val testJava = myFixture.tempDirFixture.findOrCreateDir("src/test/java")
+    val mainResources = myFixture.tempDirFixture.findOrCreateDir("src/main/resources")
+    val testResources = myFixture.tempDirFixture.findOrCreateDir("src/test/resources")
+
+    PsiTestUtil.addSourceContentToRoots(module, mainJava, false)
+    PsiTestUtil.addSourceContentToRoots(module, testJava, true)
+    PsiTestUtil.addResourceContentToRoots(module, mainResources, false)
+    PsiTestUtil.addResourceContentToRoots(module, testResources, true)
+
+    Disposer.register(myFixture.testRootDisposable,
+                      Disposable {
+                        PsiTestUtil.removeContentEntry(module, mainJava)
+                        PsiTestUtil.removeContentEntry(module, testJava)
+                        PsiTestUtil.removeContentEntry(module, mainResources)
+                        PsiTestUtil.removeContentEntry(module, testResources)
+                      })
   }
 
   private fun configureLangChain4jConfig() {

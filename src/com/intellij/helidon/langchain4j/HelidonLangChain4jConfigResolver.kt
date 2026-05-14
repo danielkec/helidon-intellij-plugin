@@ -4,6 +4,7 @@ package com.intellij.helidon.langchain4j
 import com.intellij.helidon.constants.HelidonConstants
 import com.intellij.helidon.config.HelidonConfigFileContributor
 import com.intellij.helidon.config.properties.HelidonPropertiesUtils
+import com.intellij.helidon.config.yaml.HelidonConfigYamlAccessor
 import com.intellij.java.library.JavaLibraryModificationTracker
 import com.intellij.lang.properties.psi.PropertiesFile
 import com.intellij.lang.properties.psi.impl.PropertyImpl
@@ -24,7 +25,6 @@ import com.intellij.psi.PsiModifierListOwner
 import com.intellij.psi.PsiNameValuePair
 import com.intellij.psi.PsiManager
 import com.intellij.psi.PsiReference
-import com.intellij.psi.PsiReferenceExpression
 import com.intellij.psi.search.PsiShortNamesCache
 import com.intellij.psi.search.searches.AnnotatedElementsSearch
 import com.intellij.psi.util.CachedValue
@@ -34,6 +34,7 @@ import com.intellij.psi.util.PsiModificationTracker
 import com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.yaml.psi.YAMLFile
 import org.jetbrains.yaml.psi.YAMLKeyValue
+import org.jetbrains.yaml.psi.YAMLMapping
 import org.jetbrains.yaml.psi.YAMLScalar
 import org.jetbrains.yaml.psi.YAMLSequence
 
@@ -74,7 +75,6 @@ internal object HelidonLangChain4jConfigResolver {
     "chat-model" to setOf(LangChain4jComponentKind.CHAT_MODEL, LangChain4jComponentKind.STREAMING_CHAT_MODEL),
     "streaming-chat-model" to setOf(LangChain4jComponentKind.STREAMING_CHAT_MODEL),
     "moderation-model" to setOf(LangChain4jComponentKind.MODERATION_MODEL),
-    "embedding-model" to setOf(LangChain4jComponentKind.CHAT_MODEL),
     "chat-memory-provider" to setOf(LangChain4jComponentKind.CHAT_MEMORY_PROVIDER),
     "content-retriever" to setOf(LangChain4jComponentKind.CONTENT_RETRIEVER),
     "retrieval-augmentor" to setOf(LangChain4jComponentKind.RETRIEVAL_AUGMENTOR),
@@ -403,9 +403,6 @@ internal object HelidonLangChain4jConfigResolver {
     if (element is PsiLiteralExpression) {
       return element.value as? String
     }
-    if (element is PsiReferenceExpression) {
-      return JavaPsiFacade.getInstance(element.project).constantEvaluationHelper.computeConstantExpression(element) as? String
-    }
     return JavaPsiFacade.getInstance(element.project).constantEvaluationHelper.computeConstantExpression(element) as? String
   }
 
@@ -437,16 +434,14 @@ internal object HelidonLangChain4jConfigResolver {
 
   private fun findYamlKey(file: YAMLFile?, qualifiedName: String): YAMLKeyValue? {
     if (file == null) return null
-    return PsiTreeUtil.findChildrenOfType(file, YAMLKeyValue::class.java)
-      .firstOrNull { qualifiedConfigKeyName(it) == qualifiedName }
+    return file.documents.asSequence()
+      .mapNotNull { HelidonConfigYamlAccessor(it).findExistingKey(qualifiedName) }
+      .firstOrNull()
   }
 
   private fun findYamlSectionEntryKeys(file: YAMLFile, qualifiedSectionName: String): List<YAMLKeyValue> {
-    return PsiTreeUtil.findChildrenOfType(file, YAMLKeyValue::class.java)
-      .filter { yamlKeyValue ->
-        val parent = PsiTreeUtil.getParentOfType(yamlKeyValue, YAMLKeyValue::class.java) ?: return@filter false
-        qualifiedConfigKeyName(parent) == qualifiedSectionName
-      }
+    val section = findYamlKey(file, qualifiedSectionName) ?: return emptyList()
+    return (section.value as? YAMLMapping)?.keyValues?.toList() ?: emptyList()
   }
 
   private fun findConfigKeys(context: PsiElement, qualifiedName: String): List<PsiElement> {

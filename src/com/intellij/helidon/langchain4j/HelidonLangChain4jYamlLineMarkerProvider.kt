@@ -5,6 +5,7 @@ import com.intellij.codeInsight.daemon.RelatedItemLineMarkerInfo
 import com.intellij.codeInsight.daemon.RelatedItemLineMarkerProvider
 import com.intellij.codeInsight.navigation.NavigationGutterIconBuilder
 import com.intellij.helidon.HelidonIcons
+import com.intellij.helidon.config.yaml.isInsideApplicationYamlFile
 import com.intellij.helidon.utils.HelidonBundle
 import com.intellij.helidon.utils.HelidonCoreUtils
 import com.intellij.openapi.module.ModuleUtilCore
@@ -24,6 +25,7 @@ internal class HelidonLangChain4jYamlLineMarkerProvider : RelatedItemLineMarkerP
     val psiElement = ContainerUtil.getFirstItem(elements) ?: return
     val module = ModuleUtilCore.findModuleForPsiElement(psiElement) ?: return
     if (!HelidonCoreUtils.hasHelidonLibrary(module)) return
+    if (!isInsideApplicationYamlFile(psiElement)) return
 
     val processed = HashSet<PsiElement>()
     for (element in elements) {

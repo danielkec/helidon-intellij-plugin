@@ -57,6 +57,31 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     assertResolvesToNamedElement("DefaultNamedAiService")
   }
 
+  fun testModelKeyResolvesToAiChatModelUsingConstantAnnotationValue() {
+    addLangChain4jStubs()
+    myFixture.addClass("""
+      package demo;
+
+      import io.helidon.extensions.langchain4j.Ai;
+
+      interface ModelNames {
+        String EXPENSIVE = "expensive-model";
+      }
+
+      @Ai.ChatModel(ModelNames.EXPENSIVE)
+      interface ConstantNamedChatModel {
+      }
+    """.trimIndent())
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      langchain4j:
+        models:
+          expensive-<caret>model:
+            provider: openai
+    """.trimIndent())
+
+    assertResolvesToNamedElement("ConstantNamedChatModel")
+  }
+
   fun testModelProviderValueResolvesToProviderConfigKey() {
     addLangChain4jStubs()
     addLangChain4jApplicationClasses()
@@ -112,6 +137,32 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     assertEquals("pgvector", embeddingStoreKey.keyText)
   }
 
+  fun testEmbeddingModelValueDoesNotResolveToAiChatModelComponent() {
+    addLangChain4jStubs()
+    addLangChain4jApplicationClasses()
+    myFixture.addClass("""
+      package demo;
+
+      import io.helidon.extensions.langchain4j.Ai;
+
+      @Ai.ChatModel("embedding")
+      interface EmbeddingChatModel {
+      }
+    """.trimIndent())
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      langchain4j:
+        models:
+          embedding:
+            provider: openai
+        content-retrievers:
+          docs:
+            embedding-model: emb<caret>edding
+    """.trimIndent())
+
+    assertResolvesToConfigKey("langchain4j.models.embedding")
+    assertDoesNotResolveToNamedElement("EmbeddingChatModel")
+  }
+
   fun testMcpClientKeyValueResolvesToAiMcpClientsUsage() {
     addLangChain4jStubs()
     addLangChain4jApplicationClasses()
@@ -155,6 +206,23 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
 
     assertSize(1, markers)
     assertSame(HelidonIcons.RobotGutter, markers.single().icon)
+  }
+
+  fun testLangChain4jYamlGutterNavigationIgnoresNonApplicationYaml() {
+    addLangChain4jStubs()
+    addLangChain4jApplicationClasses()
+    myFixture.configureByText("pipeline.yaml", """
+      langchain4j:
+        services:
+          gree<caret>ter:
+            chat-model: chat
+    """.trimIndent())
+
+    val keyValue = PsiTreeUtil.getParentOfType(myFixture.file.findElementAt(myFixture.caretOffset), YAMLKeyValue::class.java)!!
+    val markers = mutableListOf<RelatedItemLineMarkerInfo<*>>()
+    HelidonLangChain4jYamlLineMarkerProvider().collectNavigationMarkers(listOf(keyValue), markers, true)
+
+    assertEmpty(markers)
   }
 
   fun testLangChain4jModelReferenceHasRobotGutterNavigation() {
@@ -429,6 +497,13 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
       .filterIsInstance<PsiNamedElement>()
       .firstOrNull { it.name == name }
     assertNotNull("Expected named target '$name', got ${resolvedTargetsAtCaretText()}", target)
+  }
+
+  private fun assertDoesNotResolveToNamedElement(name: String) {
+    val target = resolveTargetsAtCaret()
+      .filterIsInstance<PsiNamedElement>()
+      .firstOrNull { it.name == name }
+    assertNull("Did not expect named target '$name', got ${resolvedTargetsAtCaretText()}", target)
   }
 
   private fun assertResolvesToConfigKey(qualifiedName: String) {

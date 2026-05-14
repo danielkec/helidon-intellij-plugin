@@ -203,6 +203,22 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     assertLangChain4jScalarGutter(HelidonIcons.GearGutter)
   }
 
+  fun testLangChain4jEmbeddingModelReferenceHasAiGutterNavigation() {
+    addLangChain4jStubs()
+    addLangChain4jApplicationClasses()
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      langchain4j:
+        models:
+          embedding:
+            provider: openai
+        content-retrievers:
+          docs:
+            embedding-model: emb<caret>edding
+    """.trimIndent())
+
+    assertLangChain4jScalarGutter(HelidonIcons.AiGutter)
+  }
+
   fun testAiServiceAnnotationValueResolvesToServiceConfigKey() {
     addLangChain4jStubs()
     configureLangChain4jConfig()

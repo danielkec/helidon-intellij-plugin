@@ -85,7 +85,9 @@ internal object HelidonLangChain4jConfigResolver {
 
   private val CLASS_VALUED_KEYS: Set<String> = setOf("tools", "input-guardrails", "output-guardrails")
 
-  private val MODEL_VALUE_KEYS: Set<String> = setOf("chat-model", "streaming-chat-model", "moderation-model", "embedding-model")
+  private val MODEL_VALUE_KEYS: Set<String> = setOf("chat-model", "streaming-chat-model", "moderation-model")
+
+  private val AI_VALUE_KEYS: Set<String> = setOf("embedding-model")
 
   private val GEAR_VALUE_KEYS: Set<String> = setOf("provider", "embedding-store")
 
@@ -247,6 +249,7 @@ internal object HelidonLangChain4jConfigResolver {
   private fun valueGutterKind(path: String): GutterKind {
     return when (path.substringAfterLast('.')) {
       in GEAR_VALUE_KEYS -> GutterKind.GEAR
+      in AI_VALUE_KEYS -> GutterKind.AI
       in MODEL_VALUE_KEYS -> GutterKind.MODEL
       else -> GutterKind.DEFAULT
     }
@@ -477,6 +480,7 @@ internal object HelidonLangChain4jConfigResolver {
     DEFAULT,
     MODEL,
     GEAR,
+    AI,
   }
 
   private enum class LangChain4jComponentKind {

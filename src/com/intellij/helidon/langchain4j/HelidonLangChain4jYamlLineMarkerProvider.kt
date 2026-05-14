@@ -42,7 +42,7 @@ internal class HelidonLangChain4jYamlLineMarkerProvider : RelatedItemLineMarkerP
     return when (target.gutterKind) {
       HelidonLangChain4jConfigResolver.GutterKind.GEAR -> HelidonIcons.GearGutter
       HelidonLangChain4jConfigResolver.GutterKind.AI -> HelidonIcons.AiGutter
-      HelidonLangChain4jConfigResolver.GutterKind.MODEL -> HelidonIcons.RobotGutter
+      HelidonLangChain4jConfigResolver.GutterKind.ROBOT -> HelidonIcons.RobotGutter
       HelidonLangChain4jConfigResolver.GutterKind.DEFAULT -> HelidonIcons.HelidonGutter
     }
   }

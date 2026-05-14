@@ -171,6 +171,49 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     assertLangChain4jScalarGutter(HelidonIcons.RobotGutter)
   }
 
+  fun testLangChain4jContentRetrieverKeyHasRobotGutterNavigation() {
+    addLangChain4jStubs()
+    addLangChain4jApplicationClasses()
+    myFixture.addClass("""
+      package demo;
+
+      import io.helidon.extensions.langchain4j.Ai;
+
+      @Ai.ContentRetriever("docs")
+      interface DocsRetriever {
+      }
+    """.trimIndent())
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      langchain4j:
+        content-retrievers:
+          do<caret>cs:
+            embedding-model: embedding
+    """.trimIndent())
+
+    val keyValue = PsiTreeUtil.getParentOfType(myFixture.file.findElementAt(myFixture.caretOffset), YAMLKeyValue::class.java)!!
+    val markers = mutableListOf<RelatedItemLineMarkerInfo<*>>()
+    HelidonLangChain4jYamlLineMarkerProvider().collectNavigationMarkers(listOf(keyValue), markers, true)
+
+    assertSize(1, markers)
+    assertSame(HelidonIcons.RobotGutter, markers.single().icon)
+  }
+
+  fun testLangChain4jContentRetrieverReferenceHasRobotGutterNavigation() {
+    addLangChain4jStubs()
+    addLangChain4jApplicationClasses()
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      langchain4j:
+        agents:
+          planner:
+            content-retriever: do<caret>cs
+        content-retrievers:
+          docs:
+            embedding-model: embedding
+    """.trimIndent())
+
+    assertLangChain4jScalarGutter(HelidonIcons.RobotGutter)
+  }
+
   fun testLangChain4jProviderReferenceHasGearGutterNavigation() {
     addLangChain4jStubs()
     addLangChain4jApplicationClasses()

@@ -85,7 +85,9 @@ internal object HelidonLangChain4jConfigResolver {
 
   private val CLASS_VALUED_KEYS: Set<String> = setOf("tools", "input-guardrails", "output-guardrails")
 
-  private val MODEL_VALUE_KEYS: Set<String> = setOf("chat-model", "streaming-chat-model", "moderation-model")
+  private val ROBOT_KEY_SECTIONS: Set<String> = setOf(MODELS, CONTENT_RETRIEVERS)
+
+  private val ROBOT_VALUE_KEYS: Set<String> = setOf("chat-model", "streaming-chat-model", "moderation-model", "content-retriever")
 
   private val AI_VALUE_KEYS: Set<String> = setOf("embedding-model")
 
@@ -243,14 +245,15 @@ internal object HelidonLangChain4jConfigResolver {
 
   private fun keyGutterKind(yamlKeyValue: YAMLKeyValue): GutterKind {
     val parent = PsiTreeUtil.getParentOfType(yamlKeyValue, YAMLKeyValue::class.java) ?: return GutterKind.DEFAULT
-    return if (qualifiedConfigKeyName(parent) == "$ROOT.$MODELS") GutterKind.MODEL else GutterKind.DEFAULT
+    val parentPath = qualifiedConfigKeyName(parent)
+    return if (ROBOT_KEY_SECTIONS.any { section -> parentPath == "$ROOT.$section" }) GutterKind.ROBOT else GutterKind.DEFAULT
   }
 
   private fun valueGutterKind(path: String): GutterKind {
     return when (path.substringAfterLast('.')) {
       in GEAR_VALUE_KEYS -> GutterKind.GEAR
       in AI_VALUE_KEYS -> GutterKind.AI
-      in MODEL_VALUE_KEYS -> GutterKind.MODEL
+      in ROBOT_VALUE_KEYS -> GutterKind.ROBOT
       else -> GutterKind.DEFAULT
     }
   }
@@ -478,7 +481,7 @@ internal object HelidonLangChain4jConfigResolver {
 
   enum class GutterKind {
     DEFAULT,
-    MODEL,
+    ROBOT,
     GEAR,
     AI,
   }

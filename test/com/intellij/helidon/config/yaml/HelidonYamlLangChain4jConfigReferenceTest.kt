@@ -234,7 +234,7 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     assertLangChain4jScalarGutter(HelidonIcons.RobotGutter)
   }
 
-  fun testLangChain4jProviderReferenceHasGearGutterNavigation() {
+  fun testLangChain4jProviderReferenceKeepsNavigationWithoutGutter() {
     addLangChain4jStubs()
     addLangChain4jApplicationClasses()
     myFixture.configureByText(HELIDON_APPLICATION_YAML, """
@@ -247,10 +247,11 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
             provider: open<caret>ai
     """.trimIndent())
 
-    assertLangChain4jScalarGutter(HelidonIcons.GearGutter)
+    assertResolvesToConfigKey("langchain4j.providers.openai")
+    assertLangChain4jScalarHasNoGutter()
   }
 
-  fun testLangChain4jEmbeddingStoreReferenceHasGearGutterNavigation() {
+  fun testLangChain4jEmbeddingStoreReferenceKeepsNavigationWithoutGutter() {
     addLangChain4jStubs()
     addLangChain4jApplicationClasses()
     myFixture.configureByText(HELIDON_APPLICATION_YAML, """
@@ -263,7 +264,8 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
             embedding-store: pgv<caret>ector
     """.trimIndent())
 
-    assertLangChain4jScalarGutter(HelidonIcons.GearGutter)
+    assertResolvesToConfigKey("langchain4j.embedding-stores.pgvector")
+    assertLangChain4jScalarHasNoGutter()
   }
 
   fun testLangChain4jEmbeddingModelReferenceHasAiGutterNavigation() {
@@ -450,6 +452,14 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
 
     assertSize(1, markers)
     assertSame(icon, markers.single().icon)
+  }
+
+  private fun assertLangChain4jScalarHasNoGutter() {
+    val scalar = PsiTreeUtil.getParentOfType(myFixture.file.findElementAt(myFixture.caretOffset), YAMLScalar::class.java)!!
+    val markers = mutableListOf<RelatedItemLineMarkerInfo<*>>()
+    HelidonLangChain4jYamlLineMarkerProvider().collectNavigationMarkers(listOf(scalar), markers, true)
+
+    assertEmpty(markers)
   }
 
   private fun assertLangChain4jJavaAnnotationGutter(icon: Icon) {

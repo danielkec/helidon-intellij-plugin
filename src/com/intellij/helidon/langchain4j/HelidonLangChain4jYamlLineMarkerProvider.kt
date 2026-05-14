@@ -28,6 +28,7 @@ internal class HelidonLangChain4jYamlLineMarkerProvider : RelatedItemLineMarkerP
     val processed = HashSet<PsiElement>()
     for (element in elements) {
       val target = langChain4jTarget(element) ?: continue
+      if (target.gutterKind == HelidonLangChain4jConfigResolver.GutterKind.GEAR) continue
       if (!processed.add(target.anchor)) continue
 
       val builder = NavigationGutterIconBuilder.create(gutterIcon(target), HelidonBundle.HELIDON_LIBRARY)

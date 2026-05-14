@@ -28,7 +28,7 @@ This project is a standalone Gradle IntelliJ Platform plugin project.
 ./gradlew buildPlugin
 ```
 
-The current build targets IntelliJ IDEA `2026.1.1`, plugin version `262.0.9`,
+The current build targets IntelliJ IDEA `2026.1.1`, plugin version `262.0.10`,
 and Java `21`.
 
 ## Compatibility

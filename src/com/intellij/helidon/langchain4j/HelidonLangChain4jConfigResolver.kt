@@ -110,6 +110,13 @@ internal object HelidonLangChain4jConfigResolver {
     HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_MCP_CLIENTS to MCP_CLIENTS,
   )
 
+  private val AI_ANNOTATION_REFERENCES: Set<String> = setOf(
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_CHAT_MODEL,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_CHAT_MODEL,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_STREAMING_CHAT_MODEL,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_STREAMING_CHAT_MODEL,
+  )
+
   private val ANNOTATION_CONFIG_VALUE_KEYS: Map<String, Set<String>> = mapOf(
     HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_CHAT_MEMORY_PROVIDER to setOf("chat-memory-provider"),
     HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_CHAT_MEMORY_PROVIDER to setOf("chat-memory-provider"),
@@ -208,22 +215,29 @@ internal object HelidonLangChain4jConfigResolver {
 
   fun annotationValueReferences(element: PsiElement, range: TextRange): Array<PsiReference> {
     val annotationName = annotationName(element) ?: return PsiReference.EMPTY_ARRAY
-    if (annotationName !in ANNOTATION_CONFIG_SECTIONS && annotationName !in ANNOTATION_CONFIG_VALUE_KEYS) {
-      return PsiReference.EMPTY_ARRAY
-    }
+    if (!isSupportedAnnotationReference(annotationName)) return PsiReference.EMPTY_ARRAY
 
     val value = ElementManipulators.getValueText(element).trim()
     if (value.isEmpty()) return PsiReference.EMPTY_ARRAY
 
     val reference = HelidonLangChain4jConfigReference(element, range) {
-      val targets = LinkedHashSet<PsiElement>()
-      ANNOTATION_CONFIG_SECTIONS[annotationName]
-        ?.let { section -> targets.addAll(findConfigKeys(element, "$ROOT.$section.$value")) }
-      ANNOTATION_CONFIG_VALUE_KEYS[annotationName]
-        ?.let { keyNames -> targets.addAll(findConfigValueUsages(element, keyNames, value)) }
-      targets.toList()
+      annotationValueTargets(element, annotationName, value)
     }
     return arrayOf(reference)
+  }
+
+  fun annotationMarkerTargets(element: PsiElement): MarkerTargets? {
+    val literal = PsiTreeUtil.getParentOfType(element, PsiLiteralExpression::class.java, false) ?: return null
+    if (literal.value !is String) return null
+
+    val annotationName = annotationName(literal) ?: return null
+    val gutterKind = annotationValueGutterKind(annotationName) ?: return null
+    val value = ElementManipulators.getValueText(literal).trim()
+    if (value.isEmpty()) return null
+
+    val targets = annotationValueTargets(literal, annotationName, value)
+    return targets.takeIf { it.isNotEmpty() }
+      ?.let { MarkerTargets(literal.firstChild ?: literal, it, gutterKind) }
   }
 
   private fun keyTargets(yamlKeyValue: YAMLKeyValue): List<PsiElement> {
@@ -303,6 +317,17 @@ internal object HelidonLangChain4jConfigResolver {
 
     val annotation = PsiTreeUtil.getParentOfType(attribute, PsiAnnotation::class.java) ?: return null
     return annotation.qualifiedName
+  }
+
+  private fun isSupportedAnnotationReference(annotationName: String): Boolean {
+    return annotationName in ANNOTATION_CONFIG_SECTIONS || annotationName in ANNOTATION_CONFIG_VALUE_KEYS
+  }
+
+  private fun annotationValueGutterKind(annotationName: String): GutterKind? {
+    return when (annotationName) {
+      in AI_ANNOTATION_REFERENCES -> GutterKind.AI
+      else -> null
+    }
   }
 
   private fun componentTargets(module: Module,
@@ -407,6 +432,15 @@ internal object HelidonLangChain4jConfigResolver {
     return processConfigFiles(context) { psiFile, contributor ->
       contributor.findKey(psiFile, qualifiedName)?.let(::listOf) ?: emptyList()
     }
+  }
+
+  private fun annotationValueTargets(context: PsiElement, annotationName: String, value: String): List<PsiElement> {
+    val targets = LinkedHashSet<PsiElement>()
+    ANNOTATION_CONFIG_SECTIONS[annotationName]
+      ?.let { section -> targets.addAll(findConfigKeys(context, "$ROOT.$section.$value")) }
+    ANNOTATION_CONFIG_VALUE_KEYS[annotationName]
+      ?.let { keyNames -> targets.addAll(findConfigValueUsages(context, keyNames, value)) }
+    return targets.toList()
   }
 
   private fun findConfigValueUsages(context: PsiElement, keyNames: Set<String>, value: String): List<PsiElement> {

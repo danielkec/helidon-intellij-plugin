@@ -5,8 +5,10 @@ import com.intellij.codeInsight.daemon.RelatedItemLineMarkerInfo
 import com.intellij.helidon.HelidonIcons
 import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.config.HELIDON_APPLICATION_YAML
+import com.intellij.helidon.langchain4j.HelidonLangChain4jJavaLineMarkerProvider
 import com.intellij.helidon.langchain4j.HelidonLangChain4jYamlLineMarkerProvider
 import com.intellij.psi.PsiElement
+import com.intellij.psi.PsiLiteralExpression
 import com.intellij.psi.PsiNamedElement
 import com.intellij.psi.PsiPolyVariantReference
 import com.intellij.psi.PsiReference
@@ -322,6 +324,48 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     assertResolvesToConfigKey("langchain4j.models.expensive-model")
   }
 
+  fun testAiStreamingChatModelAnnotationValueResolvesToModelConfigKey() {
+    addLangChain4jStubs()
+    configureLangChain4jConfig()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.integrations.langchain4j.Ai;
+
+      @Ai.StreamingChatModel("expensive-<caret>model")
+      interface HelidonSeExpert {
+      }
+    """.trimIndent())
+
+    assertResolvesToConfigKey("langchain4j.models.expensive-model")
+  }
+
+  fun testAiChatModelAnnotationValueHasAiGutterNavigation() {
+    addLangChain4jStubs()
+    configureLangChain4jConfig()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.extensions.langchain4j.Ai;
+
+      @Ai.ChatModel("expensive-<caret>model")
+      interface HelidonSeExpert {
+      }
+    """.trimIndent())
+
+    assertLangChain4jJavaAnnotationGutter(HelidonIcons.AiGutter)
+  }
+
+  fun testAiStreamingChatModelAnnotationValueHasAiGutterNavigation() {
+    addLangChain4jStubs()
+    configureLangChain4jConfig()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.integrations.langchain4j.Ai;
+
+      @Ai.StreamingChatModel("expensive-<caret>model")
+      interface HelidonSeExpert {
+      }
+    """.trimIndent())
+
+    assertLangChain4jJavaAnnotationGutter(HelidonIcons.AiGutter)
+  }
+
   fun testAiContentRetrieverAnnotationValueResolvesToRetrieverConfigKey() {
     addLangChain4jStubs()
     configureLangChain4jConfig()
@@ -403,6 +447,16 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     val scalar = PsiTreeUtil.getParentOfType(myFixture.file.findElementAt(myFixture.caretOffset), YAMLScalar::class.java)!!
     val markers = mutableListOf<RelatedItemLineMarkerInfo<*>>()
     HelidonLangChain4jYamlLineMarkerProvider().collectNavigationMarkers(listOf(scalar), markers, true)
+
+    assertSize(1, markers)
+    assertSame(icon, markers.single().icon)
+  }
+
+  private fun assertLangChain4jJavaAnnotationGutter(icon: Icon) {
+    val literal = PsiTreeUtil.getParentOfType(myFixture.file.findElementAt(myFixture.caretOffset), PsiLiteralExpression::class.java)!!
+    val anchor = literal.firstChild ?: literal
+    val markers = mutableListOf<RelatedItemLineMarkerInfo<*>>()
+    HelidonLangChain4jJavaLineMarkerProvider().collectNavigationMarkers(listOf(anchor), markers, true)
 
     assertSize(1, markers)
     assertSame(icon, markers.single().icon)

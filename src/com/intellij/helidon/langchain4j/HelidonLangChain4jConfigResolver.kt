@@ -267,13 +267,14 @@ internal object HelidonLangChain4jConfigResolver {
 
   private fun keyTargets(yamlKeyValue: YAMLKeyValue): List<PsiElement> {
     val module = ModuleUtilCore.findModuleForPsiElement(yamlKeyValue) ?: return emptyList()
-    val path = qualifiedConfigKeyName(yamlKeyValue)
+    val parent = PsiTreeUtil.getParentOfType(yamlKeyValue, YAMLKeyValue::class.java) ?: return emptyList()
+    val parentPath = qualifiedConfigKeyName(parent)
     return CONFIG_SECTION_KINDS.flatMap { (section, kinds) ->
       val key = configSectionComponentKey(yamlKeyValue, section) ?: return@flatMap emptyList()
       getComponents(module, includeTestSources(yamlKeyValue, module)).filter { component ->
         component.kind in kinds &&
         component.key == key &&
-        path == "$ROOT.$section.$key"
+        parentPath == "$ROOT.$section"
       }.map { it.target }
     }
   }
@@ -312,8 +313,16 @@ internal object HelidonLangChain4jConfigResolver {
 
     val lastKey = path.substringAfterLast('.')
     if (lastKey in VALUE_CONFIG_TARGETS || lastKey in CLASS_VALUED_KEYS) return true
-    if (lastKey == "key" && path.startsWith("$ROOT.$MCP_CLIENTS.")) return true
+    if (isMcpClientKeyValue(yamlKeyValue)) return true
     return lastKey == MCP_CLIENTS && yamlKeyValue.value !is YAMLScalar
+  }
+
+  private fun isMcpClientKeyValue(yamlKeyValue: YAMLKeyValue): Boolean {
+    if (yamlKeyValue.keyText != "key") return false
+
+    val client = PsiTreeUtil.getParentOfType(yamlKeyValue, YAMLKeyValue::class.java) ?: return false
+    val section = PsiTreeUtil.getParentOfType(client, YAMLKeyValue::class.java) ?: return false
+    return qualifiedConfigKeyName(section) == "$ROOT.$MCP_CLIENTS"
   }
 
   private fun valueTargets(yamlScalar: YAMLScalar, yamlKeyValue: YAMLKeyValue, path: String, value: String): List<PsiElement> {
@@ -454,20 +463,26 @@ internal object HelidonLangChain4jConfigResolver {
   }
 
   private fun findYamlKey(file: YAMLFile?, qualifiedName: String): YAMLKeyValue? {
-    if (file == null) return null
-    return file.documents.asSequence()
+    return findYamlKeys(file, qualifiedName).firstOrNull()
+  }
+
+  private fun findYamlKeys(file: YAMLFile?, qualifiedName: String): List<YAMLKeyValue> {
+    if (file == null) return emptyList()
+    return file.documents
       .mapNotNull { HelidonConfigYamlAccessor(it).findExistingKey(qualifiedName) }
-      .firstOrNull()
   }
 
   private fun findYamlSectionEntryKeys(file: YAMLFile, qualifiedSectionName: String): List<YAMLKeyValue> {
-    val section = findYamlKey(file, qualifiedSectionName) ?: return emptyList()
-    return (section.value as? YAMLMapping)?.keyValues?.toList() ?: emptyList()
+    return findYamlKeys(file, qualifiedSectionName)
+      .flatMap { section -> (section.value as? YAMLMapping)?.keyValues?.toList() ?: emptyList() }
   }
 
   private fun findYamlSectionEntryKey(file: YAMLFile?, section: String, key: String): YAMLKeyValue? {
-    val sectionKey = findYamlKey(file, "$ROOT.$section") ?: return null
-    return (sectionKey.value as? YAMLMapping)?.getKeyValueByKey(key)
+    if (file == null) return null
+    return findYamlKeys(file, "$ROOT.$section")
+      .asSequence()
+      .mapNotNull { sectionKey -> (sectionKey.value as? YAMLMapping)?.getKeyValueByKey(key) }
+      .firstOrNull()
   }
 
   private fun findYamlMcpClientKeyValues(file: YAMLFile?, value: String): List<YAMLScalar> {

@@ -315,6 +315,49 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     assertResolvesToConfigKey("langchain4j.mcp-clients.prod-files")
   }
 
+  fun testMcpClientSectionKeyDoesNotResolveToAiMcpClientsWhenExplicitKeyDiffers() {
+    addLangChain4jStubs()
+    myFixture.addClass("""
+      package demo;
+
+      import io.helidon.extensions.langchain4j.Ai;
+
+      @Ai.McpClients("prod-files")
+      interface ProdFilesAgent {
+      }
+    """.trimIndent())
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      langchain4j:
+        mcp-clients:
+          prod-<caret>files:
+            key: other-name
+    """.trimIndent())
+
+    assertDoesNotResolveToNamedElement("ProdFilesAgent")
+    assertLangChain4jKeyHasNoGutter()
+  }
+
+  fun testMcpClientSectionKeyResolvesToAiMcpClientsWhenExplicitKeyMatches() {
+    addLangChain4jStubs()
+    myFixture.addClass("""
+      package demo;
+
+      import io.helidon.extensions.langchain4j.Ai;
+
+      @Ai.McpClients("prod-files")
+      interface ProdFilesAgent {
+      }
+    """.trimIndent())
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      langchain4j:
+        mcp-clients:
+          prod-<caret>files:
+            key: prod-files
+    """.trimIndent())
+
+    assertResolvesToNamedElement("ProdFilesAgent")
+  }
+
   fun testClassValuedToolReferenceResolvesToJavaClass() {
     addLangChain4jStubs()
     addLangChain4jApplicationClasses()
@@ -768,6 +811,52 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     assertDoesNotResolveToNamedElement("TestOnlyTools")
   }
 
+  fun testMainJavaAnnotationValueDoesNotResolveToTestResourceConfig() {
+    configureMavenLikeRoots()
+    addLangChain4jStubs()
+    myFixture.addFileToProject("src/test/resources/$HELIDON_APPLICATION_YAML", """
+      langchain4j:
+        models:
+          test-only:
+            provider: openai
+    """.trimIndent())
+    val source = myFixture.addFileToProject("src/main/java/demo/MainModel.java", """
+      package demo;
+
+      import io.helidon.extensions.langchain4j.Ai;
+
+      @Ai.ChatModel("test-<caret>only")
+      interface MainModel {
+      }
+    """.trimIndent())
+    myFixture.configureFromExistingVirtualFile(source.virtualFile)
+
+    assertDoesNotResolveToConfigKey("langchain4j.models.test-only")
+  }
+
+  fun testTestJavaAnnotationValueResolvesToTestResourceConfig() {
+    configureMavenLikeRoots()
+    addLangChain4jStubs()
+    myFixture.addFileToProject("src/test/resources/$HELIDON_APPLICATION_YAML", """
+      langchain4j:
+        models:
+          test-only:
+            provider: openai
+    """.trimIndent())
+    val source = myFixture.addFileToProject("src/test/java/demo/TestModel.java", """
+      package demo;
+
+      import io.helidon.extensions.langchain4j.Ai;
+
+      @Ai.ChatModel("test-<caret>only")
+      interface TestModel {
+      }
+    """.trimIndent())
+    myFixture.configureFromExistingVirtualFile(source.virtualFile)
+
+    assertResolvesToConfigKey("langchain4j.models.test-only")
+  }
+
   private fun assertResolvesToNamedElement(name: String) {
     val target = resolveTargetsAtCaret()
       .filterIsInstance<PsiNamedElement>()
@@ -828,6 +917,14 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     val scalar = PsiTreeUtil.getParentOfType(myFixture.file.findElementAt(myFixture.caretOffset), YAMLScalar::class.java)!!
     val markers = mutableListOf<RelatedItemLineMarkerInfo<*>>()
     HelidonLangChain4jYamlLineMarkerProvider().collectNavigationMarkers(listOf(scalar), markers, true)
+
+    assertEmpty(markers)
+  }
+
+  private fun assertLangChain4jKeyHasNoGutter() {
+    val keyValue = PsiTreeUtil.getParentOfType(myFixture.file.findElementAt(myFixture.caretOffset), YAMLKeyValue::class.java)!!
+    val markers = mutableListOf<RelatedItemLineMarkerInfo<*>>()
+    HelidonLangChain4jYamlLineMarkerProvider().collectNavigationMarkers(listOf(keyValue), markers, true)
 
     assertEmpty(markers)
   }

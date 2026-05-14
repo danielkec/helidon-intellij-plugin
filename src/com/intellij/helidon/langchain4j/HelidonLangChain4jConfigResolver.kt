@@ -269,11 +269,21 @@ internal object HelidonLangChain4jConfigResolver {
     val module = ModuleUtilCore.findModuleForPsiElement(yamlKeyValue) ?: return emptyList()
     val path = qualifiedConfigKeyName(yamlKeyValue)
     return CONFIG_SECTION_KINDS.flatMap { (section, kinds) ->
+      val key = configSectionComponentKey(yamlKeyValue, section) ?: return@flatMap emptyList()
       getComponents(module, includeTestSources(yamlKeyValue, module)).filter { component ->
         component.kind in kinds &&
-        path == "$ROOT.$section.${component.key}"
+        component.key == key &&
+        path == "$ROOT.$section.$key"
       }.map { it.target }
     }
+  }
+
+  private fun configSectionComponentKey(yamlKeyValue: YAMLKeyValue, section: String): String? {
+    val key = yamlKeyValue.keyText.takeIf { it.isNotBlank() } ?: return null
+    if (section != MCP_CLIENTS) return key
+
+    val explicitKey = ((yamlKeyValue.value as? YAMLMapping)?.getKeyValueByKey("key")?.value as? YAMLScalar)?.textValue
+    return key.takeIf { explicitKey == null || explicitKey == key }
   }
 
   private fun isConfigSectionEntry(yamlKeyValue: YAMLKeyValue): Boolean {

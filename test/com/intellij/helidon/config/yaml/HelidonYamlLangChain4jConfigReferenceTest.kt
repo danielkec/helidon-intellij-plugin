@@ -137,7 +137,7 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     assertResolvesToNamedElement("CalendarTools")
   }
 
-  fun testLangChain4jConfigKeyHasGutterNavigation() {
+  fun testLangChain4jServiceKeyHasRobotGutterNavigation() {
     addLangChain4jStubs()
     addLangChain4jApplicationClasses()
     myFixture.configureByText(HELIDON_APPLICATION_YAML, """
@@ -152,7 +152,7 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     HelidonLangChain4jYamlLineMarkerProvider().collectNavigationMarkers(listOf(keyValue), markers, true)
 
     assertSize(1, markers)
-    assertSame(HelidonIcons.HelidonGutter, markers.single().icon)
+    assertSame(HelidonIcons.RobotGutter, markers.single().icon)
   }
 
   fun testLangChain4jModelReferenceHasRobotGutterNavigation() {

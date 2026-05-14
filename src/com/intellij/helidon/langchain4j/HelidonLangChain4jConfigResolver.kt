@@ -85,7 +85,7 @@ internal object HelidonLangChain4jConfigResolver {
 
   private val CLASS_VALUED_KEYS: Set<String> = setOf("tools", "input-guardrails", "output-guardrails")
 
-  private val ROBOT_KEY_SECTIONS: Set<String> = setOf(AGENTS, MODELS, CONTENT_RETRIEVERS)
+  private val ROBOT_KEY_SECTIONS: Set<String> = setOf(SERVICES, AGENTS, MODELS, CONTENT_RETRIEVERS)
 
   private val ROBOT_VALUE_KEYS: Set<String> = setOf("chat-model", "streaming-chat-model", "moderation-model", "content-retriever")
 

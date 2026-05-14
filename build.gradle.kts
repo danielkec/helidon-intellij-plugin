@@ -64,6 +64,7 @@ intellijPlatform {
 
     changeNotes = """
       <ul>
+        <li>Added Helidon LangChain4j navigation between <code>@Ai.*</code> annotations and <code>langchain4j.*</code> configuration, including service, agent, model, content retriever, provider, embedding store, and MCP client references.</li>
         <li>Added IntelliJ HTTP Mappings gutter navigation for Helidon Declarative <code>@RestServer.Endpoint</code> HTTP method annotations, including inherited/interface declarations and custom <code>@Http.HttpMethod</code> annotations.</li>
         <li>Improved Declarative HTTP mapping navigation with <code>http-method:</code> Endpoints filters, multi-endpoint handling, endpoint-module-aware navigation, and cached target lookup.</li>
         <li>Expanded Helidon WebServer endpoint discovery for route builder/helper overloads, <code>anyOf</code>, <code>HttpRoute</code> objects, wildcard route types, registered service parent paths, and path matcher factories.</li>

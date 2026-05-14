@@ -87,6 +87,8 @@ internal object HelidonLangChain4jConfigResolver {
 
   private val MODEL_VALUE_KEYS: Set<String> = setOf("chat-model", "streaming-chat-model", "moderation-model", "embedding-model")
 
+  private val GEAR_VALUE_KEYS: Set<String> = setOf("provider", "embedding-store")
+
   private val ANNOTATION_CONFIG_SECTIONS: Map<String, String> = mapOf(
     HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_SERVICE to SERVICES,
     HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_SERVICE to SERVICES,
@@ -186,7 +188,7 @@ internal object HelidonLangChain4jConfigResolver {
       val anchor = element.key ?: element
       val targets = keyTargets(element)
       return targets.takeIf { it.isNotEmpty() }
-        ?.let { MarkerTargets(anchor, it, isModelKeyReference(element)) }
+        ?.let { MarkerTargets(anchor, it, keyGutterKind(element)) }
     }
 
     if (element is YAMLScalar) {
@@ -194,7 +196,7 @@ internal object HelidonLangChain4jConfigResolver {
       val path = qualifiedConfigKeyName(yamlKeyValue)
       val targets = valueTargets(element, yamlKeyValue, path, element.textValue.trim())
       return targets.takeIf { it.isNotEmpty() }
-        ?.let { MarkerTargets(element.firstChild ?: element, it, isModelValueReference(path)) }
+        ?.let { MarkerTargets(element.firstChild ?: element, it, valueGutterKind(path)) }
     }
 
     return null
@@ -237,13 +239,17 @@ internal object HelidonLangChain4jConfigResolver {
     return CONFIG_SECTION_KINDS.keys.any { section -> parentPath == "$ROOT.$section" }
   }
 
-  private fun isModelKeyReference(yamlKeyValue: YAMLKeyValue): Boolean {
-    val parent = PsiTreeUtil.getParentOfType(yamlKeyValue, YAMLKeyValue::class.java) ?: return false
-    return qualifiedConfigKeyName(parent) == "$ROOT.$MODELS"
+  private fun keyGutterKind(yamlKeyValue: YAMLKeyValue): GutterKind {
+    val parent = PsiTreeUtil.getParentOfType(yamlKeyValue, YAMLKeyValue::class.java) ?: return GutterKind.DEFAULT
+    return if (qualifiedConfigKeyName(parent) == "$ROOT.$MODELS") GutterKind.MODEL else GutterKind.DEFAULT
   }
 
-  private fun isModelValueReference(path: String): Boolean {
-    return path.substringAfterLast('.') in MODEL_VALUE_KEYS
+  private fun valueGutterKind(path: String): GutterKind {
+    return when (path.substringAfterLast('.')) {
+      in GEAR_VALUE_KEYS -> GutterKind.GEAR
+      in MODEL_VALUE_KEYS -> GutterKind.MODEL
+      else -> GutterKind.DEFAULT
+    }
   }
 
   private fun isSupportedValueReference(path: String, yamlKeyValue: YAMLKeyValue): Boolean {
@@ -464,8 +470,14 @@ internal object HelidonLangChain4jConfigResolver {
   data class MarkerTargets(
     val anchor: PsiElement,
     val targets: List<PsiElement>,
-    val modelReference: Boolean,
+    val gutterKind: GutterKind,
   )
+
+  enum class GutterKind {
+    DEFAULT,
+    MODEL,
+    GEAR,
+  }
 
   private enum class LangChain4jComponentKind {
     SERVICE,

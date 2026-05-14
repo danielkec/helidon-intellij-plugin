@@ -39,7 +39,11 @@ internal class HelidonLangChain4jYamlLineMarkerProvider : RelatedItemLineMarkerP
   }
 
   private fun gutterIcon(target: HelidonLangChain4jConfigResolver.MarkerTargets): Icon {
-    return if (target.modelReference) HelidonIcons.RobotGutter else HelidonIcons.HelidonGutter
+    return when (target.gutterKind) {
+      HelidonLangChain4jConfigResolver.GutterKind.GEAR -> HelidonIcons.GearGutter
+      HelidonLangChain4jConfigResolver.GutterKind.MODEL -> HelidonIcons.RobotGutter
+      HelidonLangChain4jConfigResolver.GutterKind.DEFAULT -> HelidonIcons.HelidonGutter
+    }
   }
 
   private fun langChain4jTarget(element: PsiElement): HelidonLangChain4jConfigResolver.MarkerTargets? {

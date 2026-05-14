@@ -13,6 +13,7 @@ import com.intellij.psi.PsiReference
 import com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.yaml.psi.YAMLKeyValue
 import org.jetbrains.yaml.psi.YAMLScalar
+import javax.swing.Icon
 
 class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() {
   fun testServiceKeyResolvesToAiServiceInterface() {
@@ -167,12 +168,39 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
             provider: openai
     """.trimIndent())
 
-    val scalar = PsiTreeUtil.getParentOfType(myFixture.file.findElementAt(myFixture.caretOffset), YAMLScalar::class.java)!!
-    val markers = mutableListOf<RelatedItemLineMarkerInfo<*>>()
-    HelidonLangChain4jYamlLineMarkerProvider().collectNavigationMarkers(listOf(scalar), markers, true)
+    assertLangChain4jScalarGutter(HelidonIcons.RobotGutter)
+  }
 
-    assertSize(1, markers)
-    assertSame(HelidonIcons.RobotGutter, markers.single().icon)
+  fun testLangChain4jProviderReferenceHasGearGutterNavigation() {
+    addLangChain4jStubs()
+    addLangChain4jApplicationClasses()
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      langchain4j:
+        providers:
+          openai:
+            type: open-ai
+        models:
+          chat:
+            provider: open<caret>ai
+    """.trimIndent())
+
+    assertLangChain4jScalarGutter(HelidonIcons.GearGutter)
+  }
+
+  fun testLangChain4jEmbeddingStoreReferenceHasGearGutterNavigation() {
+    addLangChain4jStubs()
+    addLangChain4jApplicationClasses()
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      langchain4j:
+        embedding-stores:
+          pgvector:
+            provider: pg
+        content-retrievers:
+          docs:
+            embedding-store: pgv<caret>ector
+    """.trimIndent())
+
+    assertLangChain4jScalarGutter(HelidonIcons.GearGutter)
   }
 
   fun testAiServiceAnnotationValueResolvesToServiceConfigKey() {
@@ -292,6 +320,15 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
       .filterIsInstance<YAMLScalar>()
       .firstOrNull { it.textValue == value }
     assertNotNull("Expected config value '$value', got ${resolvedTargetsAtCaretText()}", target)
+  }
+
+  private fun assertLangChain4jScalarGutter(icon: Icon) {
+    val scalar = PsiTreeUtil.getParentOfType(myFixture.file.findElementAt(myFixture.caretOffset), YAMLScalar::class.java)!!
+    val markers = mutableListOf<RelatedItemLineMarkerInfo<*>>()
+    HelidonLangChain4jYamlLineMarkerProvider().collectNavigationMarkers(listOf(scalar), markers, true)
+
+    assertSize(1, markers)
+    assertSame(icon, markers.single().icon)
   }
 
   private fun resolveAtCaret(): Any? {

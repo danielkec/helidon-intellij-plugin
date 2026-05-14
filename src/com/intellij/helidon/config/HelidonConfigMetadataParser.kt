@@ -127,6 +127,14 @@ internal data class ConfigOption(val key: String,
                                  val deprecated: Boolean,
                                  val defaultValue: String?)
 
+internal fun ConfigOption.actualType(): String {
+  return when (kind) {
+    ConfigOptionKind.LIST -> "${CommonClassNames.JAVA_UTIL_LIST}<${type}>"
+    ConfigOptionKind.MAP -> "${CommonClassNames.JAVA_UTIL_MAP}<${CommonClassNames.JAVA_LANG_STRING}, ${type}>"
+    ConfigOptionKind.VALUE -> type
+  }
+}
+
 internal enum class ConfigOptionKind {
   VALUE, LIST, MAP
 }

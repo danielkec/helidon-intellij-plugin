@@ -11,10 +11,11 @@
     <ul>
       <li>Create Helidon Maven projects from the IDE.</li>
       <li>Navigate between Helidon services, injection points, and service registry lookups.</li>
+      <li>Complete Helidon configuration keys in YAML and properties files.</li>
       <li>Open gutter navigation for Helidon declarative services.</li>
       <li>With IntelliJ IDEA Ultimate and the optional Microservices integration enabled: discover Helidon WebServer and
         RestServer endpoints in the Endpoints tool window, use URL resolver and inlay support, navigate declarative HTTP
-        endpoint routes, and work with Helidon configuration keys in YAML and properties files.</li>
+        endpoint routes, and use extended Helidon configuration references, documentation, and inspections.</li>
     </ul>
   ]]></description>
 
@@ -42,6 +43,13 @@
     <externalProjectDataService implementation="com.intellij.helidon.newproject.HelidonExternalSystemDataService"/>
 
     <dependencySupport coordinate="io.helidon.config:helidon-config" kind="java" displayName="Helidon"/>
+
+    <completion.contributor language="Properties" order="last"
+                            implementationClass="com.intellij.helidon.config.ce.HelidonPropertiesKeyCompletionContributor"/>
+    <completion.contributor language="yaml"
+                            implementationClass="com.intellij.helidon.config.ce.HelidonYamlKeyCompletionContributor"/>
+
+    <iconProvider implementation="com.intellij.helidon.config.ce.HelidonConfigFileIconProvider"/>
   </extensions>
 
   <extensions defaultExtensionNs="org.jetbrains.idea.maven">

@@ -62,6 +62,31 @@ class HelidonPluginDescriptorTest {
   }
 
   @Test
+  fun testMainDescriptorRegistersCommunityConfigCompletion() {
+    val document = parseDescriptor(Path.of("resources/META-INF/plugin.xml"))
+    val completionContributors = document.getElementsByTagName("completion.contributor").elements()
+
+    assertTrue(completionContributors.any { element ->
+      element.getAttribute("language") == "Properties" &&
+        element.getAttribute("implementationClass") == "com.intellij.helidon.config.ce.HelidonPropertiesKeyCompletionContributor"
+    })
+    assertTrue(completionContributors.any { element ->
+      element.getAttribute("language") == "yaml" &&
+        element.getAttribute("implementationClass") == "com.intellij.helidon.config.ce.HelidonYamlKeyCompletionContributor"
+    })
+  }
+
+  @Test
+  fun testMainDescriptorRegistersCommunityConfigFileIconProvider() {
+    val document = parseDescriptor(Path.of("resources/META-INF/plugin.xml"))
+    val iconProviders = document.getElementsByTagName("iconProvider").elements()
+
+    assertTrue(iconProviders.any { element ->
+      element.getAttribute("implementation") == "com.intellij.helidon.config.ce.HelidonConfigFileIconProvider"
+    })
+  }
+
+  @Test
   fun testMicroservicesSubDescriptorDoesNotDeclareDependencies() {
     val document = parseDescriptor(Path.of("resources/META-INF/helidon-microservices.xml"))
 
@@ -97,6 +122,23 @@ class HelidonPluginDescriptorTest {
     }
 
     assertFalse(sourceUsesInternalPackage)
+  }
+
+  @Test
+  fun testCommunityConfigCompletionDoesNotUseMicroservicesApis() {
+    val ceSafeSources = listOf(
+      Path.of("src/com/intellij/helidon/config/ce"),
+      Path.of("src/com/intellij/helidon/config/HelidonYamlCompletionInsertHandlers.kt"),
+    )
+    for (source in ceSafeSources) {
+      val sourceUsesMicroservicesPackage = Files.walk(source).use { paths ->
+        paths
+          .filter { it.toString().endsWith(".kt") }
+          .anyMatch { Files.readString(it).contains("import com.intellij.microservices") }
+      }
+
+      assertFalse("$source should not import Microservices APIs", sourceUsesMicroservicesPackage)
+    }
   }
 
   private fun parseDescriptor(path: Path) = DocumentBuilderFactory.newInstance()

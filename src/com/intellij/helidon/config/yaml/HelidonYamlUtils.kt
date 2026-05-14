@@ -3,19 +3,16 @@ package com.intellij.helidon.config.yaml
 
 import com.intellij.codeInsight.completion.CompletionParameters
 import com.intellij.codeInsight.completion.CompletionResultSet
-import com.intellij.codeInsight.completion.InsertHandler
-import com.intellij.codeInsight.completion.InsertionContext
-import com.intellij.codeInsight.AutoPopupController
 import com.intellij.codeInsight.lookup.LookupElement
 import com.intellij.codeInsight.lookup.LookupElementBuilder
 import com.intellij.codeInsight.lookup.LookupElementPresentation
 import com.intellij.codeInsight.lookup.LookupElementRenderer
+import com.intellij.helidon.config.YAML_KEY_INSERT_HANDLER
 import com.intellij.helidon.config.isHelidonConfigFile
 import com.intellij.microservices.jvm.config.MetaConfigKey
 import com.intellij.microservices.jvm.config.MetaConfigKeyManager.ConfigKeyNameBinder
 import com.intellij.microservices.jvm.config.MicroservicesConfigBundle
 import com.intellij.openapi.keymap.KeymapUtil
-import com.intellij.openapi.editor.EditorModificationUtilEx
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiElement
@@ -25,8 +22,6 @@ import com.intellij.psi.util.PsiTypesUtil
 import com.intellij.util.containers.ContainerUtil
 import com.intellij.util.PlatformIcons
 import org.jetbrains.yaml.YAMLTokenTypes
-import org.jetbrains.yaml.YAMLUtil
-import org.jetbrains.yaml.completion.YamlKeyCompletionInsertHandler
 import org.jetbrains.yaml.psi.YAMLFile
 import org.jetbrains.yaml.psi.YAMLKeyValue
 import org.jetbrains.yaml.psi.YAMLMapping
@@ -113,7 +108,7 @@ fun getYamlCurrentLineKeyComponents(element: PsiElement,
   return result.map {
     LookupElementBuilder.create(it)
       .withIcon(PlatformIcons.PROPERTY_ICON)
-      .withInsertHandler(INSERT_COLON_AND_NEW_LINE_INSERT_HANDLER)
+      .withInsertHandler(YAML_KEY_INSERT_HANDLER)
   }
 }
 
@@ -232,22 +227,6 @@ private object YamlPlaceholderLookupRenderer : LookupElementRenderer<LookupEleme
       element.renderElement(presentation)
     }
   }
-}
-
-internal val INSERT_COLON_AND_NEW_LINE_INSERT_HANDLER = InsertHandler<LookupElement> { context: InsertionContext, _: LookupElement ->
-  val element = context.file.findElementAt(context.startOffset) ?: return@InsertHandler
-  val indent = YAMLUtil.getIndentToThisElement(element) + 2
-  val newLine = "\n" + StringUtil.repeatSymbol(' ', indent)
-  val editor = context.editor
-  val text = if (YamlKeyCompletionInsertHandler.isCharAtCaret(editor, ':')) {
-    editor.caretModel.moveCaretRelatively(1, 0, false, false, false)
-    newLine
-  }
-  else {
-    ":$newLine"
-  }
-  EditorModificationUtilEx.insertStringAtCaret(editor, text)
-  editor.project?.let { AutoPopupController.getInstance(it).scheduleAutoPopup(editor) }
 }
 
 private object CommonNumberTypes {

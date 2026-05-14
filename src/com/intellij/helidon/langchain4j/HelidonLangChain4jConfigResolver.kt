@@ -323,7 +323,7 @@ internal object HelidonLangChain4jConfigResolver {
     val targets = LinkedHashSet<PsiElement>()
 
     VALUE_CONFIG_TARGETS[lastKey]
-      ?.let { section -> findYamlKey(yamlScalar.containingFile as? YAMLFile, "$ROOT.$section.$value") }
+      ?.let { section -> findYamlSectionEntryKey(yamlScalar.containingFile as? YAMLFile, section, value) }
       ?.let { targets.add(it) }
 
     VALUE_COMPONENT_KINDS[lastKey]?.let { kinds ->
@@ -465,6 +465,11 @@ internal object HelidonLangChain4jConfigResolver {
     return (section.value as? YAMLMapping)?.keyValues?.toList() ?: emptyList()
   }
 
+  private fun findYamlSectionEntryKey(file: YAMLFile?, section: String, key: String): YAMLKeyValue? {
+    val sectionKey = findYamlKey(file, "$ROOT.$section") ?: return null
+    return (sectionKey.value as? YAMLMapping)?.getKeyValueByKey(key)
+  }
+
   private fun findYamlMcpClientKeyValues(file: YAMLFile?, value: String): List<YAMLScalar> {
     val clients = findYamlSectionEntryKeys(file ?: return emptyList(), "$ROOT.$MCP_CLIENTS")
     return clients.mapNotNull { client ->
@@ -475,15 +480,9 @@ internal object HelidonLangChain4jConfigResolver {
   }
 
   private fun findYamlMcpClientSectionFallback(file: YAMLFile?, value: String): YAMLKeyValue? {
-    val client = findYamlKey(file, "$ROOT.$MCP_CLIENTS.$value") ?: return null
+    val client = findYamlSectionEntryKey(file, MCP_CLIENTS, value) ?: return null
     val keyScalar = ((client.value as? YAMLMapping)?.getKeyValueByKey("key")?.value as? YAMLScalar)
     return client.takeIf { keyScalar == null || keyScalar.textValue == value }
-  }
-
-  private fun findConfigKeys(context: PsiElement, qualifiedName: String): List<PsiElement> {
-    return processConfigFiles(context) { psiFile, contributor ->
-      contributor.findKey(psiFile, qualifiedName)?.let(::listOf) ?: emptyList()
-    }
   }
 
   private fun annotationValueTargets(context: PsiElement, annotationName: String, value: String): List<PsiElement> {
@@ -494,7 +493,7 @@ internal object HelidonLangChain4jConfigResolver {
     }
     else {
       ANNOTATION_CONFIG_SECTIONS[annotationName]
-        ?.let { section -> targets.addAll(findConfigKeys(context, "$ROOT.$section.$value")) }
+        ?.let { section -> targets.addAll(findConfigSectionEntryKeys(context, section, value)) }
     }
     ANNOTATION_CONFIG_VALUE_KEYS[annotationName]
       ?.let { keyNames -> targets.addAll(findConfigValueUsages(context, keyNames, value)) }
@@ -503,8 +502,20 @@ internal object HelidonLangChain4jConfigResolver {
 
   private fun findMcpClientSectionFallbackUsages(context: PsiElement, value: String): List<PsiElement> {
     return processConfigFiles(context) { psiFile, contributor ->
+      if (psiFile is YAMLFile) {
+        return@processConfigFiles findYamlMcpClientSectionFallback(psiFile, value)?.let(::listOf) ?: emptyList()
+      }
       if (!mcpClientSectionFallbackAllowed(psiFile, value)) return@processConfigFiles emptyList()
       contributor.findKey(psiFile, "$ROOT.$MCP_CLIENTS.$value")?.let(::listOf) ?: emptyList()
+    }
+  }
+
+  private fun findConfigSectionEntryKeys(context: PsiElement, section: String, key: String): List<PsiElement> {
+    return processConfigFiles(context) { psiFile, contributor ->
+      if (psiFile is YAMLFile) {
+        return@processConfigFiles findYamlSectionEntryKey(psiFile, section, key)?.let(::listOf) ?: emptyList()
+      }
+      contributor.findKey(psiFile, "$ROOT.$section.$key")?.let(::listOf) ?: emptyList()
     }
   }
 

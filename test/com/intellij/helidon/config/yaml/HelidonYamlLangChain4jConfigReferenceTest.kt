@@ -123,6 +123,22 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     assertEquals("openai", keyValue.keyText)
   }
 
+  fun testDottedModelNameValueResolvesToLiteralModelConfigKey() {
+    addLangChain4jStubs()
+    addLangChain4jApplicationClasses()
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      langchain4j:
+        services:
+          greeter:
+            chat-model: demo.<caret>Model
+        models:
+          demo.Model:
+            provider: openai
+    """.trimIndent())
+
+    assertResolvesToConfigKey("langchain4j.models.demo.Model")
+  }
+
   fun testChatModelValueDoesNotResolveToAiStreamingChatModelComponent() {
     addLangChain4jStubs()
     addLangChain4jApplicationClasses()
@@ -588,6 +604,25 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     """.trimIndent())
 
     assertResolvesToConfigKey("langchain4j.models.expensive-model")
+  }
+
+  fun testAiChatModelAnnotationValueResolvesToDottedModelConfigKey() {
+    addLangChain4jStubs()
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      langchain4j:
+        models:
+          demo.Model:
+            provider: openai
+    """.trimIndent())
+    myFixture.configureByText("Main.java", """
+      import io.helidon.extensions.langchain4j.Ai;
+
+      @Ai.ChatModel("demo.<caret>Model")
+      interface DemoModel {
+      }
+    """.trimIndent())
+
+    assertResolvesToConfigKey("langchain4j.models.demo.Model")
   }
 
   fun testAiStreamingChatModelAnnotationValueResolvesToModelConfigKey() {

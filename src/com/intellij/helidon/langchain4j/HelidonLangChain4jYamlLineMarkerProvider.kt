@@ -30,7 +30,6 @@ internal class HelidonLangChain4jYamlLineMarkerProvider : RelatedItemLineMarkerP
     val processed = HashSet<PsiElement>()
     for (element in elements) {
       val target = langChain4jTarget(element) ?: continue
-      if (target.gutterKind == HelidonLangChain4jConfigResolver.GutterKind.GEAR) continue
       if (!processed.add(target.anchor)) continue
 
       val builder = NavigationGutterIconBuilder.create(gutterIcon(target), HelidonBundle.HELIDON_LIBRARY)
@@ -43,7 +42,6 @@ internal class HelidonLangChain4jYamlLineMarkerProvider : RelatedItemLineMarkerP
 
   private fun gutterIcon(target: HelidonLangChain4jConfigResolver.MarkerTargets): Icon {
     return when (target.gutterKind) {
-      HelidonLangChain4jConfigResolver.GutterKind.GEAR -> HelidonIcons.GearGutter
       HelidonLangChain4jConfigResolver.GutterKind.AI -> HelidonIcons.AiGutter
       HelidonLangChain4jConfigResolver.GutterKind.ROBOT -> HelidonIcons.RobotGutter
       HelidonLangChain4jConfigResolver.GutterKind.DEFAULT -> HelidonIcons.HelidonGutter

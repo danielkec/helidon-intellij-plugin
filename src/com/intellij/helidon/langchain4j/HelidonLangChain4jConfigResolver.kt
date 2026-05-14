@@ -56,7 +56,9 @@ internal object HelidonLangChain4jConfigResolver {
   private val CONFIG_SECTION_KINDS: Map<String, Set<LangChain4jComponentKind>> = mapOf(
     SERVICES to setOf(LangChain4jComponentKind.SERVICE),
     AGENTS to setOf(LangChain4jComponentKind.AGENT),
-    MODELS to setOf(LangChain4jComponentKind.CHAT_MODEL, LangChain4jComponentKind.STREAMING_CHAT_MODEL),
+    MODELS to setOf(LangChain4jComponentKind.CHAT_MODEL,
+                    LangChain4jComponentKind.STREAMING_CHAT_MODEL,
+                    LangChain4jComponentKind.MODERATION_MODEL),
     CONTENT_RETRIEVERS to setOf(LangChain4jComponentKind.CONTENT_RETRIEVER),
     MCP_CLIENTS to setOf(LangChain4jComponentKind.MCP_CLIENTS),
   )
@@ -72,7 +74,7 @@ internal object HelidonLangChain4jConfigResolver {
   )
 
   private val VALUE_COMPONENT_KINDS: Map<String, Set<LangChain4jComponentKind>> = mapOf(
-    "chat-model" to setOf(LangChain4jComponentKind.CHAT_MODEL, LangChain4jComponentKind.STREAMING_CHAT_MODEL),
+    "chat-model" to setOf(LangChain4jComponentKind.CHAT_MODEL),
     "streaming-chat-model" to setOf(LangChain4jComponentKind.STREAMING_CHAT_MODEL),
     "moderation-model" to setOf(LangChain4jComponentKind.MODERATION_MODEL),
     "chat-memory-provider" to setOf(LangChain4jComponentKind.CHAT_MEMORY_PROVIDER),
@@ -91,8 +93,6 @@ internal object HelidonLangChain4jConfigResolver {
 
   private val AI_VALUE_KEYS: Set<String> = setOf("embedding-model")
 
-  private val GEAR_VALUE_KEYS: Set<String> = setOf("provider", "embedding-store")
-
   private val ANNOTATION_CONFIG_SECTIONS: Map<String, String> = mapOf(
     HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_SERVICE to SERVICES,
     HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_SERVICE to SERVICES,
@@ -108,6 +108,11 @@ internal object HelidonLangChain4jConfigResolver {
     HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_CONTENT_RETRIEVER to CONTENT_RETRIEVERS,
     HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_MCP_CLIENTS to MCP_CLIENTS,
     HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_MCP_CLIENTS to MCP_CLIENTS,
+  )
+
+  private val MCP_CLIENT_ANNOTATIONS: Set<String> = setOf(
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_MCP_CLIENTS,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_MCP_CLIENTS,
   )
 
   private val AI_ANNOTATION_REFERENCES: Set<String> = setOf(
@@ -211,7 +216,7 @@ internal object HelidonLangChain4jConfigResolver {
 
   fun markerTargets(element: PsiElement): MarkerTargets? {
     if (element is YAMLKeyValue) {
-      val anchor = element.key ?: element
+      val anchor = leafAnchor(element.key ?: element)
       val targets = keyTargets(element)
       return targets.takeIf { it.isNotEmpty() }
         ?.let { MarkerTargets(anchor, it, keyGutterKind(element)) }
@@ -220,9 +225,11 @@ internal object HelidonLangChain4jConfigResolver {
     if (element is YAMLScalar) {
       val yamlKeyValue = PsiTreeUtil.getParentOfType(element, YAMLKeyValue::class.java) ?: return null
       val path = qualifiedConfigKeyName(yamlKeyValue)
+      if (!isSupportedValueReference(path, yamlKeyValue)) return null
+      val gutterKind = valueGutterKind(path) ?: return null
       val targets = valueTargets(element, yamlKeyValue, path, element.textValue.trim())
       return targets.takeIf { it.isNotEmpty() }
-        ?.let { MarkerTargets(element.firstChild ?: element, it, valueGutterKind(path)) }
+        ?.let { MarkerTargets(leafAnchor(element), it, gutterKind) }
     }
 
     return null
@@ -252,7 +259,7 @@ internal object HelidonLangChain4jConfigResolver {
 
     val targets = annotationValueTargets(literal, annotationName, value)
     return targets.takeIf { it.isNotEmpty() }
-      ?.let { MarkerTargets(literal.firstChild ?: literal, it, gutterKind) }
+      ?.let { MarkerTargets(leafAnchor(literal), it, gutterKind) }
   }
 
   private fun keyTargets(yamlKeyValue: YAMLKeyValue): List<PsiElement> {
@@ -278,11 +285,11 @@ internal object HelidonLangChain4jConfigResolver {
     return if (ROBOT_KEY_SECTIONS.any { section -> parentPath == "$ROOT.$section" }) GutterKind.ROBOT else GutterKind.DEFAULT
   }
 
-  private fun valueGutterKind(path: String): GutterKind {
+  private fun valueGutterKind(path: String): GutterKind? {
     return when (path.substringAfterLast('.')) {
-      in GEAR_VALUE_KEYS -> GutterKind.GEAR
       in AI_VALUE_KEYS -> GutterKind.AI
       in ROBOT_VALUE_KEYS -> GutterKind.ROBOT
+      "provider", "embedding-store" -> null
       else -> GutterKind.DEFAULT
     }
   }
@@ -306,13 +313,8 @@ internal object HelidonLangChain4jConfigResolver {
       ?.let { section -> findYamlKey(yamlScalar.containingFile as? YAMLFile, "$ROOT.$section.$value") }
       ?.let { targets.add(it) }
 
-    if (lastKey == "key" && path.startsWith("$ROOT.$MCP_CLIENTS.")) {
-      targets.addAll(componentTargets(module, setOf(LangChain4jComponentKind.MCP_CLIENTS), value))
-    }
-    else {
-      VALUE_COMPONENT_KINDS[lastKey]?.let { kinds ->
-        targets.addAll(componentTargets(module, kinds, value))
-      }
+    VALUE_COMPONENT_KINDS[lastKey]?.let { kinds ->
+      targets.addAll(componentTargets(module, kinds, value))
     }
 
     if (lastKey in CLASS_VALUED_KEYS) {
@@ -320,6 +322,7 @@ internal object HelidonLangChain4jConfigResolver {
     }
 
     if (lastKey == MCP_CLIENTS && yamlKeyValue.value != yamlScalar) {
+      targets.addAll(findYamlMcpClientKeyValues(yamlScalar.containingFile as? YAMLFile, value))
       findYamlKey(yamlScalar.containingFile as? YAMLFile, "$ROOT.$MCP_CLIENTS.$value")?.let { targets.add(it) }
     }
 
@@ -446,6 +449,15 @@ internal object HelidonLangChain4jConfigResolver {
     return (section.value as? YAMLMapping)?.keyValues?.toList() ?: emptyList()
   }
 
+  private fun findYamlMcpClientKeyValues(file: YAMLFile?, value: String): List<YAMLScalar> {
+    val clients = findYamlSectionEntryKeys(file ?: return emptyList(), "$ROOT.$MCP_CLIENTS")
+    return clients.mapNotNull { client ->
+      val mapping = client.value as? YAMLMapping ?: return@mapNotNull null
+      val keyValue = mapping.getKeyValueByKey("key") ?: return@mapNotNull null
+      (keyValue.value as? YAMLScalar)?.takeIf { it.textValue == value }
+    }
+  }
+
   private fun findConfigKeys(context: PsiElement, qualifiedName: String): List<PsiElement> {
     return processConfigFiles(context) { psiFile, contributor ->
       contributor.findKey(psiFile, qualifiedName)?.let(::listOf) ?: emptyList()
@@ -454,11 +466,24 @@ internal object HelidonLangChain4jConfigResolver {
 
   private fun annotationValueTargets(context: PsiElement, annotationName: String, value: String): List<PsiElement> {
     val targets = LinkedHashSet<PsiElement>()
+    if (annotationName in MCP_CLIENT_ANNOTATIONS) {
+      targets.addAll(findMcpClientKeyValueUsages(context, value))
+    }
     ANNOTATION_CONFIG_SECTIONS[annotationName]
       ?.let { section -> targets.addAll(findConfigKeys(context, "$ROOT.$section.$value")) }
     ANNOTATION_CONFIG_VALUE_KEYS[annotationName]
       ?.let { keyNames -> targets.addAll(findConfigValueUsages(context, keyNames, value)) }
     return targets.toList()
+  }
+
+  private fun findMcpClientKeyValueUsages(context: PsiElement, value: String): List<PsiElement> {
+    return processConfigFiles(context) { psiFile, _ ->
+      when (psiFile) {
+        is YAMLFile -> findYamlMcpClientKeyValues(psiFile, value)
+        is PropertiesFile -> findPropertiesMcpClientKeyValueUsages(psiFile, value)
+        else -> emptyList()
+      }
+    }
   }
 
   private fun findConfigValueUsages(context: PsiElement, keyNames: Set<String>, value: String): List<PsiElement> {
@@ -515,6 +540,29 @@ internal object HelidonLangChain4jConfigResolver {
     }
   }
 
+  private fun findPropertiesMcpClientKeyValueUsages(file: PropertiesFile, value: String): List<PsiElement> {
+    return file.properties.mapNotNull { property ->
+      val propertyImpl = property.psiElement as? PropertyImpl ?: return@mapNotNull null
+      val key = propertyImpl.key ?: return@mapNotNull null
+      if (key.startsWith("$ROOT.$MCP_CLIENTS.") &&
+          key.endsWith(".key") &&
+          propertyImpl.value == value) {
+        HelidonPropertiesUtils.getPropertyValue(propertyImpl) ?: propertyImpl
+      }
+      else {
+        null
+      }
+    }
+  }
+
+  private fun leafAnchor(element: PsiElement): PsiElement {
+    var anchor = element
+    while (anchor.firstChild != null) {
+      anchor = anchor.firstChild
+    }
+    return anchor
+  }
+
   private fun qualifiedConfigKeyName(yamlKeyValue: YAMLKeyValue): String {
     return com.intellij.helidon.config.yaml.getQualifiedConfigKeyName(yamlKeyValue)
   }
@@ -534,7 +582,6 @@ internal object HelidonLangChain4jConfigResolver {
   enum class GutterKind {
     DEFAULT,
     ROBOT,
-    GEAR,
     AI,
   }
 

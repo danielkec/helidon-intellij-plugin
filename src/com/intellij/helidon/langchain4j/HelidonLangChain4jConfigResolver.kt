@@ -194,6 +194,19 @@ internal object HelidonLangChain4jConfigResolver {
     return arrayOf(reference)
   }
 
+  fun valueCompletionVariants(element: PsiElement): List<String> {
+    val yamlKeyValue = PsiTreeUtil.getParentOfType(element, YAMLKeyValue::class.java) ?: return emptyList()
+    val path = qualifiedConfigKeyName(yamlKeyValue)
+    val lastKey = path.substringAfterLast('.')
+    if (lastKey != "provider") return emptyList()
+
+    val section = VALUE_CONFIG_TARGETS[lastKey] ?: return emptyList()
+    val yamlFile = yamlKeyValue.containingFile as? YAMLFile ?: return emptyList()
+
+    return findYamlSectionEntryKeys(yamlFile, "$ROOT.$section")
+      .mapNotNull { it.keyText.takeIf { key -> key.isNotBlank() } }
+  }
+
   fun markerTargets(element: PsiElement): MarkerTargets? {
     if (element is YAMLKeyValue) {
       val anchor = element.key ?: element
@@ -426,6 +439,14 @@ internal object HelidonLangChain4jConfigResolver {
     if (file == null) return null
     return PsiTreeUtil.findChildrenOfType(file, YAMLKeyValue::class.java)
       .firstOrNull { qualifiedConfigKeyName(it) == qualifiedName }
+  }
+
+  private fun findYamlSectionEntryKeys(file: YAMLFile, qualifiedSectionName: String): List<YAMLKeyValue> {
+    return PsiTreeUtil.findChildrenOfType(file, YAMLKeyValue::class.java)
+      .filter { yamlKeyValue ->
+        val parent = PsiTreeUtil.getParentOfType(yamlKeyValue, YAMLKeyValue::class.java) ?: return@filter false
+        qualifiedConfigKeyName(parent) == qualifiedSectionName
+      }
   }
 
   private fun findConfigKeys(context: PsiElement, qualifiedName: String): List<PsiElement> {

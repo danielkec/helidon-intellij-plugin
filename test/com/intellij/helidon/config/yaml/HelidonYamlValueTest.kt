@@ -27,4 +27,26 @@ class HelidonYamlValueTest : HelidonHighlightingTestCase() {
     assertNotNull(lookupElementStrings)
     assertSameElements(lookupElementStrings!!, "true", "false")
   }
+
+  fun testLangChain4jProviderValueCompletionUsesExistingProviders() {
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      langchain4j:
+        providers:
+          lc4j-in-process:
+            type: all_minilm_l6_v2_q
+          open-ai:
+            api-key: "${'$'}{OCI_API_KEY}"
+          lc4j-content-retriever:
+            embedding-model: assistant-embedding-model
+        content-retrievers:
+          docs:
+            provider: <caret>
+    """.trimIndent())
+
+    myFixture.completeBasic()
+    val lookupElementStrings = myFixture.lookupElementStrings
+    assertNotNull(lookupElementStrings)
+    assertContainsElements(lookupElementStrings!!, "lc4j-in-process", "open-ai", "lc4j-content-retriever")
+    assertDoesntContain(lookupElementStrings, "type", "api-key", "embedding-model")
+  }
 }

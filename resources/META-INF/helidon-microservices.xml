@@ -82,6 +82,10 @@
             implementationClass="com.intellij.helidon.config.yaml.HelidonYamlSmartClassReferenceCompletionContributor"/>
     <completion.contributor
             language="yaml"
+            order="before javaClassName"
+            implementationClass="com.intellij.helidon.config.yaml.HelidonYamlValueCompletionContributor"/>
+    <completion.contributor
+            language="yaml"
             order="last, before javaClassName"
             implementationClass="com.intellij.helidon.config.yaml.HelidonYamlClassNameCompletionSuppressor"/>
 

@@ -3,6 +3,7 @@ package com.intellij.helidon.langchain4j.diagram
 
 import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.config.HELIDON_APPLICATION_YAML
+import com.intellij.psi.PsiClass
 
 class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
   fun testBuildsWorkflowGraphFromLangChain4jYamlAndAnnotations() {
@@ -95,7 +96,7 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
     assertEdge(graph, "helidon-agent", "HelidonAgent", "declares")
   }
 
-  fun testAgenticWorkflowUsesFlowStructureAndResourceLinks() {
+  fun testAgenticWorkflowUsesAgentBoxesAndMetadataRows() {
     addLangChain4jStubs()
     addAgenticStubs()
     addEndpointStub()
@@ -124,6 +125,13 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
     assertNode(graph, HelidonLangChain4jDiagramNodeKind.JAVA_AGENT, "SummarizerAgent")
     assertNode(graph, HelidonLangChain4jDiagramNodeKind.JAVA_AGENT, "HelidonSeExpert")
     assertNode(graph, HelidonLangChain4jDiagramNodeKind.JAVA_AGENT, "HelidonMpExpert")
+    assertNodePsiClass(graph, "ChatBotEndpoint", "demo.ChatBotEndpoint")
+    assertNodePsiClass(graph, "HelidonExpertAgent", "demo.HelidonExpertAgent")
+    assertNodePsiClass(graph, "FlavorClassifierAgent", "demo.FlavorClassifierAgent")
+    assertNodePsiClass(graph, "FlavorRouterAgent", "demo.FlavorRouterAgent")
+    assertNodePsiClass(graph, "SummarizerAgent", "demo.SummarizerAgent")
+    assertNodePsiClass(graph, "HelidonSeExpert", "demo.HelidonSeExpert")
+    assertNodePsiClass(graph, "HelidonMpExpert", "demo.HelidonMpExpert")
 
     assertTrue("Agentic overview should only render agents and service entrypoints as graph nodes",
                graph.nodes.all {
@@ -181,6 +189,18 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
                          kind: HelidonLangChain4jWorkflowEdgeKind = HelidonLangChain4jWorkflowEdgeKind.FLOW) {
     assertTrue("Expected edge $sourceName -[$label]-> $targetName, got ${graph.edges.map { "${it.source.name} -[${it.label}]-> ${it.target.name}" }}",
                graph.edges.any { it.source.name == sourceName && it.target.name == targetName && it.label == label && it.kind == kind })
+  }
+
+  private fun assertNodePsiClass(graph: HelidonLangChain4jWorkflowGraph,
+                                 nodeName: String,
+                                 qualifiedName: String) {
+    val node = graph.nodes.firstOrNull { it.name == nodeName }
+    if (node == null) {
+      fail("Expected node $nodeName, got ${graph.nodes.map { it.name }}")
+      return
+    }
+    val psiClass = node.psiElement as? PsiClass
+    assertEquals("Expected $nodeName to navigate to a Java class", qualifiedName, psiClass?.qualifiedName)
   }
 
   private fun assertItem(graph: HelidonLangChain4jWorkflowGraph,

@@ -117,7 +117,7 @@ private class HelidonLangChain4jDiagramElementManager(
                            item: Any?,
                            builder: DiagramBuilder): SimpleColoredText {
     if (item is HelidonLangChain4jDiagramItem) {
-      return SimpleColoredText(item.name, SimpleTextAttributes.REGULAR_ATTRIBUTES)
+      return SimpleColoredText(item.type, SimpleTextAttributes.REGULAR_ATTRIBUTES)
     }
     return SimpleColoredText(element?.name ?: "", SimpleTextAttributes.REGULAR_ATTRIBUTES)
   }
@@ -126,7 +126,7 @@ private class HelidonLangChain4jDiagramElementManager(
                            item: Any?,
                            builder: DiagramBuilder?): SimpleColoredText {
     if (item is HelidonLangChain4jDiagramItem) {
-      return SimpleColoredText(item.type, SimpleTextAttributes.GRAY_ATTRIBUTES)
+      return SimpleColoredText(item.name, SimpleTextAttributes.GRAY_ATTRIBUTES)
     }
     return SimpleColoredText(element?.kind?.presentableName ?: "", SimpleTextAttributes.GRAY_ATTRIBUTES)
   }
@@ -253,11 +253,15 @@ private class HelidonLangChain4jDiagramNode(
     return SimpleColoredText(element.name, SimpleTextAttributes.REGULAR_ATTRIBUTES)
   }
 
-  override fun canNavigate(): Boolean = (element.psiElement as? Navigatable)?.canNavigate() == true
+  override fun canNavigate(): Boolean = navigationTarget()?.canNavigate() == true
+
+  override fun canNavigateToSource(): Boolean = navigationTarget()?.canNavigateToSource() == true
 
   override fun navigate(requestFocus: Boolean) {
-    (element.psiElement as? Navigatable)?.navigate(requestFocus)
+    navigationTarget()?.navigate(requestFocus)
   }
+
+  private fun navigationTarget(): Navigatable? = element.psiElement?.navigationElement as? Navigatable
 }
 
 private class HelidonLangChain4jDiagramEdge(
@@ -273,7 +277,8 @@ private class HelidonLangChain4jDiagramEdge(
                                  }
                                  else {
                                    DiagramLineType.SOLID
-                                 }),
+                                 },
+                                 edge.label),
 ) {
   override fun getName(): String = edge.label
 

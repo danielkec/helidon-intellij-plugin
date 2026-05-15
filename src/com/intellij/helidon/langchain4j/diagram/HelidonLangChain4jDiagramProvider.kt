@@ -116,22 +116,33 @@ private class HelidonLangChain4jDiagramElementManager(
   override fun getItemName(element: HelidonLangChain4jDiagramElement?,
                            item: Any?,
                            builder: DiagramBuilder): SimpleColoredText {
+    if (item is HelidonLangChain4jDiagramItem) {
+      return SimpleColoredText(item.name, SimpleTextAttributes.REGULAR_ATTRIBUTES)
+    }
     return SimpleColoredText(element?.name ?: "", SimpleTextAttributes.REGULAR_ATTRIBUTES)
   }
 
   override fun getItemType(element: HelidonLangChain4jDiagramElement?,
                            item: Any?,
                            builder: DiagramBuilder?): SimpleColoredText {
+    if (item is HelidonLangChain4jDiagramItem) {
+      return SimpleColoredText(item.type, SimpleTextAttributes.GRAY_ATTRIBUTES)
+    }
     return SimpleColoredText(element?.kind?.presentableName ?: "", SimpleTextAttributes.GRAY_ATTRIBUTES)
   }
 
   override fun getItemIcon(element: HelidonLangChain4jDiagramElement?,
                            item: Any?,
                            builder: DiagramBuilder?): Icon? {
+    if (item is HelidonLangChain4jDiagramItem) {
+      return null
+    }
     return element?.let { iconFor(it.kind) }
   }
 
-  override fun getNodeItems(element: HelidonLangChain4jDiagramElement): Array<Any> = AbstractDiagramElementManager.EMPTY_ARRAY
+  override fun getNodeItems(element: HelidonLangChain4jDiagramElement): Array<Any> {
+    return element.items.takeIf { it.isNotEmpty() }?.toTypedArray() ?: AbstractDiagramElementManager.EMPTY_ARRAY
+  }
 }
 
 private class HelidonLangChain4jDiagramVfsResolver : DiagramVfsResolver<HelidonLangChain4jDiagramElement> {
@@ -277,6 +288,8 @@ private class HelidonLangChain4jDiagramEdge(
 private fun iconFor(kind: HelidonLangChain4jDiagramNodeKind): Icon {
   return when (kind) {
     HelidonLangChain4jDiagramNodeKind.ENDPOINT,
+    HelidonLangChain4jDiagramNodeKind.JAVA_AGENT,
+    HelidonLangChain4jDiagramNodeKind.JAVA_SERVICE -> HelidonIcons.RobotGutter
     HelidonLangChain4jDiagramNodeKind.ROOT -> HelidonIcons.Helidon
     HelidonLangChain4jDiagramNodeKind.JAVA_CHAT_MODEL,
     HelidonLangChain4jDiagramNodeKind.JAVA_STREAMING_CHAT_MODEL,

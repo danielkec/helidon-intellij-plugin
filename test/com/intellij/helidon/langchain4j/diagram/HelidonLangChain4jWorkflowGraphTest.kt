@@ -118,34 +118,53 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
     val graph = HelidonLangChain4jWorkflowGraphBuilder.build(seed)
 
     assertNode(graph, HelidonLangChain4jDiagramNodeKind.ENDPOINT, "ChatBotEndpoint")
+    assertNode(graph, HelidonLangChain4jDiagramNodeKind.JAVA_AGENT, "HelidonExpertAgent")
     assertNode(graph, HelidonLangChain4jDiagramNodeKind.JAVA_AGENT, "FlavorClassifierAgent")
     assertNode(graph, HelidonLangChain4jDiagramNodeKind.JAVA_AGENT, "FlavorRouterAgent")
     assertNode(graph, HelidonLangChain4jDiagramNodeKind.JAVA_AGENT, "SummarizerAgent")
     assertNode(graph, HelidonLangChain4jDiagramNodeKind.JAVA_AGENT, "HelidonSeExpert")
     assertNode(graph, HelidonLangChain4jDiagramNodeKind.JAVA_AGENT, "HelidonMpExpert")
-    assertNode(graph, HelidonLangChain4jDiagramNodeKind.MODEL_CONFIG, "cheap-model")
-    assertNode(graph, HelidonLangChain4jDiagramNodeKind.MODEL_CONFIG, "expensive-model")
-    assertNode(graph, HelidonLangChain4jDiagramNodeKind.CONTENT_RETRIEVER_CONFIG, "se-content-retriever")
-    assertNode(graph, HelidonLangChain4jDiagramNodeKind.CONTENT_RETRIEVER_CONFIG, "mp-content-retriever")
-    assertNode(graph, HelidonLangChain4jDiagramNodeKind.JAVA_CLASS, "CliTools")
 
-    assertTrue(graph.nodes.filter { it.kind == HelidonLangChain4jDiagramNodeKind.JAVA_AGENT }
-                 .all { it.group == "HelidonExpertAgent (@SequenceAgent)" })
-    assertFalse("Agentic overview should not render raw provider config nodes by default",
-                graph.nodes.any { it.name == "open-ai" })
+    assertTrue("Agentic overview should only render agents and service entrypoints as graph nodes",
+               graph.nodes.all {
+                 it.kind == HelidonLangChain4jDiagramNodeKind.JAVA_AGENT ||
+                   it.kind == HelidonLangChain4jDiagramNodeKind.ENDPOINT
+               })
+    assertTrue("Agentic overview should not render a non-agent group box",
+               graph.nodes.all { it.group == null })
+    listOf("open-ai", "cheap-model", "expensive-model", "se-content-retriever", "mp-content-retriever", "CliTools")
+      .forEach { rawNode ->
+        assertFalse("Agentic overview should not render $rawNode as a graph node",
+                    graph.nodes.any { it.name == rawNode })
+      }
 
-    assertEdge(graph, "ChatBotEndpoint", "FlavorClassifierAgent", "question + previousSummary")
+    assertEdge(graph, "ChatBotEndpoint", "HelidonExpertAgent", "question + previousSummary")
+    assertEdge(graph, "HelidonExpertAgent", "FlavorClassifierAgent", "sequence")
     assertEdge(graph, "FlavorClassifierAgent", "FlavorRouterAgent", "1) flavor")
     assertEdge(graph, "FlavorRouterAgent", "HelidonSeExpert", "2a) if SE")
     assertEdge(graph, "FlavorRouterAgent", "HelidonMpExpert", "2b) if MP")
     assertEdge(graph, "FlavorRouterAgent", "SummarizerAgent", "3) summarize")
     assertEdge(graph, "HelidonSeExpert", "SummarizerAgent", "lastResponse")
     assertEdge(graph, "HelidonMpExpert", "SummarizerAgent", "lastResponse")
-    assertEdge(graph, "cheap-model", "FlavorClassifierAgent", "model", HelidonLangChain4jWorkflowEdgeKind.RESOURCE)
-    assertEdge(graph, "cheap-model", "SummarizerAgent", "model", HelidonLangChain4jWorkflowEdgeKind.RESOURCE)
-    assertEdge(graph, "expensive-model", "HelidonSeExpert", "model", HelidonLangChain4jWorkflowEdgeKind.RESOURCE)
-    assertEdge(graph, "se-content-retriever", "HelidonSeExpert", "retriever", HelidonLangChain4jWorkflowEdgeKind.RESOURCE)
-    assertEdge(graph, "CliTools", "HelidonSeExpert", "tools", HelidonLangChain4jWorkflowEdgeKind.RESOURCE)
+    assertFalse("Agentic metadata should replace resource edges",
+                graph.edges.any { it.kind == HelidonLangChain4jWorkflowEdgeKind.RESOURCE })
+
+    assertItem(graph, "ChatBotEndpoint", "input", "question, previousSummary")
+    assertItem(graph, "HelidonExpertAgent", "input", "question, previousSummary")
+    assertItem(graph, "HelidonExpertAgent", "output", "jsonResponse")
+    assertItem(graph, "FlavorClassifierAgent", "input", "question, previousSummary")
+    assertItem(graph, "FlavorClassifierAgent", "output", "flavor")
+    assertItem(graph, "FlavorClassifierAgent", "model", "cheap-model")
+    assertItem(graph, "FlavorRouterAgent", "input", "question, flavor")
+    assertItem(graph, "FlavorRouterAgent", "output", "lastResponse")
+    assertItem(graph, "HelidonSeExpert", "input", "question")
+    assertItem(graph, "HelidonSeExpert", "output", "lastResponse")
+    assertItem(graph, "HelidonSeExpert", "model", "expensive-model")
+    assertItem(graph, "HelidonSeExpert", "retriever", "se-content-retriever")
+    assertItem(graph, "HelidonSeExpert", "tools", "CliTools")
+    assertItem(graph, "SummarizerAgent", "input", "previousSummary, question, lastResponse")
+    assertItem(graph, "SummarizerAgent", "output", "nextSummary")
+    assertItem(graph, "SummarizerAgent", "model", "cheap-model")
   }
 
   private fun assertNode(graph: HelidonLangChain4jWorkflowGraph,
@@ -162,6 +181,19 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
                          kind: HelidonLangChain4jWorkflowEdgeKind = HelidonLangChain4jWorkflowEdgeKind.FLOW) {
     assertTrue("Expected edge $sourceName -[$label]-> $targetName, got ${graph.edges.map { "${it.source.name} -[${it.label}]-> ${it.target.name}" }}",
                graph.edges.any { it.source.name == sourceName && it.target.name == targetName && it.label == label && it.kind == kind })
+  }
+
+  private fun assertItem(graph: HelidonLangChain4jWorkflowGraph,
+                         nodeName: String,
+                         type: String,
+                         name: String) {
+    val node = graph.nodes.firstOrNull { it.name == nodeName }
+    if (node == null) {
+      fail("Expected node $nodeName, got ${graph.nodes.map { it.name }}")
+      return
+    }
+    assertTrue("Expected item $type '$name' on $nodeName, got ${node.items}",
+               node.items.any { it.type == type && it.name == name })
   }
 
   private fun addApplicationClasses() {

@@ -22,6 +22,7 @@ import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.actionSystem.LangDataKeys
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.graph.builder.NodeGroupDescriptor
 import com.intellij.openapi.util.ModificationTracker
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.pom.Navigatable
@@ -149,6 +150,7 @@ private class HelidonLangChain4jDiagramDataModel(
   private var graph = HelidonLangChain4jWorkflowGraphBuilder.build(seed)
   private var nodes = graph.nodes.associateWith { HelidonLangChain4jDiagramNode(it, diagramProvider) }.toMutableMap()
   private var edges = graph.edges.map { HelidonLangChain4jDiagramEdge(nodes.getValue(it.source), nodes.getValue(it.target), it) }.toMutableList()
+  private var groups = createGroups(graph.nodes)
 
   init {
     setOriginalElement(seed)
@@ -175,6 +177,12 @@ private class HelidonLangChain4jDiagramDataModel(
 
   override fun getEdges(): Collection<HelidonLangChain4jDiagramEdge> = edges
 
+  override fun getGroup(node: DiagramNode<HelidonLangChain4jDiagramElement>): NodeGroupDescriptor? {
+    return node.identifyingElement.group?.let { groups[it] }
+  }
+
+  override fun getGroupNodes(): Collection<NodeGroupDescriptor> = groups.values
+
   override fun removeEdge(edge: com.intellij.diagram.DiagramEdge<HelidonLangChain4jDiagramElement>) {
     edges.remove(edge)
   }
@@ -183,6 +191,7 @@ private class HelidonLangChain4jDiagramDataModel(
     graph = HelidonLangChain4jWorkflowGraphBuilder.build(seed)
     nodes = graph.nodes.associateWith { HelidonLangChain4jDiagramNode(it, diagramProvider) }.toMutableMap()
     edges = graph.edges.map { HelidonLangChain4jDiagramEdge(nodes.getValue(it.source), nodes.getValue(it.target), it) }.toMutableList()
+    groups = createGroups(graph.nodes)
   }
 
   override fun rebuild(element: HelidonLangChain4jDiagramElement) {
@@ -190,6 +199,30 @@ private class HelidonLangChain4jDiagramDataModel(
   }
 
   override fun dispose() {
+  }
+
+  private fun createGroups(elements: List<HelidonLangChain4jDiagramElement>): MutableMap<String, HelidonLangChain4jNodeGroupDescriptor> {
+    return elements
+      .mapNotNull { it.group }
+      .distinct()
+      .associateWith { HelidonLangChain4jNodeGroupDescriptor(it) }
+      .toMutableMap()
+  }
+}
+
+private class HelidonLangChain4jNodeGroupDescriptor(
+  private val name: String,
+) : NodeGroupDescriptor {
+  private var closed = false
+
+  override fun getGroupName(): String = name
+
+  override fun getParent(): NodeGroupDescriptor? = null
+
+  override fun isClosed(): Boolean = closed
+
+  override fun setClosed(closed: Boolean) {
+    this.closed = closed
   }
 }
 
@@ -223,7 +256,13 @@ private class HelidonLangChain4jDiagramEdge(
 ) : DiagramEdgeBase<HelidonLangChain4jDiagramElement>(
   source,
   target,
-  DiagramRelationshipInfoAdapter(edge.label, DiagramLineType.SOLID),
+  DiagramRelationshipInfoAdapter(edge.label,
+                                 if (edge.kind == HelidonLangChain4jWorkflowEdgeKind.RESOURCE) {
+                                   DiagramLineType.DASHED
+                                 }
+                                 else {
+                                   DiagramLineType.SOLID
+                                 }),
 ) {
   override fun getName(): String = edge.label
 
@@ -237,6 +276,7 @@ private class HelidonLangChain4jDiagramEdge(
 
 private fun iconFor(kind: HelidonLangChain4jDiagramNodeKind): Icon {
   return when (kind) {
+    HelidonLangChain4jDiagramNodeKind.ENDPOINT,
     HelidonLangChain4jDiagramNodeKind.ROOT -> HelidonIcons.Helidon
     HelidonLangChain4jDiagramNodeKind.JAVA_CHAT_MODEL,
     HelidonLangChain4jDiagramNodeKind.JAVA_STREAMING_CHAT_MODEL,

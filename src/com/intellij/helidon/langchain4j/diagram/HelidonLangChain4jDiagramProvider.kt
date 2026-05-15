@@ -43,20 +43,13 @@ internal class HelidonLangChain4jDiagramProvider : BaseDiagramProvider<HelidonLa
 
   override fun getActionName(isPopup: Boolean): String = "Helidon LangChain4j Workflow Diagram"
 
-  override fun getActionIcon(isPopup: Boolean): Icon = HelidonIcons.RobotGutter
+  override fun getActionIcon(isPopup: Boolean): Icon = HelidonIcons.Helidon
 
   override fun createDataModel(project: Project,
                                element: HelidonLangChain4jDiagramElement?,
                                file: VirtualFile?,
                                presentationModel: DiagramPresentationModel): DiagramDataModel<HelidonLangChain4jDiagramElement> {
-    val seed = element ?: HelidonLangChain4jDiagramElement(
-      id = "root:${project.name}",
-      name = "langchain4j",
-      kind = HelidonLangChain4jDiagramNodeKind.ROOT,
-      psiElement = null,
-      module = null,
-      includeTests = false,
-    )
+    val seed = element ?: error("Helidon LangChain4j workflow diagram requires a module-backed seed element")
     return HelidonLangChain4jDiagramDataModel(project, this, seed)
   }
 
@@ -70,7 +63,7 @@ internal class HelidonLangChain4jDiagramProvider : BaseDiagramProvider<HelidonLa
 internal class HelidonLangChain4jShowDiagramAction : ShowDiagram(), DumbAware {
   override fun getForcedProvider(): DiagramProvider<*> {
     return DiagramProvider.findByID<HelidonLangChain4jDiagramElement>(HELIDON_LANGCHAIN4J_DIAGRAM_ID)
-      ?: HelidonLangChain4jDiagramProvider()
+      ?: error("Diagram provider '$HELIDON_LANGCHAIN4J_DIAGRAM_ID' is not registered")
   }
 
   override fun update(event: AnActionEvent) {
@@ -78,7 +71,7 @@ internal class HelidonLangChain4jShowDiagramAction : ShowDiagram(), DumbAware {
     val element = provider.elementManager.findInDataContext(event.dataContext)
     event.presentation.isEnabledAndVisible = element != null
     event.presentation.text = "Helidon LangChain4j Workflow Diagram"
-    event.presentation.icon = HelidonIcons.RobotGutter
+    event.presentation.icon = HelidonIcons.Helidon
   }
 }
 
@@ -292,17 +285,15 @@ private class HelidonLangChain4jDiagramEdge(
 
 private fun iconFor(kind: HelidonLangChain4jDiagramNodeKind): Icon {
   return when (kind) {
-    HelidonLangChain4jDiagramNodeKind.ENDPOINT,
     HelidonLangChain4jDiagramNodeKind.JAVA_AGENT,
-    HelidonLangChain4jDiagramNodeKind.JAVA_SERVICE -> HelidonIcons.RobotGutter
+    HelidonLangChain4jDiagramNodeKind.JAVA_SERVICE,
+    HelidonLangChain4jDiagramNodeKind.SERVICE_CONFIG,
+    HelidonLangChain4jDiagramNodeKind.AGENT_CONFIG -> HelidonIcons.RobotGutter
     HelidonLangChain4jDiagramNodeKind.ROOT -> HelidonIcons.Helidon
     HelidonLangChain4jDiagramNodeKind.JAVA_CHAT_MODEL,
     HelidonLangChain4jDiagramNodeKind.JAVA_STREAMING_CHAT_MODEL,
-    HelidonLangChain4jDiagramNodeKind.JAVA_MODERATION_MODEL -> HelidonIcons.AiGutter
-    HelidonLangChain4jDiagramNodeKind.SERVICE_CONFIG,
-    HelidonLangChain4jDiagramNodeKind.AGENT_CONFIG,
     HelidonLangChain4jDiagramNodeKind.MODEL_CONFIG,
-    HelidonLangChain4jDiagramNodeKind.CONTENT_RETRIEVER_CONFIG -> HelidonIcons.RobotGutter
+    HelidonLangChain4jDiagramNodeKind.JAVA_MODERATION_MODEL -> HelidonIcons.AiGutter
     else -> HelidonIcons.HelidonGutter
   }
 }

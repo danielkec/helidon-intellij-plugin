@@ -2,6 +2,7 @@
 package com.intellij.helidon.langchain4j.diagram
 
 import com.intellij.helidon.HelidonHighlightingTestCase
+import com.intellij.helidon.HelidonIcons
 import com.intellij.helidon.config.HELIDON_APPLICATION_YAML
 import com.intellij.psi.PsiClass
 
@@ -9,7 +10,7 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
   fun testBuildsWorkflowGraphFromLangChain4jYamlAndAnnotations() {
     addLangChain4jStubs()
     addApplicationClasses()
-    val file = myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+    val file = myFixture.configureByText("application-dev.yaml", """
       langchain4j:
         services:
           assistant-service:
@@ -46,6 +47,7 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
 
     val seed = HelidonLangChain4jWorkflowGraphBuilder.seedFromPsiElement(file)!!
     val graph = HelidonLangChain4jWorkflowGraphBuilder.build(seed)
+    val resolvedAgent = HelidonLangChain4jWorkflowGraphBuilder.findElement(project, "java:AGENT:demo.HelidonAgent")
 
     assertNode(graph, HelidonLangChain4jDiagramNodeKind.SERVICE_CONFIG, "assistant-service")
     assertNode(graph, HelidonLangChain4jDiagramNodeKind.AGENT_CONFIG, "helidon-agent")
@@ -60,6 +62,8 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
     assertNode(graph, HelidonLangChain4jDiagramNodeKind.JAVA_TOOL_PROVIDER, "CliToolProvider")
     assertNode(graph, HelidonLangChain4jDiagramNodeKind.JAVA_CLASS, "CalendarTools")
     assertNode(graph, HelidonLangChain4jDiagramNodeKind.JAVA_CLASS, "InputGuardrail")
+    assertEquals(HelidonLangChain4jDiagramNodeKind.JAVA_AGENT, resolvedAgent?.kind)
+    assertEquals("HelidonAgent", resolvedAgent?.name)
 
     assertEdge(graph, "assistant-service", "assistant-model", "chat-model")
     assertEdge(graph, "assistant-service", "AssistantService", "declares")
@@ -96,6 +100,25 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
     assertEdge(graph, "helidon-agent", "HelidonAgent", "declares")
   }
 
+  fun testRobotIconIsLimitedToAgentsAndServices() {
+    val provider = HelidonLangChain4jDiagramProvider()
+    val elementManager = provider.elementManager
+
+    assertSame(HelidonIcons.Helidon, provider.getActionIcon(false))
+    assertSame(HelidonIcons.RobotGutter,
+               elementManager.getItemIcon(diagramElement(HelidonLangChain4jDiagramNodeKind.JAVA_AGENT), null, null))
+    assertSame(HelidonIcons.RobotGutter,
+               elementManager.getItemIcon(diagramElement(HelidonLangChain4jDiagramNodeKind.JAVA_SERVICE), null, null))
+    assertSame(HelidonIcons.RobotGutter,
+               elementManager.getItemIcon(diagramElement(HelidonLangChain4jDiagramNodeKind.AGENT_CONFIG), null, null))
+    assertSame(HelidonIcons.RobotGutter,
+               elementManager.getItemIcon(diagramElement(HelidonLangChain4jDiagramNodeKind.SERVICE_CONFIG), null, null))
+    assertSame(HelidonIcons.HelidonGutter,
+               elementManager.getItemIcon(diagramElement(HelidonLangChain4jDiagramNodeKind.ENDPOINT), null, null))
+    assertSame(HelidonIcons.AiGutter,
+               elementManager.getItemIcon(diagramElement(HelidonLangChain4jDiagramNodeKind.MODEL_CONFIG), null, null))
+  }
+
   fun testAgenticWorkflowUsesAgentBoxesAndMetadataRows() {
     addLangChain4jStubs()
     addAgenticStubs()
@@ -119,6 +142,7 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
     val graph = HelidonLangChain4jWorkflowGraphBuilder.build(seed)
 
     assertNode(graph, HelidonLangChain4jDiagramNodeKind.ENDPOINT, "ChatBotEndpoint")
+    assertNode(graph, HelidonLangChain4jDiagramNodeKind.ENDPOINT, "SummaryEndpoint")
     assertNode(graph, HelidonLangChain4jDiagramNodeKind.JAVA_AGENT, "HelidonExpertAgent")
     assertNode(graph, HelidonLangChain4jDiagramNodeKind.JAVA_AGENT, "FlavorClassifierAgent")
     assertNode(graph, HelidonLangChain4jDiagramNodeKind.JAVA_AGENT, "FlavorRouterAgent")
@@ -149,11 +173,12 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
     assertEdge(graph, "ChatBotEndpoint", "HelidonExpertAgent", "question + previousSummary")
     assertEdge(graph, "HelidonExpertAgent", "FlavorClassifierAgent", "sequence")
     assertEdge(graph, "FlavorClassifierAgent", "FlavorRouterAgent", "1) flavor")
-    assertEdge(graph, "FlavorRouterAgent", "HelidonSeExpert", "2a) if SE")
-    assertEdge(graph, "FlavorRouterAgent", "HelidonMpExpert", "2b) if MP")
-    assertEdge(graph, "FlavorRouterAgent", "SummarizerAgent", "3) summarize")
+    assertEdge(graph, "FlavorRouterAgent", "HelidonSeExpert", "2a) if se expert")
+    assertEdge(graph, "FlavorRouterAgent", "HelidonMpExpert", "2b) if mp expert")
+    assertEdge(graph, "FlavorRouterAgent", "SummarizerAgent", "3) summarizer")
     assertEdge(graph, "HelidonSeExpert", "SummarizerAgent", "lastResponse")
     assertEdge(graph, "HelidonMpExpert", "SummarizerAgent", "lastResponse")
+    assertEdge(graph, "SummaryEndpoint", "SummarizerAgent", "previousSummary + question + lastResponse")
     assertFalse("Agentic metadata should replace resource edges",
                 graph.edges.any { it.kind == HelidonLangChain4jWorkflowEdgeKind.RESOURCE })
 
@@ -173,6 +198,23 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
     assertItem(graph, "SummarizerAgent", "input", "previousSummary, question, lastResponse")
     assertItem(graph, "SummarizerAgent", "output", "nextSummary")
     assertItem(graph, "SummarizerAgent", "model", "cheap-model")
+  }
+
+  fun testAgenticWorkflowNumbersConditionalBranchesBySequencePosition() {
+    addLangChain4jStubs()
+    addAgenticStubs()
+    addSequenceStartingWithConditionalRouterClasses()
+    val file = myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      langchain4j:
+    """.trimIndent())
+
+    val seed = HelidonLangChain4jWorkflowGraphBuilder.seedFromPsiElement(file)!!
+    val graph = HelidonLangChain4jWorkflowGraphBuilder.build(seed)
+
+    assertEdge(graph, "FastSequenceAgent", "FlavorRouterAgent", "sequence")
+    assertEdge(graph, "FlavorRouterAgent", "HelidonSeExpert", "1a) if se expert")
+    assertEdge(graph, "FlavorRouterAgent", "HelidonMpExpert", "1b) if mp expert")
+    assertEdge(graph, "FlavorRouterAgent", "SummarizerAgent", "2) summarizer")
   }
 
   private fun assertNode(graph: HelidonLangChain4jWorkflowGraph,
@@ -214,6 +256,17 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
     }
     assertTrue("Expected item $type '$name' on $nodeName, got ${node.items}",
                node.items.any { it.type == type && it.name == name })
+  }
+
+  private fun diagramElement(kind: HelidonLangChain4jDiagramNodeKind): HelidonLangChain4jDiagramElement {
+    return HelidonLangChain4jDiagramElement(
+      id = "test:${kind.name}",
+      name = kind.presentableName,
+      kind = kind,
+      psiElement = null,
+      module = null,
+      includeTests = false,
+    )
   }
 
   private fun addApplicationClasses() {
@@ -394,6 +447,7 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
 
       import demo.HelidonExpertAgent;
       import io.helidon.webserver.http.RestServer;
+      import java.util.function.Supplier;
 
       @RestServer.Endpoint
       class ChatBotEndpoint {
@@ -403,11 +457,105 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
           this.agent = agent;
         }
       }
+
+      @RestServer.Endpoint
+      class SummaryEndpoint {
+        private final Supplier<SummarizerAgent> agent;
+
+        SummaryEndpoint(Supplier<SummarizerAgent> agent) {
+          this.agent = agent;
+        }
+      }
     """.trimIndent())
     myFixture.addClass("""
       package demo.tools;
 
       public class CliTools {
+      }
+    """.trimIndent())
+  }
+
+  private fun addSequenceStartingWithConditionalRouterClasses() {
+    myFixture.addClass("""
+      package demo;
+
+      import io.helidon.integrations.langchain4j.Ai;
+      import dev.langchain4j.agentic.declarative.SequenceAgent;
+      import dev.langchain4j.service.V;
+
+      @Ai.Agent("fast-sequence")
+      interface FastSequenceAgent {
+        @SequenceAgent(outputKey = "jsonResponse", subAgents = {
+          FlavorRouterAgent.class,
+          SummarizerAgent.class
+        })
+        String chat(@V("question") String question, @V("flavor") String flavor);
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package demo;
+
+      import io.helidon.integrations.langchain4j.Ai;
+      import dev.langchain4j.agentic.declarative.ActivationCondition;
+      import dev.langchain4j.agentic.declarative.ConditionalAgent;
+      import dev.langchain4j.service.V;
+
+      @Ai.Agent("flavor-router")
+      interface FlavorRouterAgent {
+        @ConditionalAgent(subAgents = {
+          HelidonMpExpert.class,
+          HelidonSeExpert.class
+        })
+        String askExpert(@V("question") String question);
+
+        @ActivationCondition(HelidonSeExpert.class)
+        static boolean activateSeExpert(@V("flavor") String flavor) {
+          return true;
+        }
+
+        @ActivationCondition(HelidonMpExpert.class)
+        static boolean activateMpExpert(@V("flavor") String flavor) {
+          return true;
+        }
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package demo;
+
+      import io.helidon.integrations.langchain4j.Ai;
+      import dev.langchain4j.agentic.Agent;
+      import dev.langchain4j.service.V;
+
+      @Ai.Agent("helidon-se-expert")
+      interface HelidonSeExpert {
+        @Agent(value = "A Helidon SE expert", outputKey = "lastResponse")
+        String askExpert(@V("question") String question);
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package demo;
+
+      import io.helidon.integrations.langchain4j.Ai;
+      import dev.langchain4j.agentic.Agent;
+      import dev.langchain4j.service.V;
+
+      @Ai.Agent("helidon-mp-expert")
+      interface HelidonMpExpert {
+        @Agent(value = "A Helidon MP expert", outputKey = "lastResponse")
+        String askExpert(@V("question") String question);
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package demo;
+
+      import io.helidon.integrations.langchain4j.Ai;
+      import dev.langchain4j.agentic.Agent;
+      import dev.langchain4j.service.V;
+
+      @Ai.Agent("summarizer")
+      interface SummarizerAgent {
+        @Agent(value = "A Helidon expert summarizer", outputKey = "nextSummary")
+        String chat(@V("question") String question, @V("lastResponse") String lastResponse);
       }
     """.trimIndent())
   }

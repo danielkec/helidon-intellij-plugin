@@ -2,6 +2,7 @@
 package com.intellij.helidon.langchain4j.diagram
 
 import com.intellij.helidon.constants.HelidonConstants
+import com.intellij.helidon.config.HelidonConfigFileContributor
 import com.intellij.helidon.config.yaml.HelidonConfigYamlAccessor
 import com.intellij.helidon.config.yaml.getQualifiedConfigKeyName
 import com.intellij.openapi.module.Module
@@ -16,12 +17,14 @@ import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiClassObjectAccessExpression
 import com.intellij.psi.PsiClassType
 import com.intellij.psi.PsiElement
+import com.intellij.psi.PsiJavaCodeReferenceElement
 import com.intellij.psi.PsiLiteralExpression
 import com.intellij.psi.PsiManager
 import com.intellij.psi.PsiMethod
 import com.intellij.psi.PsiModifierListOwner
 import com.intellij.psi.PsiType
-import com.intellij.psi.search.FilenameIndex
+import com.intellij.psi.PsiWildcardType
+import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.PsiShortNamesCache
 import com.intellij.psi.search.searches.AnnotatedElementsSearch
 import com.intellij.psi.util.PsiTreeUtil
@@ -225,17 +228,12 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
     HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_TOOL_PROVIDER to setOf("tool-provider"),
   )
 
-  private val MCP_CLIENT_ANNOTATIONS = setOf(
-    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_MCP_CLIENTS,
-    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_MCP_CLIENTS,
-  )
-
   fun seedFromPsiElement(element: PsiElement): HelidonLangChain4jDiagramElement? {
     val module = ModuleUtilCore.findModuleForPsiElement(element) ?: return null
     val includeTests = includeTestSources(element, module)
 
     val psiClass = PsiTreeUtil.getParentOfType(element, PsiClass::class.java, false)
-    val component = psiClass?.let { componentFromClass(it, module, includeTests) }
+    val component = psiClass?.let(::componentFromClass)
     if (component != null) {
       return component.toDiagramElement(module, includeTests)
     }
@@ -257,11 +255,48 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
   }
 
   fun findElement(project: Project, id: String): HelidonLangChain4jDiagramElement? {
-    for (module in ModuleManager.getInstance(project).modules) {
-      val root = rootElement(module, includeTests = true, psiElement = null)
-      val graph = build(root)
-      graph.nodes.firstOrNull { it.id == id }?.let { return it }
+    if (id.startsWith("root:")) {
+      val moduleName = id.substringAfter("root:")
+      return ModuleManager.getInstance(project).findModuleByName(moduleName)
+        ?.let { rootElement(it, includeTests = true, psiElement = null) }
     }
+
+    if (id.startsWith("java:")) {
+      val kindName = id.substringAfter("java:").substringBefore(':')
+      val qualifiedName = id.substringAfter("java:$kindName:")
+      val kind = ComponentKind.entries.firstOrNull { it.name == kindName } ?: return null
+      val psiClass = findClass(project, qualifiedName) ?: return null
+      val module = ModuleUtilCore.findModuleForPsiElement(psiClass)
+      return Component(kind, qualifiedName, psiClass).toDiagramElement(module, includeTests = true)
+    }
+
+    if (id.startsWith("java-class:")) {
+      val qualifiedName = id.substringAfter("java-class:")
+      val psiClass = findClass(project, qualifiedName) ?: return null
+      val module = ModuleUtilCore.findModuleForPsiElement(psiClass)
+      return javaClassElement(psiClass, module, includeTests = true)
+    }
+
+    if (id.startsWith("endpoint:")) {
+      val qualifiedName = id.substringAfter("endpoint:")
+      val psiClass = findClass(project, qualifiedName) ?: return null
+      val module = ModuleUtilCore.findModuleForPsiElement(psiClass)
+      return endpointElement(psiClass, module, includeTests = true, inputs = emptyList())
+    }
+
+    if (id.startsWith("config:")) {
+      val tokens = id.split(':', limit = 3)
+      if (tokens.size != 3) return null
+      val section = tokens[1]
+      val runtimeKey = tokens[2]
+      val kind = CONFIG_NODE_KINDS[section] ?: return null
+      for (module in ModuleManager.getInstance(project).modules) {
+        findConfigEntry(module, includeTests = true, section, runtimeKey)?.let { entry ->
+          return configElement(section, runtimeKey, entry.keyText, kind, entry, module, includeTests = true)
+        }
+      }
+    }
+
     return null
   }
 
@@ -290,7 +325,6 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
     private val edges = LinkedHashSet<GraphEdge>()
     private val configNodes = LinkedHashMap<Pair<String, String>, HelidonLangChain4jDiagramElement>()
     private val componentsByKindAndKey = LinkedHashMap<Pair<ComponentKind, String>, MutableList<Component>>()
-    private var agenticConditionalWorkflows = emptyMap<PsiClass, ConditionalWorkflow>()
 
     fun build(): HelidonLangChain4jWorkflowGraph {
       addNode(seed)
@@ -334,19 +368,18 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
         .associateBy { it.target }
       val sequenceWorkflows = componentsByClass.keys.mapNotNull(::sequenceWorkflow)
       val conditionalWorkflows = componentsByClass.keys.mapNotNull(::conditionalWorkflow).associateBy { it.agent }
-      agenticConditionalWorkflows = conditionalWorkflows
 
       for (workflow in sequenceWorkflows) {
         val owner = componentsByClass[workflow.agent]
         val sequenceAgents = workflow.subAgents.mapNotNull { componentsByClass[it] }
         val conditionalAgents = sequenceAgents.flatMap { component ->
-          conditionalWorkflows[component.target]?.orderedSubAgents.orEmpty()
+          conditionalWorkflows[component.target]?.orderedSubAgents.orEmpty().map { it.agent }
         }
         val workflowAgents = (listOfNotNull(owner) + sequenceAgents + conditionalAgents.mapNotNull { componentsByClass[it] })
           .distinctBy { it.target }
 
-        workflowAgents.forEach { addAgentNode(it) }
-        addEndpointEdges(workflow, owner, sequenceAgents.firstOrNull())
+        workflowAgents.forEach { addAgentNode(it, conditionalWorkflows) }
+        addEndpointEdges(workflow, workflowAgents, owner, sequenceAgents.firstOrNull(), conditionalWorkflows)
         addSequenceEdges(workflow, owner, componentsByClass, conditionalWorkflows)
       }
 
@@ -357,12 +390,22 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
       return toGraph()
     }
 
-    private fun addEndpointEdges(workflow: SequenceWorkflow, owner: Component?, firstComponent: Component?) {
-      val targetNode = addAgentNode(owner ?: firstComponent ?: return)
-      val label = workflow.inputKeys.takeIf { it.isNotEmpty() }?.joinToString(" + ") ?: "input"
-
-      for (endpoint in endpointClassesReferencing(workflow.agent)) {
-        val endpointNode = endpointElement(endpoint, workflow.inputKeys)
+    private fun addEndpointEdges(workflow: SequenceWorkflow,
+                                 workflowAgents: List<Component>,
+                                 owner: Component?,
+                                 firstComponent: Component?,
+                                 conditionalWorkflows: Map<PsiClass, ConditionalWorkflow>) {
+      val fallbackComponent = owner ?: firstComponent ?: return
+      val workflowAgentClasses = workflowAgents.map { it.target }.ifEmpty { listOf(fallbackComponent.target) }
+      val endpointTargets = endpointClassesReferencing(workflowAgentClasses).ifEmpty {
+        emptyList()
+      }
+      for ((endpoint, targetAgent) in endpointTargets) {
+        val targetComponent = workflowAgents.firstOrNull { it.target == targetAgent } ?: fallbackComponent
+        val targetNode = addAgentNode(targetComponent, conditionalWorkflows)
+        val inputs = if (targetAgent == workflow.agent) workflow.inputKeys else agentInputKeys(targetAgent)
+        val label = inputs.takeIf { it.isNotEmpty() }?.joinToString(" + ") ?: "input"
+        val endpointNode = endpointElement(endpoint, module, includeTests, inputs)
         addNode(endpointNode)
         addEdge(endpointNode, targetNode, label, endpoint)
       }
@@ -375,40 +418,43 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
       val subAgentComponents = workflow.subAgents.mapNotNull { componentsByClass[it] }
       val first = subAgentComponents.firstOrNull()
       if (owner != null && first != null) {
-        addEdge(addAgentNode(owner), addAgentNode(first), "sequence", workflow.annotation)
+        addEdge(addAgentNode(owner, conditionalWorkflows), addAgentNode(first, conditionalWorkflows), "sequence", workflow.annotation)
       }
       for ((index, component) in subAgentComponents.withIndex()) {
-        val source = addAgentNode(component)
+        val source = addAgentNode(component, conditionalWorkflows)
         val next = subAgentComponents.getOrNull(index + 1)
         val conditional = conditionalWorkflows[component.target]
         if (conditional != null) {
-          addConditionalEdges(source, conditional, componentsByClass, next)
+          addConditionalEdges(source, conditional, index + 1, componentsByClass, next, conditionalWorkflows)
         }
         if (next != null) {
           val label = sequenceEdgeLabel(index, component.target, next.target, conditional != null)
-          addEdge(source, addAgentNode(next), label, workflow.annotation)
+          addEdge(source, addAgentNode(next, conditionalWorkflows), label, workflow.annotation)
         }
       }
     }
 
     private fun addConditionalEdges(source: HelidonLangChain4jDiagramElement,
                                     workflow: ConditionalWorkflow,
+                                    sequenceStep: Int,
                                     componentsByClass: Map<PsiClass, Component>,
-                                    nextSequenceComponent: Component?) {
+                                    nextSequenceComponent: Component?,
+                                    conditionalWorkflows: Map<PsiClass, ConditionalWorkflow>) {
       for ((index, agentClass) in workflow.orderedSubAgents.withIndex()) {
-        val component = componentsByClass[agentClass] ?: continue
-        val target = addAgentNode(component)
-        addEdge(source, target, conditionalEdgeLabel(index, agentClass), workflow.annotation)
+        val component = componentsByClass[agentClass.agent] ?: continue
+        val target = addAgentNode(component, conditionalWorkflows)
+        addEdge(source, target, conditionalEdgeLabel(sequenceStep, index, agentClass), workflow.annotation)
 
         if (nextSequenceComponent != null) {
-          val outputKey = agentOutputKey(agentClass) ?: "response"
-          addEdge(target, addAgentNode(nextSequenceComponent), outputKey, agentClass)
+          val outputKey = agentOutputKey(agentClass.agent) ?: "response"
+          addEdge(target, addAgentNode(nextSequenceComponent, conditionalWorkflows), outputKey, agentClass.conditionMethod ?: agentClass.agent)
         }
       }
     }
 
-    private fun addAgentNode(component: Component): HelidonLangChain4jDiagramElement {
-      return addNode(component.toDiagramElement(module, includeTests, items = agentMetadataItems(component.target)))
+    private fun addAgentNode(component: Component,
+                             conditionalWorkflows: Map<PsiClass, ConditionalWorkflow> = emptyMap()): HelidonLangChain4jDiagramElement {
+      return addNode(component.toDiagramElement(module, includeTests, items = agentMetadataItems(component.target, conditionalWorkflows)))
     }
 
     private fun sequenceWorkflow(agent: PsiClass): SequenceWorkflow? {
@@ -427,46 +473,58 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
         val annotation = method.annotation(CONDITIONAL_AGENT) ?: continue
         val subAgents = classValues(annotation, SUB_AGENTS_ATTRIBUTE)
         if (subAgents.isNotEmpty()) {
-          val activationOrder = activationConditionTargets(agent)
-          val ordered = (activationOrder + subAgents).distinct()
+          val activationOrder = activationConditionBranches(agent)
+          val orderedTargets = (activationOrder.map { it.agent } + subAgents).distinct()
             .filter { it in subAgents }
+          val branchesByTarget = activationOrder.associateBy { it.agent }
+          val ordered = orderedTargets.map { target ->
+            branchesByTarget[target] ?: ConditionalBranch(target, null)
+          }
           return ConditionalWorkflow(agent, annotation, ordered)
         }
       }
       return null
     }
 
-    private fun endpointClassesReferencing(agent: PsiClass): List<PsiClass> {
+    private fun endpointClassesReferencing(agents: List<PsiClass>): List<Pair<PsiClass, PsiClass>> {
       val endpointAnnotation = JavaPsiFacade.getInstance(module.project)
         .findClass(HelidonConstants.REST_SERVER_ENDPOINT, module.getModuleWithDependenciesAndLibrariesScope(includeTests))
         ?: return emptyList()
+      val agentSet = agents.toSet()
       return AnnotatedElementsSearch.searchPsiClasses(endpointAnnotation, module.getModuleWithDependenciesAndLibrariesScope(includeTests))
-        .filter { endpoint -> endpoint.referencesClass(agent) }
+        .flatMap { endpoint ->
+          val referencedClasses = endpoint.referencedClasses()
+          agentSet.asSequence()
+            .filter { agent -> agent in referencedClasses }
+            .map { agent -> endpoint to agent }
+            .asIterable()
+        }
         .toList()
     }
 
-    private fun PsiClass.referencesClass(target: PsiClass): Boolean {
-      fields.any { field -> field.type.resolvesTo(target) }.let { if (it) return true }
-      methods.any { method -> method.returnType.resolvesTo(target) || method.parameterList.parameters.any { it.type.resolvesTo(target) } }
-        .let { if (it) return true }
-      constructors.any { constructor -> constructor.parameterList.parameters.any { it.type.resolvesTo(target) } }
-        .let { if (it) return true }
-      return false
+    private fun PsiClass.referencedClasses(): Set<PsiClass> {
+      val result = LinkedHashSet<PsiClass>()
+      fields.forEach { field -> field.type.collectResolvedClasses(result) }
+      methods.forEach { method ->
+        method.returnType.collectResolvedClasses(result)
+        method.parameterList.parameters.forEach { parameter -> parameter.type.collectResolvedClasses(result) }
+      }
+      constructors.forEach { constructor ->
+        constructor.parameterList.parameters.forEach { parameter -> parameter.type.collectResolvedClasses(result) }
+      }
+      PsiTreeUtil.processElements(this) { element ->
+        (element as? PsiJavaCodeReferenceElement)?.resolve()?.let { resolved ->
+          if (resolved is PsiClass) {
+            result.add(resolved)
+          }
+        }
+        true
+      }
+      return result
     }
 
     private fun endpointElement(endpoint: PsiClass, inputs: List<String>): HelidonLangChain4jDiagramElement {
-      val qualifiedName = endpoint.qualifiedName ?: endpoint.name ?: "Endpoint"
-      return HelidonLangChain4jDiagramElement(
-        id = "endpoint:$qualifiedName",
-        name = endpoint.name ?: qualifiedName,
-        kind = HelidonLangChain4jDiagramNodeKind.ENDPOINT,
-        psiElement = endpoint,
-        module = module,
-        includeTests = includeTests,
-        items = inputs.takeIf { it.isNotEmpty() }
-          ?.let { listOf(HelidonLangChain4jDiagramItem(it.joinToString(", "), "input")) }
-          ?: emptyList(),
-      )
+      return endpointElement(endpoint, module, includeTests, inputs)
     }
 
     private fun sequenceEdgeLabel(index: Int,
@@ -481,9 +539,9 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
       return "$step) ${targetAgent.actionName()}"
     }
 
-    private fun conditionalEdgeLabel(index: Int, agentClass: PsiClass): String {
+    private fun conditionalEdgeLabel(sequenceStep: Int, index: Int, branch: ConditionalBranch): String {
       val suffix = ('a'.code + index).toChar()
-      return "2$suffix) if ${agentClass.conditionName()}"
+      return "$sequenceStep$suffix) if ${branch.conditionLabel()}"
     }
 
     private fun agentOutputKey(agentClass: PsiClass): String? {
@@ -499,19 +557,22 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
       }
     }
 
-    private fun activationConditionTargets(agentClass: PsiClass): List<PsiClass> {
+    private fun activationConditionBranches(agentClass: PsiClass): List<ConditionalBranch> {
       return agentClass.methods.mapNotNull { method ->
-        method.annotation(ACTIVATION_CONDITION)?.let { classValues(it, VALUE_ATTRIBUTE).firstOrNull() }
+        method.annotation(ACTIVATION_CONDITION)?.let { annotation ->
+          classValues(annotation, VALUE_ATTRIBUTE).firstOrNull()?.let { ConditionalBranch(it, method) }
+        }
       }
     }
 
-    private fun agentMetadataItems(agentClass: PsiClass): List<HelidonLangChain4jDiagramItem> {
+    private fun agentMetadataItems(agentClass: PsiClass,
+                                   conditionalWorkflows: Map<PsiClass, ConditionalWorkflow>): List<HelidonLangChain4jDiagramItem> {
       val items = ArrayList<HelidonLangChain4jDiagramItem>()
       val inputs = agentInputKeys(agentClass)
       if (inputs.isNotEmpty()) {
         items.add(HelidonLangChain4jDiagramItem(inputs.joinToString(", "), "input"))
       }
-      val outputs = agentOutputKeys(agentClass)
+      val outputs = agentOutputKeys(agentClass, conditionalWorkflows)
       if (outputs.isNotEmpty()) {
         items.add(HelidonLangChain4jDiagramItem(outputs.joinToString(", "), "output"))
       }
@@ -527,14 +588,16 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
       return inputs.toList()
     }
 
-    private fun agentOutputKeys(agentClass: PsiClass): List<String> {
+    private fun agentOutputKeys(agentClass: PsiClass,
+                                conditionalWorkflows: Map<PsiClass, ConditionalWorkflow>): List<String> {
       val outputs = LinkedHashSet<String>()
       agentOutputKey(agentClass)?.let(outputs::add)
       for (method in agentClass.methods) {
         method.annotation(SEQUENCE_AGENT)?.stringAttribute(OUTPUT_KEY_ATTRIBUTE)?.takeIf { it.isNotBlank() }?.let(outputs::add)
       }
-      agenticConditionalWorkflows[agentClass]?.orderedSubAgents
+      conditionalWorkflows[agentClass]?.orderedSubAgents
         .orEmpty()
+        .map { it.agent }
         .mapNotNull(::agentOutputKey)
         .forEach(outputs::add)
       return outputs.toList()
@@ -697,13 +760,6 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
               }
             }
           }
-          if (annotationName in MCP_CLIENT_ANNOTATIONS) {
-            values.forEach { value ->
-              configNodes[MCP_CLIENTS to value]?.let { target ->
-                addEdge(source, target, annotation.shortName(), annotation)
-              }
-            }
-          }
           ANNOTATION_CONFIG_VALUE_KEYS[annotationName]?.let { keyNames ->
             values.forEach { value ->
               keyNames.forEach { keyName ->
@@ -804,20 +860,7 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
                               sectionKey: String,
                               kind: HelidonLangChain4jDiagramNodeKind,
                               psiElement: YAMLKeyValue): HelidonLangChain4jDiagramElement {
-      val displayName = if (runtimeKey == sectionKey) runtimeKey else "$runtimeKey ($sectionKey)"
-      return HelidonLangChain4jDiagramElement(
-        id = "config:$section:$runtimeKey",
-        name = displayName,
-        kind = kind,
-        psiElement = psiElement,
-        module = module,
-        includeTests = includeTests,
-      )
-    }
-
-    private fun mcpClientRuntimeKey(entry: YAMLKeyValue): String {
-      val explicitKey = ((entry.value as? YAMLMapping)?.getKeyValueByKey("key")?.value as? YAMLScalar)?.textValue
-      return explicitKey?.takeIf { it.isNotBlank() } ?: entry.keyText
+      return configElement(section, runtimeKey, sectionKey, kind, psiElement, module, includeTests)
     }
 
     private fun HelidonLangChain4jDiagramElement.copyWithPsi(psiElement: PsiElement): HelidonLangChain4jDiagramElement {
@@ -826,10 +869,9 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
   }
 
   private fun applicationYamlFiles(module: Module, includeTests: Boolean): List<YAMLFile> {
-    val scope = module.getModuleWithDependenciesAndLibrariesScope(includeTests)
     val psiManager = PsiManager.getInstance(module.project)
-    return listOf("application.yaml", "application.yml")
-      .flatMap { fileName -> FilenameIndex.getVirtualFilesByName(fileName, scope) }
+    return HelidonConfigFileContributor.findConfigFiles(module, includeTests)
+      .map { it.first }
       .mapNotNull { psiManager.findFile(it) as? YAMLFile }
       .distinct()
   }
@@ -857,10 +899,16 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
     return result.toList()
   }
 
-  private fun componentFromClass(psiClass: PsiClass,
-                                 module: Module,
-                                 includeTests: Boolean): Component? {
-    return collectComponents(module, includeTests).firstOrNull { it.target == psiClass }
+  private fun componentFromClass(psiClass: PsiClass): Component? {
+    for ((kind, annotationNames) in ANNOTATION_KINDS) {
+      for (annotationName in annotationNames) {
+        val annotation = findAnnotation(psiClass, annotationName) ?: continue
+        val values = annotationValues(annotation).filter { it.isNotBlank() }
+        val key = (if (values.isEmpty()) fallbackKeys(kind, psiClass) else values).firstOrNull { it.isNotBlank() } ?: continue
+        return Component(kind, key, psiClass)
+      }
+    }
+    return null
   }
 
   private fun findAnnotation(owner: PsiModifierListOwner, annotationName: String): PsiAnnotation? {
@@ -937,22 +985,121 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
     return methods.any { method -> method.annotation(SEQUENCE_AGENT) != null || method.annotation(CONDITIONAL_AGENT) != null }
   }
 
-  private fun PsiType?.resolvesTo(target: PsiClass): Boolean {
-    return ((this as? PsiClassType)?.resolve()) == target
+  private fun PsiType?.collectResolvedClasses(result: MutableSet<PsiClass>) {
+    when (this) {
+      is PsiClassType -> {
+        resolve()?.let(result::add)
+        parameters.forEach { parameter -> parameter.collectResolvedClasses(result) }
+      }
+      is PsiWildcardType -> {
+        extendsBound.collectResolvedClasses(result)
+        superBound.collectResolvedClasses(result)
+      }
+    }
   }
 
   private fun PsiClass.actionName(): String {
     val simpleName = name ?: qualifiedName?.substringAfterLast('.') ?: "agent"
-    if (simpleName.endsWith("SummarizerAgent")) return "summarize"
     return simpleName
       .removeSuffix("Agent")
       .replaceFirstChar { it.lowercase() }
   }
 
-  private fun PsiClass.conditionName(): String {
-    val simpleName = name ?: qualifiedName?.substringAfterLast('.') ?: "agent"
-    val core = simpleName.removePrefix("Helidon").removeSuffix("Expert").removeSuffix("Agent")
-    return core.replace(Regex("([a-z])([A-Z])"), "$1 $2").uppercase()
+  private fun ConditionalBranch.conditionLabel(): String {
+    return conditionMethod?.name?.let(::conditionMethodLabel)?.takeIf { it.isNotBlank() }
+      ?: agent.actionName()
+  }
+
+  private fun conditionMethodLabel(methodName: String): String {
+    val label = methodName
+      .removePrefix("activate")
+      .removePrefix("is")
+      .removePrefix("should")
+      .removePrefix("has")
+      .replace(Regex("([a-z])([A-Z])"), "$1 $2")
+      .replace(Regex("([A-Z]+)([A-Z][a-z])"), "$1 $2")
+      .trim()
+    return label.lowercase()
+  }
+
+  private fun findClass(project: Project, qualifiedName: String): PsiClass? {
+    return JavaPsiFacade.getInstance(project).findClass(qualifiedName, GlobalSearchScope.allScope(project))
+  }
+
+  private fun findConfigEntry(module: Module,
+                              includeTests: Boolean,
+                              section: String,
+                              runtimeKey: String): YAMLKeyValue? {
+    for (file in applicationYamlFiles(module, includeTests)) {
+      for (document in file.documents) {
+        val root = HelidonConfigYamlAccessor(document).findExistingKey(ROOT) ?: continue
+        val sectionKey = (root.value as? YAMLMapping)?.getKeyValueByKey(section) ?: continue
+        val entries = (sectionKey.value as? YAMLMapping)?.keyValues ?: continue
+        for (entry in entries) {
+          val key = entry.keyText.takeIf { it.isNotBlank() } ?: continue
+          val entryRuntimeKey = if (section == MCP_CLIENTS) mcpClientRuntimeKey(entry) else key
+          if (entryRuntimeKey == runtimeKey) {
+            return entry
+          }
+        }
+      }
+    }
+    return null
+  }
+
+  private fun javaClassElement(psiClass: PsiClass,
+                               module: Module?,
+                               includeTests: Boolean): HelidonLangChain4jDiagramElement {
+    val qualifiedName = psiClass.qualifiedName ?: psiClass.name ?: "JavaClass"
+    return HelidonLangChain4jDiagramElement(
+      id = "java-class:$qualifiedName",
+      name = psiClass.name ?: qualifiedName,
+      kind = HelidonLangChain4jDiagramNodeKind.JAVA_CLASS,
+      psiElement = psiClass,
+      module = module,
+      includeTests = includeTests,
+    )
+  }
+
+  private fun endpointElement(endpoint: PsiClass,
+                              module: Module?,
+                              includeTests: Boolean,
+                              inputs: List<String>): HelidonLangChain4jDiagramElement {
+    val qualifiedName = endpoint.qualifiedName ?: endpoint.name ?: "Endpoint"
+    return HelidonLangChain4jDiagramElement(
+      id = "endpoint:$qualifiedName",
+      name = endpoint.name ?: qualifiedName,
+      kind = HelidonLangChain4jDiagramNodeKind.ENDPOINT,
+      psiElement = endpoint,
+      module = module,
+      includeTests = includeTests,
+      items = inputs.takeIf { it.isNotEmpty() }
+        ?.let { listOf(HelidonLangChain4jDiagramItem(it.joinToString(", "), "input")) }
+        ?: emptyList(),
+    )
+  }
+
+  private fun configElement(section: String,
+                            runtimeKey: String,
+                            sectionKey: String,
+                            kind: HelidonLangChain4jDiagramNodeKind,
+                            psiElement: YAMLKeyValue,
+                            module: Module,
+                            includeTests: Boolean): HelidonLangChain4jDiagramElement {
+    val displayName = if (runtimeKey == sectionKey) runtimeKey else "$runtimeKey ($sectionKey)"
+    return HelidonLangChain4jDiagramElement(
+      id = "config:$section:$runtimeKey",
+      name = displayName,
+      kind = kind,
+      psiElement = psiElement,
+      module = module,
+      includeTests = includeTests,
+    )
+  }
+
+  private fun mcpClientRuntimeKey(entry: YAMLKeyValue): String {
+    val explicitKey = ((entry.value as? YAMLMapping)?.getKeyValueByKey("key")?.value as? YAMLScalar)?.textValue
+    return explicitKey?.takeIf { it.isNotBlank() } ?: entry.keyText
   }
 
   private fun includeTestSources(context: PsiElement, module: Module): Boolean {
@@ -960,7 +1107,7 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
     return ModuleRootManager.getInstance(module).fileIndex.isInTestSourceContent(virtualFile)
   }
 
-  private fun Component.toDiagramElement(module: Module,
+  private fun Component.toDiagramElement(module: Module?,
                                          includeTests: Boolean,
                                          group: String? = null,
                                          items: List<HelidonLangChain4jDiagramItem> = emptyList()): HelidonLangChain4jDiagramElement {
@@ -987,7 +1134,12 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
   private data class ConditionalWorkflow(
     val agent: PsiClass,
     val annotation: PsiAnnotation,
-    val orderedSubAgents: List<PsiClass>,
+    val orderedSubAgents: List<ConditionalBranch>,
+  )
+
+  private data class ConditionalBranch(
+    val agent: PsiClass,
+    val conditionMethod: PsiMethod?,
   )
 
   private data class Component(

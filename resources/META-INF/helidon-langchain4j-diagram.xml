@@ -1,0 +1,16 @@
+<!-- Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.-->
+<idea-plugin package="com.intellij.helidon">
+  <extensions defaultExtensionNs="com.intellij">
+    <diagram.Provider implementation="com.intellij.helidon.langchain4j.diagram.HelidonLangChain4jDiagramProvider"/>
+  </extensions>
+
+  <actions>
+    <action id="Helidon.ShowLangChain4jWorkflowDiagram"
+            class="com.intellij.helidon.langchain4j.diagram.HelidonLangChain4jShowDiagramAction"
+            text="Helidon LangChain4j Workflow Diagram"
+            description="Show the Helidon LangChain4j agentic workflow diagram">
+      <add-to-group group-id="UML.EditorGroup" anchor="last"/>
+      <add-to-group group-id="UML.Group" anchor="last"/>
+    </action>
+  </actions>
+</idea-plugin>

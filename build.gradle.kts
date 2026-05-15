@@ -31,6 +31,7 @@ dependencies {
     bundledPlugin("org.jetbrains.idea.maven")
     bundledPlugin("org.jetbrains.plugins.yaml")
     bundledPlugin("com.intellij.microservices.jvm")
+    bundledPlugin("com.intellij.diagram")
 
     testBundledPlugin("com.intellij.java-i18n")
     testBundledPlugin("com.intellij.javaee")

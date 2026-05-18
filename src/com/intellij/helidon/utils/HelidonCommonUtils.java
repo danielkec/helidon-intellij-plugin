@@ -239,43 +239,72 @@ public final class HelidonCommonUtils {
                                                 @NotNull Collection<? super PsiType> result) {
     if (sourcePsi == null) return;
     if (sourcePsi instanceof PsiExpression) {
-      collectTopLevelServiceTypes((PsiExpression)sourcePsi, project, result);
+      collectTopLevelServiceTypes((PsiExpression)sourcePsi, project, result, new HashSet<>());
     }
   }
 
   private static void collectTopLevelServiceTypes(@Nullable PsiExpression expression,
                                                   @NotNull Project project,
-                                                  @NotNull Collection<? super PsiType> result) {
+                                                  @NotNull Collection<? super PsiType> result,
+                                                  @NotNull Set<? super PsiExpression> stack) {
     PsiExpression unwrappedExpression = unwrapServiceExpression(expression);
     if (unwrappedExpression == null) return;
+    if (!stack.add(unwrappedExpression)) return;
 
-    if (unwrappedExpression instanceof PsiNewExpression) {
-      collectServiceTypes(((PsiNewExpression)unwrappedExpression).getType(), project, result);
-      return;
-    }
-
-    if (unwrappedExpression instanceof PsiMethodReferenceExpression) {
-      collectMethodReferenceServiceType((PsiMethodReferenceExpression)unwrappedExpression, project, result);
-      return;
-    }
-
-    if (unwrappedExpression instanceof PsiLambdaExpression) {
-      collectLambdaServiceTypes((PsiLambdaExpression)unwrappedExpression, project, result);
-      return;
-    }
-
-    if (unwrappedExpression instanceof PsiMethodCallExpression &&
-        isIterableType(unwrappedExpression.getType())) {
-      for (PsiExpression argument : ((PsiMethodCallExpression)unwrappedExpression).getArgumentList().getExpressions()) {
-        collectTopLevelServiceTypes(argument, project, result);
+    try {
+      if (unwrappedExpression instanceof PsiMethodReferenceExpression) {
+        collectMethodReferenceServiceType((PsiMethodReferenceExpression)unwrappedExpression, project, result);
+        return;
       }
-      return;
-    }
 
-    if (unwrappedExpression instanceof PsiConditionalExpression) {
-      PsiConditionalExpression conditionalExpression = (PsiConditionalExpression)unwrappedExpression;
-      collectTopLevelServiceTypes(conditionalExpression.getThenExpression(), project, result);
-      collectTopLevelServiceTypes(conditionalExpression.getElseExpression(), project, result);
+      if (unwrappedExpression instanceof PsiReferenceExpression) {
+        collectReferencedServiceTypes((PsiReferenceExpression)unwrappedExpression, project, result, stack);
+        return;
+      }
+
+      if (unwrappedExpression instanceof PsiNewExpression) {
+        collectServiceTypes(((PsiNewExpression)unwrappedExpression).getType(), project, result);
+        return;
+      }
+
+      if (unwrappedExpression instanceof PsiLambdaExpression) {
+        collectLambdaServiceTypes((PsiLambdaExpression)unwrappedExpression, project, result, stack);
+        return;
+      }
+
+      if (unwrappedExpression instanceof PsiMethodCallExpression &&
+          isIterableType(unwrappedExpression.getType())) {
+        for (PsiExpression argument : ((PsiMethodCallExpression)unwrappedExpression).getArgumentList().getExpressions()) {
+          collectTopLevelServiceTypes(argument, project, result, stack);
+        }
+        return;
+      }
+
+      if (unwrappedExpression instanceof PsiConditionalExpression) {
+        PsiConditionalExpression conditionalExpression = (PsiConditionalExpression)unwrappedExpression;
+        collectTopLevelServiceTypes(conditionalExpression.getThenExpression(), project, result, stack);
+        collectTopLevelServiceTypes(conditionalExpression.getElseExpression(), project, result, stack);
+      }
+    }
+    finally {
+      stack.remove(unwrappedExpression);
+    }
+  }
+
+  private static void collectReferencedServiceTypes(@NotNull PsiReferenceExpression referenceExpression,
+                                                    @NotNull Project project,
+                                                    @NotNull Collection<? super PsiType> result,
+                                                    @NotNull Set<? super PsiExpression> stack) {
+    PsiElement resolved = referenceExpression.resolve();
+    PsiExpression initializer = null;
+    if (resolved instanceof PsiLocalVariable) {
+      initializer = ((PsiLocalVariable)resolved).getInitializer();
+    }
+    else if (resolved instanceof PsiField && ((PsiField)resolved).hasModifierProperty(PsiModifier.FINAL)) {
+      initializer = ((PsiField)resolved).getInitializer();
+    }
+    if (initializer != null) {
+      collectTopLevelServiceTypes(initializer, project, result, stack);
     }
   }
 
@@ -294,17 +323,18 @@ public final class HelidonCommonUtils {
 
   private static void collectLambdaServiceTypes(@NotNull PsiLambdaExpression lambdaExpression,
                                                 @NotNull Project project,
-                                                @NotNull Collection<? super PsiType> result) {
+                                                @NotNull Collection<? super PsiType> result,
+                                                @NotNull Set<? super PsiExpression> stack) {
     PsiElement body = lambdaExpression.getBody();
     if (body instanceof PsiExpression) {
-      collectTopLevelServiceTypes((PsiExpression)body, project, result);
+      collectTopLevelServiceTypes((PsiExpression)body, project, result, stack);
       return;
     }
 
     if (body instanceof PsiCodeBlock) {
       for (PsiStatement statement : ((PsiCodeBlock)body).getStatements()) {
         if (statement instanceof PsiReturnStatement) {
-          collectTopLevelServiceTypes(((PsiReturnStatement)statement).getReturnValue(), project, result);
+          collectTopLevelServiceTypes(((PsiReturnStatement)statement).getReturnValue(), project, result, stack);
         }
       }
     }

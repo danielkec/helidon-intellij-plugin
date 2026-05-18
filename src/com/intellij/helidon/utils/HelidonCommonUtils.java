@@ -65,6 +65,10 @@ public final class HelidonCommonUtils {
     Key.create("METHOD_INVOCATIONS_KEY");
   private static final Key<CachedValue<List<ServiceRegistration>>> SERVICE_REGISTRATIONS_KEY =
     Key.create("SERVICE_REGISTRATIONS_KEY");
+  private static final Key<CachedValue<Set<String>>> PARENT_URL_PATHS_KEY =
+    Key.create("PARENT_URL_PATHS_KEY");
+  private static final Key<CachedValue<Set<UExpression>>> PARENT_URL_PATH_EXPRESSIONS_KEY =
+    Key.create("PARENT_URL_PATH_EXPRESSIONS_KEY");
   private static final Key<CachedValue<Map<String, Collection<RestServerEndpointTarget>>>> REST_SERVER_ENDPOINT_TARGETS_KEY =
     Key.create("REST_SERVER_ENDPOINT_TARGETS_KEY");
 
@@ -85,25 +89,47 @@ public final class HelidonCommonUtils {
 
   public static @NotNull Set<String> getParentUrlPaths(@Nullable PsiElement host) {
     if (host == null) return Collections.emptySet();
-    Set<String> paths = RecursionManager.doPreventingRecursion(host, true, () -> calculateParentUrls(host));
-    return paths != null ? paths : Collections.emptySet();
+    PsiClass definedInClass = getContainingClass(host);
+    if (definedInClass == null) return Collections.emptySet();
+    Project project = host.getProject();
+
+    return CachedValuesManager.getManager(project)
+      .getCachedValue(definedInClass, PARENT_URL_PATHS_KEY, () -> {
+        Set<String> paths = RecursionManager.doPreventingRecursion(definedInClass, true, () -> calculateParentUrls(definedInClass));
+        return Result.create(paths != null ? paths : Collections.emptySet(),
+                             UastModificationTracker.getInstance(project),
+                             JavaLibraryModificationTracker.getInstance(project));
+      }, false);
   }
 
   public static @NotNull Set<UExpression> getParentUrlPathExpressions(@Nullable PsiElement host) {
     if (host == null) return Collections.emptySet();
-    Set<UExpression> paths = RecursionManager.doPreventingRecursion(host, true, () -> calculateParentUrlPathExpressions(host));
-    return paths != null ? paths : Collections.emptySet();
+    PsiClass definedInClass = getContainingClass(host);
+    if (definedInClass == null) return Collections.emptySet();
+    Project project = host.getProject();
+
+    return CachedValuesManager.getManager(project)
+      .getCachedValue(definedInClass, PARENT_URL_PATH_EXPRESSIONS_KEY, () -> {
+        Set<UExpression> paths =
+          RecursionManager.doPreventingRecursion(definedInClass, true, () -> calculateParentUrlPathExpressions(definedInClass));
+        return Result.create(paths != null ? paths : Collections.emptySet(),
+                             UastModificationTracker.getInstance(project),
+                             JavaLibraryModificationTracker.getInstance(project));
+      }, false);
   }
 
-  private static @NotNull Set<String> calculateParentUrls(@NotNull PsiElement host) {
-    Set<String> allParentPaths = new HashSet<>();
+  private static @Nullable PsiClass getContainingClass(@NotNull PsiElement host) {
     UClass definedInUClass = UastContextKt.getUastParentOfType(host, UClass.class);
-    if (definedInUClass == null) return Collections.emptySet();
+    return definedInUClass != null ? definedInUClass.getJavaPsi() : PsiTreeUtil.getParentOfType(host, PsiClass.class);
+  }
+
+  private static @NotNull Set<String> calculateParentUrls(@NotNull PsiClass definedInClass) {
+    Set<String> allParentPaths = new HashSet<>();
     //PsiClass baseClass = JavaPsiFacade.getInstance(host.getProject()).findClass(HelidonConstants.SERVICE, definedInUxClass.getResolveScope());
     //if (baseClass == null || definedInClass.isInheritor(baseClass, false)) return Collections.emptySet();
-    Module module = ModuleUtilCore.findModuleForPsiElement(host);
+    Module module = ModuleUtilCore.findModuleForPsiElement(definedInClass);
     if (module == null) return Collections.emptySet();
-    PsiClassType psiClassType = JavaPsiFacade.getElementFactory(host.getProject()).createType(definedInUClass.getJavaPsi());
+    PsiClassType psiClassType = JavaPsiFacade.getElementFactory(definedInClass.getProject()).createType(definedInClass);
     for (ServiceRegistration registration : getServiceRegistrations(module)) {
       if (registration.accepts(psiClassType)) {
         Set<String> parentUrlPaths = getParentUrlPaths(registration.serviceExpression.getSourcePsi());
@@ -122,13 +148,11 @@ public final class HelidonCommonUtils {
     return allParentPaths;
   }
 
-  private static @NotNull Set<UExpression> calculateParentUrlPathExpressions(@NotNull PsiElement host) {
+  private static @NotNull Set<UExpression> calculateParentUrlPathExpressions(@NotNull PsiClass definedInClass) {
     Set<UExpression> allParentPaths = new HashSet<>();
-    UClass definedInUClass = UastContextKt.getUastParentOfType(host, UClass.class);
-    if (definedInUClass == null) return Collections.emptySet();
-    Module module = ModuleUtilCore.findModuleForPsiElement(host);
+    Module module = ModuleUtilCore.findModuleForPsiElement(definedInClass);
     if (module == null) return Collections.emptySet();
-    PsiClassType psiClassType = JavaPsiFacade.getElementFactory(host.getProject()).createType(definedInUClass.getJavaPsi());
+    PsiClassType psiClassType = JavaPsiFacade.getElementFactory(definedInClass.getProject()).createType(definedInClass);
     for (ServiceRegistration registration : getServiceRegistrations(module)) {
       if (registration.accepts(psiClassType)) {
         allParentPaths.add(registration.urlExpression);

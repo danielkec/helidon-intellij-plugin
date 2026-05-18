@@ -645,6 +645,44 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     })
   }
 
+  fun testRegisteredHelidon4ServiceRepeatedRouteExpressionsKeepParentPath() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.HttpRules;
+      import io.helidon.webserver.http.HttpService;
+      import io.helidon.webserver.http.ServerRequest;
+      import io.helidon.webserver.http.ServerResponse;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.register("/api/{tenant}", new GreetingService());
+        }
+      }
+
+      class GreetingService implements HttpService {
+        @Override
+        public void routing(HttpRules rules) {
+          rules.get("/repeat/{name}", this::first);
+          rules.get("/repeat/{name}", this::second);
+        }
+
+        void first(ServerRequest request, ServerResponse response) {
+        }
+
+        void second(ServerRequest request, ServerResponse response) {
+        }
+      }
+    """.trimIndent())
+
+    val repeatedEndpoints = collectServiceEndpoints(myFixture.findClass("GreetingService")).filter {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/api/{tenant}" && it.urlDefinition == "/repeat/{name}"
+    }
+
+    assertEquals(repeatedEndpoints.joinToString { "${it.type} ${it.parentUrl}${it.urlDefinition} ${it.resolveToPsiElement()?.textRange}" },
+                 2,
+                 repeatedEndpoints.size)
+  }
+
   fun testMultiServiceHelidon4RegistrationKeepsParentPathForEveryService() {
     myFixture.configureByText("Main.java", """
       import io.helidon.webserver.http.HttpRouting;
@@ -1883,6 +1921,67 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     })
     assertTrue(updatedEndpoints.any {
       it.type == HelidonRequestMethods.GET && it.parentUrl == "/v2" && it.urlDefinition == "/hello/{name}"
+    })
+  }
+
+  fun testParentUrlPathCacheRecomputesAfterRouteAndRegistrationPsiChanges() {
+    myFixture.configureByText("Main.java", """
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.HttpRules;
+      import io.helidon.webserver.http.HttpService;
+      import io.helidon.webserver.http.ServerRequest;
+      import io.helidon.webserver.http.ServerResponse;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.register("/api/{tenant}", new GreetingService());
+        }
+      }
+
+      class GreetingService implements HttpService {
+        @Override
+        public void routing(HttpRules rules) {
+          rules.get("/hello/{name}", this::hello);
+        }
+
+        void hello(ServerRequest request, ServerResponse response) {
+        }
+      }
+    """.trimIndent())
+
+    val serviceClass = myFixture.findClass("GreetingService")
+    val initialEndpoints = collectServiceEndpoints(serviceClass)
+    assertTrue(initialEndpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/api/{tenant}" && it.urlDefinition == "/hello/{name}"
+    })
+
+    val document = myFixture.editor.document
+    val routeOffset = document.text.indexOf("\"/hello/{name}\"") + 1
+    WriteCommandAction.runWriteCommandAction(project) {
+      document.replaceString(routeOffset, routeOffset + "/hello/{name}".length, "/greet/{name}")
+    }
+    PsiDocumentManager.getInstance(project).commitAllDocuments()
+
+    val routeUpdatedEndpoints = collectServiceEndpoints(serviceClass)
+    assertFalse(routeUpdatedEndpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/api/{tenant}" && it.urlDefinition == "/hello/{name}"
+    })
+    assertTrue(routeUpdatedEndpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/api/{tenant}" && it.urlDefinition == "/greet/{name}"
+    })
+
+    val registrationOffset = document.text.indexOf("\"/api/{tenant}\"") + 1
+    WriteCommandAction.runWriteCommandAction(project) {
+      document.replaceString(registrationOffset, registrationOffset + "/api/{tenant}".length, "/v2/{tenant}")
+    }
+    PsiDocumentManager.getInstance(project).commitAllDocuments()
+
+    val registrationUpdatedEndpoints = collectServiceEndpoints(serviceClass)
+    assertFalse(registrationUpdatedEndpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/api/{tenant}" && it.urlDefinition == "/greet/{name}"
+    })
+    assertTrue(registrationUpdatedEndpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/v2/{tenant}" && it.urlDefinition == "/greet/{name}"
     })
   }
 

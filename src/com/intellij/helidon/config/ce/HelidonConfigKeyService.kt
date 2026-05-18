@@ -17,13 +17,13 @@ import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.roots.ModuleRootManager
+import com.intellij.openapi.roots.ProjectRootModificationTracker
 import com.intellij.openapi.util.Key
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
 import com.intellij.psi.util.CachedValue
 import com.intellij.psi.util.CachedValueProvider
 import com.intellij.psi.util.CachedValuesManager
-import com.intellij.psi.util.PsiModificationTracker
 
 @Service(Service.Level.APP)
 internal class HelidonConfigKeyService {
@@ -35,12 +35,17 @@ internal class HelidonConfigKeyService {
     if (module == null || !HelidonCommonUtils.hasHelidonLibrary(module)) return emptyList()
 
     return CachedValuesManager.getManager(module.project).getCachedValue(module, CONFIG_KEYS_KEY, {
-      val modulesMetadata = findConfigMetadataFiles(module).mapNotNull(::parseMetadata)
+      val metadataFiles = findConfigMetadataFiles(module)
+      val modulesMetadata = metadataFiles.mapNotNull(::parseMetadata)
       val keys = HelidonConfigKeyBuilder(modulesMetadata).collectKeys()
-      CachedValueProvider.Result.create(keys,
-                                        PsiModificationTracker.MODIFICATION_COUNT,
-                                        JavaLibraryModificationTracker.getInstance(module.project))
+      CachedValueProvider.Result.create(keys, *metadataCacheDependencies(module, metadataFiles))
     }, false)
+  }
+
+  private fun metadataCacheDependencies(module: Module, metadataFiles: List<PsiFile>): Array<Any> {
+    return arrayOf(JavaLibraryModificationTracker.getInstance(module.project),
+                   ProjectRootModificationTracker.getInstance(module.project),
+                   *metadataFiles.toTypedArray())
   }
 
   private fun findConfigMetadataFiles(module: Module): List<PsiFile> {

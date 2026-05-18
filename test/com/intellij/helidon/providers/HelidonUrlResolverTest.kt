@@ -65,6 +65,28 @@ class HelidonUrlResolverTest : HelidonHighlightingTestCase() {
     assertSize(1, resolve("/deep/a/b"))
   }
 
+  fun testResolveMatchesPathMatcherUnnamedCatchAll() {
+    assertSize(1, resolve("/catch-all/"))
+    assertSize(1, resolve("/catch-all/a/b"))
+    assertEmpty(resolve("/catch-all"))
+  }
+
+  fun testResolveMatchesPathMatcherOptionalUnnamedCatchAll() {
+    assertSize(1, resolve("/optional-catch-all"))
+    assertSize(1, resolve("/optional-catch-all/"))
+    assertSize(1, resolve("/optional-catch-all/a/b"))
+  }
+
+  fun testResolveKeepsNamedGreedyPathMatcherNonEmpty() {
+    assertEmpty(resolve("/deep/"))
+    assertSize(1, resolve("/deep/a/b"))
+  }
+
+  fun testResolveKeepsNormalPathMatcherParameterSingleSegment() {
+    assertSize(1, resolve("/single/value"))
+    assertEmpty(resolve("/single/value/extra"))
+  }
+
   fun testResolveMatchesPathMatcherCustomRegexWithNestedBraces() {
     assertSize(1, resolve("/bounded/ab/name"))
     assertEmpty(resolve("/bounded/a/name"))
@@ -114,6 +136,15 @@ class HelidonUrlResolverTest : HelidonHighlightingTestCase() {
         .ofType(HelidonRequestMethods.GET)
         .withMatcherPatternPath(),
       HelidonUrlTargetInfo.create("/deep/{+path}", psiElement)
+        .ofType(HelidonRequestMethods.GET)
+        .withMatcherPatternPath(),
+      HelidonUrlTargetInfo.create("/catch-all/{*}", psiElement)
+        .ofType(HelidonRequestMethods.GET)
+        .withMatcherPatternPath(),
+      HelidonUrlTargetInfo.create("/optional-catch-all[/{*}]", psiElement)
+        .ofType(HelidonRequestMethods.GET)
+        .withMatcherPatternPath(),
+      HelidonUrlTargetInfo.create("/single/{name}", psiElement)
         .ofType(HelidonRequestMethods.GET)
         .withMatcherPatternPath(),
       HelidonUrlTargetInfo.create("/bounded/{id:\\w{2}}/name", psiElement)

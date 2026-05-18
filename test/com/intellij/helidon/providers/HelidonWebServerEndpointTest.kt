@@ -1949,6 +1949,176 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     })
   }
 
+  fun testRestServerEndpointConcreteTypePathOverridesInterfacePath() {
+    addHelidonDeclarativeStubs()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Http;
+      import io.helidon.service.registry.Service;
+      import io.helidon.webserver.http.RestServer;
+
+      @Http.Path("/contract")
+      interface GreetingResource {
+        @Http.GET
+        @Http.Path("/message")
+        String message();
+      }
+
+      @RestServer.Endpoint
+      @Http.Path("/greet")
+      @Service.Singleton
+      class GreetingEndpoint implements GreetingResource {
+        public String message() {
+          return "hello";
+        }
+      }
+    """.trimIndent())
+
+    val endpoints = collectRestServerEndpoints()
+
+    assertTrue(endpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/greet" && it.urlDefinition == "/message"
+    })
+    assertFalse(endpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/contract" && it.urlDefinition == "/message"
+    })
+  }
+
+  fun testRestServerEndpointSuperclassTypePathOverridesInterfacePathWhenConcreteClassHasNoPath() {
+    addHelidonDeclarativeStubs()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Http;
+      import io.helidon.service.registry.Service;
+      import io.helidon.webserver.http.RestServer;
+
+      @Http.Path("/contract")
+      interface GreetingResource {
+        @Http.GET
+        @Http.Path("/message")
+        String message();
+      }
+
+      @Http.Path("/base")
+      abstract class BaseGreetingEndpoint implements GreetingResource {
+      }
+
+      @RestServer.Endpoint
+      @Service.Singleton
+      class GreetingEndpoint extends BaseGreetingEndpoint {
+        public String message() {
+          return "hello";
+        }
+      }
+    """.trimIndent())
+
+    val endpoints = collectRestServerEndpoints()
+
+    assertTrue(endpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/base" && it.urlDefinition == "/message"
+    })
+    assertFalse(endpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/contract" && it.urlDefinition == "/message"
+    })
+  }
+
+  fun testRestServerEndpointDirectInterfacePathOverridesSuperclassInterfacePath() {
+    addHelidonDeclarativeStubs()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Http;
+      import io.helidon.service.registry.Service;
+      import io.helidon.webserver.http.RestServer;
+
+      @Http.Path("/base-contract")
+      interface BaseResource {
+        @Http.GET
+        @Http.Path("/base-message")
+        String baseMessage();
+      }
+
+      abstract class BaseEndpoint implements BaseResource {
+        public String baseMessage() {
+          return "base";
+        }
+      }
+
+      @Http.Path("/direct-contract")
+      interface DirectResource {
+        @Http.GET
+        @Http.Path("/direct-message")
+        String directMessage();
+      }
+
+      @RestServer.Endpoint
+      @Service.Singleton
+      class GreetingEndpoint extends BaseEndpoint implements DirectResource {
+        public String directMessage() {
+          return "direct";
+        }
+      }
+    """.trimIndent())
+
+    val endpoints = collectRestServerEndpoints()
+
+    assertTrue(endpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/direct-contract" && it.urlDefinition == "/direct-message"
+    })
+    assertTrue(endpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/base-contract" && it.urlDefinition == "/base-message"
+    })
+    assertFalse(endpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/base-contract" && it.urlDefinition == "/direct-message"
+    })
+  }
+
+  fun testRestServerEndpointCollectsMultipleDirectInterfacePaths() {
+    addHelidonDeclarativeStubs()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Http;
+      import io.helidon.service.registry.Service;
+      import io.helidon.webserver.http.RestServer;
+
+      @Http.Path("/alpha")
+      interface AlphaResource {
+        @Http.GET
+        @Http.Path("/alpha-message")
+        String alphaMessage();
+      }
+
+      @Http.Path("/beta")
+      interface BetaResource {
+        @Http.POST
+        @Http.Path("/beta-message")
+        String betaMessage();
+      }
+
+      @RestServer.Endpoint
+      @Service.Singleton
+      class GreetingEndpoint implements AlphaResource, BetaResource {
+        public String alphaMessage() {
+          return "alpha";
+        }
+
+        public String betaMessage() {
+          return "beta";
+        }
+      }
+    """.trimIndent())
+
+    val endpoints = collectRestServerEndpoints()
+
+    assertTrue(endpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/alpha" && it.urlDefinition == "/alpha-message"
+    })
+    assertTrue(endpoints.any {
+      it.type == HelidonRequestMethods.POST && it.parentUrl == "/beta" && it.urlDefinition == "/beta-message"
+    })
+    assertFalse(endpoints.any {
+      it.parentUrl == "/alpha" && it.urlDefinition == "/beta-message"
+    })
+    assertFalse(endpoints.any {
+      it.parentUrl == "/beta" && it.urlDefinition == "/alpha-message"
+    })
+  }
+
   fun testRestServerEndpointStoresConcreteDeclarationMethodForInterfaceEndpoint() {
     addHelidonDeclarativeStubs()
     myFixture.configureByText("Main.java", """

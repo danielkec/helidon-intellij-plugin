@@ -543,7 +543,6 @@ public final class HelidonCommonUtils {
   private static boolean processRestServerEndpointClass(@NotNull Processor<? super HelidonUrlTargetInfo> processor,
                                                         @NotNull PsiClass endpointClass,
                                                         @NotNull RestServerEndpointMethodFilter filter) {
-    List<PathDefinition> parentPaths = getEndpointTypePaths(endpointClass);
     Set<String> processed = new HashSet<>();
 
     for (PsiMethod method : endpointClass.getAllMethods()) {
@@ -555,6 +554,7 @@ public final class HelidonCommonUtils {
       if (httpMethods.isEmpty()) continue;
       if (!filter.accepts(endpointMethod, methodHierarchy, httpMethods)) continue;
 
+      List<PathDefinition> parentPaths = getEndpointTypePaths(endpointClass, methodHierarchy);
       List<PathDefinition> methodPaths = getMethodPaths(endpointMethod, methodHierarchy);
       for (PathDefinition methodPath : methodPaths) {
         if (parentPaths.isEmpty()) {
@@ -741,25 +741,33 @@ public final class HelidonCommonUtils {
     return metaAnnotation == null ? null : getAnnotationStringValue(metaAnnotation);
   }
 
-  private static @NotNull List<PathDefinition> getEndpointTypePaths(@NotNull PsiClass endpointClass) {
-    List<PathDefinition> result = new ArrayList<>();
-    collectEndpointTypePaths(endpointClass, result, new HashSet<>());
-    return result;
+  private static @NotNull List<PathDefinition> getEndpointTypePaths(@NotNull PsiClass endpointClass,
+                                                                    @NotNull List<PsiMethod> methodHierarchy) {
+    List<PathDefinition> classPaths = findClosestEndpointClassTypePaths(endpointClass);
+    if (!classPaths.isEmpty()) return classPaths;
+
+    return findClosestMethodHierarchyTypePaths(methodHierarchy);
   }
 
-  private static void collectEndpointTypePaths(@NotNull PsiClass psiClass,
-                                               @NotNull List<? super PathDefinition> result,
-                                               @NotNull Set<? super PsiClass> visited) {
-    if (!visited.add(psiClass)) return;
-    result.addAll(getPathDefinitions(psiClass));
+  private static @NotNull List<PathDefinition> findClosestEndpointClassTypePaths(@NotNull PsiClass endpointClass) {
+    PsiClass currentClass = endpointClass;
+    while (currentClass != null && !CommonClassNames.JAVA_LANG_OBJECT.equals(currentClass.getQualifiedName())) {
+      List<PathDefinition> paths = getPathDefinitions(currentClass);
+      if (!paths.isEmpty()) return paths;
+      currentClass = currentClass.getSuperClass();
+    }
+    return Collections.emptyList();
+  }
 
-    PsiClass superClass = psiClass.getSuperClass();
-    if (superClass != null && !CommonClassNames.JAVA_LANG_OBJECT.equals(superClass.getQualifiedName())) {
-      collectEndpointTypePaths(superClass, result, visited);
+  private static @NotNull List<PathDefinition> findClosestMethodHierarchyTypePaths(@NotNull List<PsiMethod> methodHierarchy) {
+    List<PathDefinition> result = new ArrayList<>();
+    Set<PsiClass> visited = new HashSet<>();
+    for (PsiMethod method : methodHierarchy) {
+      PsiClass containingClass = method.getContainingClass();
+      if (containingClass == null || !visited.add(containingClass)) continue;
+      result.addAll(getPathDefinitions(containingClass));
     }
-    for (PsiClass anInterface : psiClass.getInterfaces()) {
-      collectEndpointTypePaths(anInterface, result, visited);
-    }
+    return result;
   }
 
   private static @NotNull List<PathDefinition> getMethodPaths(@NotNull PsiMethod method,

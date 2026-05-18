@@ -158,6 +158,76 @@ class HelidonHttpMappingsLineMarkerProviderTest : HelidonHighlightingTestCase() 
     assertEquals("http-method: GET", navigation.searchText)
   }
 
+  fun testBaseClassHttpMethodAnnotationFindsInheritedEndpointImplementations() {
+    addHelidonDeclarativeStubs()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Http;
+      import io.helidon.webserver.http.RestServer;
+
+      abstract class BaseResource {
+        @Http.POST
+        @Http.Path("/items")
+        String create() { return ""; }
+      }
+
+      @RestServer.Endpoint
+      @Http.Path("/alpha")
+      class AlphaEndpoint extends BaseResource {
+      }
+
+      @RestServer.Endpoint
+      @Http.Path("/bravo")
+      class BravoEndpoint extends BaseResource {
+        public String create() { return ""; }
+      }
+    """.trimIndent())
+
+    val navigation = navigateFrom(httpAnnotation("BaseResource", "create"))
+
+    assertEquals(module.name, navigation.moduleName)
+    assertEquals(HelidonBundle.HELIDON_LIBRARY, navigation.framework)
+    assertEquals("http-method: POST", navigation.searchText)
+  }
+
+  fun testInterfaceHttpMethodTargetsUpdateAfterAddingEndpointImplementation() {
+    addHelidonDeclarativeStubs()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Http;
+      import io.helidon.webserver.http.RestServer;
+
+      interface GreetingResource {
+        @Http.GET
+        @Http.Path("/{name}")
+        String get(String name);
+      }
+
+      @RestServer.Endpoint
+      @Http.Path("/alpha")
+      class AlphaEndpoint implements GreetingResource {
+        public String get(String name) { return ""; }
+      }
+    """.trimIndent())
+
+    assertEquals("http-method: GET alpha/{name}", navigateFrom(httpAnnotation("GreetingResource", "get")).searchText)
+
+    myFixture.addClass("""
+      import io.helidon.http.Http;
+      import io.helidon.webserver.http.RestServer;
+
+      @RestServer.Endpoint
+      @Http.Path("/bravo")
+      class BravoEndpoint implements GreetingResource {
+        public String get(String name) { return ""; }
+      }
+    """.trimIndent())
+
+    val navigation = navigateFrom(httpAnnotation("GreetingResource", "get"))
+
+    assertEquals(module.name, navigation.moduleName)
+    assertEquals(HelidonBundle.HELIDON_LIBRARY, navigation.framework)
+    assertEquals("http-method: GET", navigation.searchText)
+  }
+
   fun testHttpMethodAnnotationOutsideRestServerEndpointHasNoHttpMappingsGutterMarker() {
     addHelidonDeclarativeStubs()
     myFixture.configureByText("Main.java", """

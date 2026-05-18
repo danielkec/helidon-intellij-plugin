@@ -11,8 +11,10 @@ import com.intellij.lang.properties.psi.impl.PropertyImpl
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.openapi.roots.ModuleRootManager
+import com.intellij.openapi.roots.ProjectRootModificationTracker
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.TextRange
+import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.psi.ElementManipulators
 import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiAnnotation
@@ -55,6 +57,12 @@ internal object HelidonLangChain4jConfigResolver {
 
   private val TEST_COMPONENTS_KEY: Key<CachedValue<List<LangChain4jComponent>>> =
     Key.create("HELIDON_LANGCHAIN4J_TEST_COMPONENTS")
+
+  private val MAIN_CONFIG_FILES_KEY: Key<CachedValue<List<ConfigFile>>> =
+    Key.create("HELIDON_LANGCHAIN4J_MAIN_CONFIG_FILES")
+
+  private val TEST_CONFIG_FILES_KEY: Key<CachedValue<List<ConfigFile>>> =
+    Key.create("HELIDON_LANGCHAIN4J_TEST_CONFIG_FILES")
 
   private val CONFIG_SECTION_KINDS: Map<String, Set<LangChain4jComponentKind>> = mapOf(
     SERVICES to setOf(LangChain4jComponentKind.SERVICE),
@@ -560,12 +568,25 @@ internal object HelidonLangChain4jConfigResolver {
     val containingFile = context.containingFile?.originalFile?.virtualFile
     val includeTests = containingFile != null &&
                        ModuleRootManager.getInstance(module).fileIndex.isInTestSourceContent(containingFile)
-    val psiManager = PsiManager.getInstance(module.project)
-    return HelidonConfigFileContributor.findConfigFiles(module, includeTests)
-      .flatMap { (configFile, contributor) ->
-        val psiFile = psiManager.findFile(configFile) ?: return@flatMap emptyList()
-        processor(psiFile, contributor)
-      }
+    return getConfigFiles(module, includeTests).flatMap { (psiFile, contributor) -> processor(psiFile, contributor) }
+  }
+
+  private fun getConfigFiles(module: Module, includeTests: Boolean): List<ConfigFile> {
+    val key = if (includeTests) TEST_CONFIG_FILES_KEY else MAIN_CONFIG_FILES_KEY
+    return CachedValuesManager.getManager(module.project).getCachedValue(module, key, {
+      val psiManager = PsiManager.getInstance(module.project)
+      val files = HelidonConfigFileContributor.findConfigFiles(module, includeTests)
+        .mapNotNull { (configFile, contributor) ->
+          psiManager.findFile(configFile)?.let { ConfigFile(it, contributor) }
+        }
+
+      val dependencies = ArrayList<Any>(files.size + 2)
+      dependencies.addAll(files.map { it.psiFile })
+      dependencies.add(ProjectRootModificationTracker.getInstance(module.project))
+      dependencies.add(VirtualFileManager.VFS_STRUCTURE_MODIFICATIONS)
+
+      CachedValueProvider.Result.create(files, dependencies)
+    }, false)
   }
 
   private fun findYamlValueUsages(file: YAMLFile, keyNames: Set<String>, value: String): List<PsiElement> {
@@ -650,6 +671,11 @@ internal object HelidonLangChain4jConfigResolver {
     val kind: LangChain4jComponentKind,
     val key: String,
     val target: PsiElement,
+  )
+
+  private data class ConfigFile(
+    val psiFile: PsiFile,
+    val contributor: HelidonConfigFileContributor,
   )
 
   data class MarkerTargets(

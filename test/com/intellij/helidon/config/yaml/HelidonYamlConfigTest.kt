@@ -5,7 +5,9 @@ import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.config.HELIDON_APPLICATION_YAML
 import com.intellij.helidon.config.HelidonConfigPlaceholderReference
 import com.intellij.microservices.jvm.config.MetaConfigKeyReference
+import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.util.TextRange
+import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiNamedElement
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.testFramework.TestDataPath
@@ -146,6 +148,41 @@ class HelidonYamlConfigTest : HelidonHighlightingTestCase() {
     assertContainsElements(myFixture.lookupElementStrings!!,
                            "proxy.concurrency",
                            "proxy.read-timeout")
+  }
+
+  fun testPlaceholderReferenceCompletionInvalidatesAfterConfigFileChange() {
+    val contributingFile = myFixture.addFileToProject("application-dev.yml", """
+      old:
+        key: before
+    """.trimIndent())
+
+    val applicationYaml = """
+      server:
+        host: ${'$'}{<caret>}
+    """.trimIndent()
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, applicationYaml)
+    myFixture.completeBasic()
+
+    var lookupStrings = myFixture.lookupElementStrings!!
+    assertContainsElements(lookupStrings, "old.key")
+    assertDoesntContain(lookupStrings, "new.key")
+
+    val documentManager = PsiDocumentManager.getInstance(project)
+    val document = documentManager.getDocument(contributingFile)!!
+    WriteCommandAction.runWriteCommandAction(project) {
+      document.setText("""
+        new:
+          key: after
+      """.trimIndent())
+    }
+    documentManager.commitAllDocuments()
+
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, applicationYaml)
+    myFixture.completeBasic()
+
+    lookupStrings = myFixture.lookupElementStrings!!
+    assertContainsElements(lookupStrings, "new.key")
+    assertDoesntContain(lookupStrings, "old.key")
   }
 
   fun testPlaceholderReferenceCompletionWithIncompleteNestedPrefix() {

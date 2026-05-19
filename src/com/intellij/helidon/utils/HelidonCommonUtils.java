@@ -19,6 +19,7 @@ import com.intellij.psi.*;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.SearchScope;
 import com.intellij.psi.search.searches.AnnotatedElementsSearch;
+import com.intellij.psi.search.searches.ClassInheritorsSearch;
 import com.intellij.psi.search.searches.MethodReferencesSearch;
 import com.intellij.psi.search.searches.ReferencesSearch;
 import com.intellij.psi.util.CachedValue;
@@ -484,12 +485,12 @@ public final class HelidonCommonUtils {
 
   private static @NotNull Map<String, Collection<RestServerEndpointTarget>> calculateRestServerEndpointTargets(@NotNull PsiMethod declarationMethod) {
     Project project = declarationMethod.getProject();
-    PsiClass endpointAnnotation = JavaPsiFacade.getInstance(project)
-      .findClass(HelidonConstants.REST_SERVER_ENDPOINT, GlobalSearchScope.allScope(project));
-    if (endpointAnnotation == null) return Collections.emptyMap();
+    if (JavaPsiFacade.getInstance(project).findClass(HelidonConstants.REST_SERVER_ENDPOINT, GlobalSearchScope.allScope(project)) == null) {
+      return Collections.emptyMap();
+    }
 
     Map<String, Collection<RestServerEndpointTarget>> result = new LinkedHashMap<>();
-    for (PsiClass endpointClass : getRestServerEndpointCandidateClasses(declarationMethod, endpointAnnotation)) {
+    for (PsiClass endpointClass : getRestServerEndpointCandidateClasses(declarationMethod)) {
       Module endpointModule = ModuleUtilCore.findModuleForPsiElement(endpointClass);
       Processor<HelidonUrlTargetInfo> processor = targetInfo -> {
         RestServerEndpointTarget target = new RestServerEndpointTarget(targetInfo, endpointModule);
@@ -506,14 +507,30 @@ public final class HelidonCommonUtils {
     return result;
   }
 
-  private static @NotNull Collection<PsiClass> getRestServerEndpointCandidateClasses(@NotNull PsiMethod declarationMethod,
-                                                                                     @NotNull PsiClass endpointAnnotation) {
+  private static @NotNull Collection<PsiClass> getRestServerEndpointCandidateClasses(@NotNull PsiMethod declarationMethod) {
     PsiClass containingClass = declarationMethod.getContainingClass();
     if (containingClass != null && findAnnotation(containingClass, HelidonConstants.REST_SERVER_ENDPOINT) != null) {
       return Collections.singletonList(containingClass);
     }
+    if (containingClass == null) return Collections.emptyList();
 
-    return AnnotatedElementsSearch.searchPsiClasses(endpointAnnotation, GlobalSearchScope.projectScope(declarationMethod.getProject())).findAll();
+    SearchScope searchScope = getRestServerEndpointImplementationSearchScope(declarationMethod);
+    Collection<PsiClass> result = new LinkedHashSet<>();
+    for (PsiClass inheritor : ClassInheritorsSearch.search(containingClass, searchScope, true)) {
+      if (findAnnotation(inheritor, HelidonConstants.REST_SERVER_ENDPOINT) != null) {
+        result.add(inheritor);
+      }
+    }
+    return result;
+  }
+
+  private static @NotNull SearchScope getRestServerEndpointImplementationSearchScope(@NotNull PsiMethod declarationMethod) {
+    SearchScope useScope = declarationMethod.getUseScope();
+    Module module = ModuleUtilCore.findModuleForPsiElement(declarationMethod);
+    if (!(useScope instanceof GlobalSearchScope globalUseScope) || module == null) {
+      return useScope;
+    }
+    return globalUseScope.intersectWith(module.getModuleWithDependentsScope());
   }
 
   public static boolean isHelidonHttpServiceClass(@NotNull PsiClass psiClass) {

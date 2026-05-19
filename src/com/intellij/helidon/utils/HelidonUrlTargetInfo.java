@@ -327,6 +327,9 @@ public final class HelidonUrlTargetInfo implements UrlTargetInfo {
     if (regexStart >= 0) {
       sb.append('(').append(parameter.substring(regexStart + 1)).append(')');
     }
+    else if ("*".equals(parameter.trim())) {
+      sb.append(".*");
+    }
     else if (parameter.startsWith("+")) {
       sb.append("(.+)");
     }

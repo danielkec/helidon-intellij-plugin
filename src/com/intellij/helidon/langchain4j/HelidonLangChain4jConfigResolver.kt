@@ -247,30 +247,30 @@ internal object HelidonLangChain4jConfigResolver {
   }
 
   fun annotationValueReferences(element: PsiElement, range: TextRange): Array<PsiReference> {
-    val annotationName = annotationName(element) ?: return PsiReference.EMPTY_ARRAY
+    val valueElement = annotationValueExpression(element) ?: return PsiReference.EMPTY_ARRAY
+
+    val annotationName = annotationName(valueElement) ?: return PsiReference.EMPTY_ARRAY
     if (!isSupportedAnnotationReference(annotationName)) return PsiReference.EMPTY_ARRAY
 
-    val value = ElementManipulators.getValueText(element).trim()
+    val value = constantString(valueElement)?.trim() ?: return PsiReference.EMPTY_ARRAY
     if (value.isEmpty()) return PsiReference.EMPTY_ARRAY
 
     val reference = HelidonLangChain4jConfigReference(element, range) {
-      annotationValueTargets(element, annotationName, value)
+      annotationValueTargets(valueElement, annotationName, value)
     }
     return arrayOf(reference)
   }
 
   fun annotationMarkerTargets(element: PsiElement): MarkerTargets? {
-    val literal = PsiTreeUtil.getParentOfType(element, PsiLiteralExpression::class.java, false) ?: return null
-    if (literal.value !is String) return null
-
-    val annotationName = annotationName(literal) ?: return null
+    val valueElement = annotationValueExpression(element) ?: return null
+    val annotationName = annotationName(valueElement) ?: return null
     val gutterKind = annotationValueGutterKind(annotationName) ?: return null
-    val value = ElementManipulators.getValueText(literal).trim()
+    val value = constantString(valueElement)?.trim() ?: return null
     if (value.isEmpty()) return null
 
-    val targets = annotationValueTargets(literal, annotationName, value)
+    val targets = annotationValueTargets(valueElement, annotationName, value)
     return targets.takeIf { it.isNotEmpty() }
-      ?.let { MarkerTargets(leafAnchor(literal), it, gutterKind) }
+      ?.let { MarkerTargets(leafAnchor(valueElement), it, gutterKind) }
   }
 
   private fun keyTargets(yamlKeyValue: YAMLKeyValue): List<PsiElement> {
@@ -362,6 +362,10 @@ internal object HelidonLangChain4jConfigResolver {
 
   private fun annotationName(element: PsiElement): String? {
     val attribute = PsiTreeUtil.getParentOfType(element, PsiNameValuePair::class.java) ?: return null
+    return annotationName(attribute)
+  }
+
+  private fun annotationName(attribute: PsiNameValuePair): String? {
     if (attribute.name != null && attribute.name != VALUE_ATTRIBUTE) return null
 
     val annotation = PsiTreeUtil.getParentOfType(attribute, PsiAnnotation::class.java) ?: return null
@@ -370,6 +374,15 @@ internal object HelidonLangChain4jConfigResolver {
 
   private fun isSupportedAnnotationReference(annotationName: String): Boolean {
     return annotationName in ANNOTATION_CONFIG_SECTIONS || annotationName in ANNOTATION_CONFIG_VALUE_KEYS
+  }
+
+  private fun annotationValueExpression(element: PsiElement): PsiElement? {
+    val attribute = PsiTreeUtil.getParentOfType(element, PsiNameValuePair::class.java) ?: return null
+    val value = attribute.value ?: return null
+    if (value is PsiArrayInitializerMemberValue) {
+      return value.initializers.firstOrNull { initializer -> PsiTreeUtil.isAncestor(initializer, element, false) }
+    }
+    return value.takeIf { PsiTreeUtil.isAncestor(it, element, false) }
   }
 
   private fun annotationValueGutterKind(annotationName: String): GutterKind? {

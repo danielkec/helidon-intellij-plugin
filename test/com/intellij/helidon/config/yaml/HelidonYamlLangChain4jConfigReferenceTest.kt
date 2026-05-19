@@ -10,7 +10,6 @@ import com.intellij.helidon.langchain4j.HelidonLangChain4jYamlLineMarkerProvider
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.util.Disposer
 import com.intellij.psi.PsiElement
-import com.intellij.psi.PsiLiteralExpression
 import com.intellij.psi.PsiNamedElement
 import com.intellij.psi.PsiPolyVariantReference
 import com.intellij.psi.PsiReference
@@ -664,6 +663,43 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     assertResolvesToConfigKey("langchain4j.models.expensive-model")
   }
 
+  fun testAiChatModelAnnotationConstantValueResolvesToModelConfigKey() {
+    addLangChain4jStubs()
+    configureLangChain4jConfig()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.extensions.langchain4j.Ai;
+
+      interface ModelNames {
+        String EXPENSIVE = "expensive-model";
+      }
+
+      @Ai.ChatModel(ModelNames.EXPENS<caret>IVE)
+      interface HelidonSeExpert {
+      }
+    """.trimIndent())
+
+    assertResolvesToConfigKey("langchain4j.models.expensive-model")
+  }
+
+  fun testAiChatModelAnnotationConstantExpressionResolvesToModelConfigKey() {
+    addLangChain4jStubs()
+    configureLangChain4jConfig()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.extensions.langchain4j.Ai;
+
+      interface ModelNames {
+        String PREFIX = "expensive-";
+        String NAME = "model";
+      }
+
+      @Ai.ChatModel(ModelNames.PRE<caret>FIX + ModelNames.NAME)
+      interface HelidonSeExpert {
+      }
+    """.trimIndent())
+
+    assertResolvesToConfigKey("langchain4j.models.expensive-model")
+  }
+
   fun testAiChatModelAnnotationValueResolvesToDottedModelConfigKey() {
     addLangChain4jStubs()
     myFixture.configureByText(HELIDON_APPLICATION_YAML, """
@@ -704,6 +740,24 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
       import io.helidon.extensions.langchain4j.Ai;
 
       @Ai.ChatModel("expensive-<caret>model")
+      interface HelidonSeExpert {
+      }
+    """.trimIndent())
+
+    assertLangChain4jJavaAnnotationGutter(HelidonIcons.AiGutter)
+  }
+
+  fun testAiChatModelAnnotationConstantValueHasAiGutterNavigation() {
+    addLangChain4jStubs()
+    configureLangChain4jConfig()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.extensions.langchain4j.Ai;
+
+      interface ModelNames {
+        String EXPENSIVE = "expensive-model";
+      }
+
+      @Ai.ChatModel(ModelNames.EXPENS<caret>IVE)
       interface HelidonSeExpert {
       }
     """.trimIndent())
@@ -1033,8 +1087,7 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
   }
 
   private fun assertLangChain4jJavaAnnotationGutter(icon: Icon) {
-    val literal = PsiTreeUtil.getParentOfType(myFixture.file.findElementAt(myFixture.caretOffset), PsiLiteralExpression::class.java)!!
-    val anchor = literal.firstChild ?: literal
+    val anchor = myFixture.file.findElementAt(myFixture.caretOffset)!!
     val markers = mutableListOf<RelatedItemLineMarkerInfo<*>>()
     HelidonLangChain4jJavaLineMarkerProvider().collectNavigationMarkers(listOf(anchor), markers, true)
 

@@ -4,6 +4,7 @@ package com.intellij.helidon.providers;
 import com.intellij.helidon.utils.HelidonBundle;
 import com.intellij.helidon.utils.HelidonCommonUtils;
 import com.intellij.helidon.utils.HelidonUrlTargetInfo;
+import com.intellij.java.library.JavaLibraryModificationTracker;
 import com.intellij.ide.presentation.Presentation;
 import com.intellij.microservices.url.HttpUrlResolver;
 import com.intellij.microservices.url.UrlResolveRequest;
@@ -11,7 +12,13 @@ import com.intellij.microservices.url.UrlTargetInfo;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.roots.ProjectRootModificationTracker;
+import com.intellij.openapi.util.Key;
 import com.intellij.psi.search.GlobalSearchScope;
+import com.intellij.psi.util.CachedValue;
+import com.intellij.psi.util.CachedValueProvider.Result;
+import com.intellij.psi.util.CachedValuesManager;
+import com.intellij.uast.UastModificationTracker;
 import com.intellij.util.CommonProcessors.CollectProcessor;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -22,6 +29,8 @@ import java.util.Set;
 
 @Presentation(typeName = HelidonBundle.HELIDON_LIBRARY, icon = "com.intellij.helidon.HelidonIcons.Helidon")
 public final class HelidonUrlResolver extends HttpUrlResolver {
+  private static final Key<CachedValue<Iterable<UrlTargetInfo>>> ENDPOINT_VARIANTS_KEY =
+    Key.create("HELIDON_ENDPOINT_VARIANTS_KEY");
   private final @NotNull Project myProject;
   private final @Nullable Iterable<UrlTargetInfo> myVariants;
 
@@ -81,8 +90,18 @@ public final class HelidonUrlResolver extends HttpUrlResolver {
   public @NotNull Iterable<UrlTargetInfo> getVariants() {
     if (myVariants != null) return myVariants;
 
+    Project project = myProject;
+    return CachedValuesManager.getManager(project).getCachedValue(project, ENDPOINT_VARIANTS_KEY, () -> {
+      return Result.create(collectVariants(project),
+                           UastModificationTracker.getInstance(project),
+                           JavaLibraryModificationTracker.getInstance(project),
+                           ProjectRootModificationTracker.getInstance(project));
+    }, false);
+  }
+
+  private static @NotNull Iterable<UrlTargetInfo> collectVariants(@NotNull Project project) {
     CollectProcessor<HelidonUrlTargetInfo> collectProcessor = new CollectProcessor<>();
-    for (Module module : ModuleManager.getInstance(myProject).getModules()) {
+    for (Module module : ModuleManager.getInstance(project).getModules()) {
       if (!HelidonCommonUtils.hasHelidonLibrary(module)) continue;
 
       GlobalSearchScope scope = HelidonCommonUtils.getRoutingClassReferencesScope(module);

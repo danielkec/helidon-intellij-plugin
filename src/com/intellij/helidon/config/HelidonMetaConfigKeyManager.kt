@@ -12,10 +12,10 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.progress.ProcessCanceledException
+import com.intellij.openapi.roots.ProjectRootModificationTracker
 import com.intellij.psi.PsiFile
 import com.intellij.psi.util.CachedValueProvider
 import com.intellij.psi.util.CachedValuesManager
-import com.intellij.psi.util.PsiModificationTracker
 
 @Service(Service.Level.APP)
 class HelidonMetaConfigKeyManager : MetaConfigKeyManager() {
@@ -33,14 +33,19 @@ class HelidonMetaConfigKeyManager : MetaConfigKeyManager() {
 
   private fun getMetaConfigKeysFromLibs(module: Module): List<MetaConfigKey> {
     return CachedValuesManager.getManager(module.project).getCachedValue(module) {
-      val modulesMetadata = findConfigFilesInMetaInf<PsiFile>(module, HELIDON_CONFIG_METADATA, true).mapNotNull { metadataFile ->
+      val metadataFiles = findConfigFilesInMetaInf<PsiFile>(module, HELIDON_CONFIG_METADATA, true)
+      val modulesMetadata = metadataFiles.mapNotNull { metadataFile ->
         getModuleMetadataForFile(metadataFile)
       }
       val allKeys = HelidonConfigMetadataBuilder(modulesMetadata, module.project).collectKeys(module)
-      CachedValueProvider.Result.create(allKeys,
-                                        PsiModificationTracker.MODIFICATION_COUNT,
-                                        JavaLibraryModificationTracker.getInstance(module.project))
+      CachedValueProvider.Result.create(allKeys, *metadataCacheDependencies(module, metadataFiles))
     }
+  }
+
+  private fun metadataCacheDependencies(module: Module, metadataFiles: List<PsiFile>): Array<Any> {
+    return arrayOf(JavaLibraryModificationTracker.getInstance(module.project),
+                   ProjectRootModificationTracker.getInstance(module.project),
+                   *metadataFiles.toTypedArray())
   }
 
   private fun getModuleMetadataForFile(configMetadataFile: PsiFile): ModuleMetadata? {

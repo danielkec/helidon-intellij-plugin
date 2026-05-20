@@ -369,7 +369,7 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
     private val seed: HelidonLangChain4jDiagramElement,
   ) {
     private val nodes = LinkedHashMap<String, HelidonLangChain4jDiagramElement>()
-    private val edges = LinkedHashSet<GraphEdge>()
+    private val edges = LinkedHashMap<GraphEdgeKey, GraphEdge>()
     private val configNodes = LinkedHashMap<Pair<String, String>, HelidonLangChain4jDiagramElement>()
     private val componentsByKindAndKey = LinkedHashMap<Pair<ComponentKind, String>, MutableList<Component>>()
 
@@ -394,7 +394,7 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
     private fun toGraph(): HelidonLangChain4jWorkflowGraph {
       return HelidonLangChain4jWorkflowGraph(
         nodes = nodes.values.toList(),
-        edges = edges.mapNotNull { edge ->
+        edges = edges.values.mapNotNull { edge ->
           val source = nodes[edge.sourceId] ?: return@mapNotNull null
           val target = nodes[edge.targetId] ?: return@mapNotNull null
           HelidonLangChain4jWorkflowEdge(source, target, edge.label, edge.navigationElement, edge.kind)
@@ -838,17 +838,16 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
         val source = nodeForComponent(component) ?: continue
         for (annotation in component.target.modifierList?.annotations ?: emptyArray()) {
           val annotationName = annotation.qualifiedName ?: continue
-          val values = componentKeys(component.kind, component.target, annotation)
           if (annotationName in ANNOTATION_CONFIG_SECTIONS) {
             val section = ANNOTATION_CONFIG_SECTIONS.getValue(annotationName)
-            values.forEach { value ->
+            configAnnotationValues(component, annotationName, annotation).forEach { value ->
               configNodes[section to value]?.let { target ->
                 addEdge(source, target, annotation.shortName(), annotation)
               }
             }
           }
           ANNOTATION_CONFIG_VALUE_KEYS[annotationName]?.let { keyNames ->
-            values.forEach { value ->
+            explicitAnnotationValues(annotation).forEach { value ->
               keyNames.forEach { keyName ->
                 val kinds = VALUE_COMPONENT_TARGETS[keyName] ?: emptySet()
                 addComponentValueEdges(source, annotation.shortName(), kinds, annotation, value)
@@ -950,7 +949,21 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
                         label: String,
                         navigationElement: PsiElement?,
                         kind: HelidonLangChain4jWorkflowEdgeKind = HelidonLangChain4jWorkflowEdgeKind.FLOW) {
-      edges.add(GraphEdge(source.id, target.id, label, navigationElement, kind))
+      val key = GraphEdgeKey(source.id, target.id, label, kind)
+      val existing = edges[key]
+      if (existing == null || shouldReplaceNavigationElement(existing.navigationElement, navigationElement)) {
+        edges[key] = GraphEdge(source.id, target.id, label, navigationElement, kind)
+      }
+    }
+
+    private fun shouldReplaceNavigationElement(existing: PsiElement?, candidate: PsiElement?): Boolean {
+      if (candidate == null) return false
+      if (existing == null) return true
+
+      val seedFile = seed.psiElement?.containingFile?.originalFile ?: return false
+      val existingFile = existing.containingFile?.originalFile
+      val candidateFile = candidate.containingFile?.originalFile
+      return existingFile != seedFile && candidateFile == seedFile
     }
 
     private fun configElement(section: String,
@@ -1036,8 +1049,26 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
   }
 
   private fun componentKeys(kind: ComponentKind, psiClass: PsiClass, annotation: PsiAnnotation): List<String> {
-    val values = annotationValues(annotation).filter { it.isNotBlank() }
+    val values = explicitAnnotationValues(annotation)
     return if (values.isEmpty()) fallbackKeys(kind, psiClass) else values
+  }
+
+  private fun configAnnotationValues(component: Component, annotationName: String, annotation: PsiAnnotation): List<String> {
+    val annotationKind = annotationComponentKind(annotationName)
+    return if (annotationKind == component.kind) {
+      componentKeys(component.kind, component.target, annotation)
+    }
+    else {
+      explicitAnnotationValues(annotation)
+    }
+  }
+
+  private fun annotationComponentKind(annotationName: String): ComponentKind? {
+    return ANNOTATION_KINDS.entries.firstOrNull { annotationName in it.value }?.key
+  }
+
+  private fun explicitAnnotationValues(annotation: PsiAnnotation): List<String> {
+    return annotationValues(annotation).filter { it.isNotBlank() }
   }
 
   private fun fallbackKeys(kind: ComponentKind, psiClass: PsiClass): List<String> {
@@ -1297,6 +1328,13 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
     val targetId: String,
     val label: String,
     val navigationElement: PsiElement?,
+    val kind: HelidonLangChain4jWorkflowEdgeKind,
+  )
+
+  private data class GraphEdgeKey(
+    val sourceId: String,
+    val targetId: String,
+    val label: String,
     val kind: HelidonLangChain4jWorkflowEdgeKind,
   )
 

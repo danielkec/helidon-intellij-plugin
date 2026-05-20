@@ -161,6 +161,44 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
     assertEdge(graph, "demo.BlankValueService", "BlankValueService", "declares")
   }
 
+  fun testBlankResourceAnnotationDoesNotFallbackToServiceKey() {
+    addLangChain4jStubs()
+    myFixture.addClass("""
+      package demo;
+
+      import io.helidon.extensions.langchain4j.Ai;
+
+      @Ai.Service("assistant")
+      @Ai.ChatModel("")
+      interface BlankResourceValueService {
+      }
+    """.trimIndent())
+    val file = myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      langchain4j:
+        services:
+          assistant:
+            chat-model: demo.BlankResourceValueService
+        models:
+          demo.BlankResourceValueService:
+            provider: open-ai
+    """.trimIndent())
+
+    val seed = HelidonLangChain4jWorkflowGraphBuilder.seedFromPsiElement(file)!!
+    val graph = HelidonLangChain4jWorkflowGraphBuilder.build(seed)
+
+    assertNode(graph, HelidonLangChain4jDiagramNodeKind.SERVICE_CONFIG, "assistant")
+    assertNode(graph, HelidonLangChain4jDiagramNodeKind.MODEL_CONFIG, "demo.BlankResourceValueService")
+    assertNode(graph, HelidonLangChain4jDiagramNodeKind.JAVA_SERVICE, "BlankResourceValueService")
+    assertFalse("Blank @Ai.ChatModel must not fall back to the service key for annotation edges",
+                graph.edges.any {
+                  it.source.kind == HelidonLangChain4jDiagramNodeKind.JAVA_SERVICE &&
+                    it.source.name == "BlankResourceValueService" &&
+                    it.target.kind == HelidonLangChain4jDiagramNodeKind.MODEL_CONFIG &&
+                    it.target.name == "demo.BlankResourceValueService" &&
+                    it.label == "ChatModel"
+                })
+  }
+
   fun testDuplicateConfigNodePrefersSeedFileForNavigation() {
     addLangChain4jStubs()
     myFixture.addFileToProject(HELIDON_APPLICATION_YAML, """
@@ -183,6 +221,39 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
     }
 
     assertEquals("application-dev.yaml", configNode.psiElement?.containingFile?.name)
+  }
+
+  fun testDuplicateConfigEdgesAreCollapsedAndPreferSeedFileNavigation() {
+    addLangChain4jStubs()
+    myFixture.addFileToProject(HELIDON_APPLICATION_YAML, """
+      langchain4j:
+        services:
+          assistant:
+            chat-model: assistant-model
+        models:
+          assistant-model:
+            provider: open-ai
+    """.trimIndent())
+    val file = myFixture.configureByText("application-dev.yaml", """
+      langchain4j:
+        services:
+          assistant:
+            chat-model: assistant-model
+        models:
+          assistant-model:
+            provider: open-ai
+    """.trimIndent())
+
+    val seed = HelidonLangChain4jWorkflowGraphBuilder.seedFromPsiElement(file)!!
+    val graph = HelidonLangChain4jWorkflowGraphBuilder.build(seed)
+    val edges = graph.edges.filter {
+      it.source.name == "assistant" &&
+        it.target.name == "assistant-model" &&
+        it.label == "chat-model"
+    }
+
+    assertEquals("Duplicate config files should not render duplicate logical edges", 1, edges.size)
+    assertEquals("application-dev.yaml", edges.single().navigationElement?.containingFile?.name)
   }
 
   fun testYamlSeedRequiresHelidonConfigFile() {

@@ -35,6 +35,8 @@ import org.jetbrains.yaml.psi.YAMLKeyValue
 import org.jetbrains.yaml.psi.YAMLMapping
 import org.jetbrains.yaml.psi.YAMLScalar
 import org.jetbrains.yaml.psi.YAMLSequence
+import java.nio.charset.StandardCharsets
+import java.util.Base64
 
 internal const val HELIDON_LANGCHAIN4J_DIAGRAM_ID = "HelidonLangChain4jWorkflow"
 
@@ -73,8 +75,8 @@ internal class HelidonLangChain4jDiagramElement(
 }
 
 internal data class HelidonLangChain4jDiagramItem(
-  val name: String,
-  val type: String,
+  val key: String,
+  val value: String,
 )
 
 internal enum class HelidonLangChain4jDiagramNodeKind(val presentableName: String) {
@@ -256,10 +258,54 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
   }
 
   fun findElement(project: Project, id: String): HelidonLangChain4jDiagramElement? {
+    parseDiagramId(id, "root", 2)?.let { parts ->
+      val includeTests = includeTestsPart(parts[0]) ?: return null
+      val moduleName = parts[1]
+      return ModuleManager.getInstance(project).findModuleByName(moduleName)
+        ?.let { rootElement(it, includeTests, psiElement = null) }
+    }
+
+    parseDiagramId(id, "java", 3)?.let { parts ->
+      val includeTests = includeTestsPart(parts[0]) ?: return null
+      val kind = ComponentKind.entries.firstOrNull { it.name == parts[1] } ?: return null
+      val psiClass = findClass(project, parts[2]) ?: return null
+      val module = ModuleUtilCore.findModuleForPsiElement(psiClass)
+      return Component(kind, parts[2], psiClass).toDiagramElement(module, includeTests)
+    }
+
+    parseDiagramId(id, "java-class", 2)?.let { parts ->
+      val includeTests = includeTestsPart(parts[0]) ?: return null
+      val psiClass = findClass(project, parts[1]) ?: return null
+      val module = ModuleUtilCore.findModuleForPsiElement(psiClass)
+      return javaClassElement(psiClass, module, includeTests)
+    }
+
+    parseDiagramId(id, "endpoint", 2)?.let { parts ->
+      val includeTests = includeTestsPart(parts[0]) ?: return null
+      val psiClass = findClass(project, parts[1]) ?: return null
+      val module = ModuleUtilCore.findModuleForPsiElement(psiClass)
+      return endpointElement(psiClass, module, includeTests, inputs = emptyList())
+    }
+
+    parseDiagramId(id, "config", 4)?.let { parts ->
+      val includeTests = includeTestsPart(parts[0]) ?: return null
+      val module = ModuleManager.getInstance(project).findModuleByName(parts[1]) ?: return null
+      val section = parts[2]
+      val runtimeKey = parts[3]
+      val kind = CONFIG_NODE_KINDS[section] ?: return null
+      findConfigEntry(module, includeTests, section, runtimeKey)?.let { entry ->
+        return configElement(section, runtimeKey, entry.keyText, kind, entry, module, includeTests)
+      }
+    }
+
+    return findLegacyElement(project, id)
+  }
+
+  private fun findLegacyElement(project: Project, id: String): HelidonLangChain4jDiagramElement? {
     if (id.startsWith("root:")) {
       val moduleName = id.substringAfter("root:")
       return ModuleManager.getInstance(project).findModuleByName(moduleName)
-        ?.let { rootElement(it, includeTests = true, psiElement = null) }
+        ?.let { rootElement(it, includeTests = false, psiElement = null) }
     }
 
     if (id.startsWith("java:")) {
@@ -268,21 +314,21 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
       val kind = ComponentKind.entries.firstOrNull { it.name == kindName } ?: return null
       val psiClass = findClass(project, qualifiedName) ?: return null
       val module = ModuleUtilCore.findModuleForPsiElement(psiClass)
-      return Component(kind, qualifiedName, psiClass).toDiagramElement(module, includeTests = true)
+      return Component(kind, qualifiedName, psiClass).toDiagramElement(module, includeTestsFor(psiClass, module))
     }
 
     if (id.startsWith("java-class:")) {
       val qualifiedName = id.substringAfter("java-class:")
       val psiClass = findClass(project, qualifiedName) ?: return null
       val module = ModuleUtilCore.findModuleForPsiElement(psiClass)
-      return javaClassElement(psiClass, module, includeTests = true)
+      return javaClassElement(psiClass, module, includeTestsFor(psiClass, module))
     }
 
     if (id.startsWith("endpoint:")) {
       val qualifiedName = id.substringAfter("endpoint:")
       val psiClass = findClass(project, qualifiedName) ?: return null
       val module = ModuleUtilCore.findModuleForPsiElement(psiClass)
-      return endpointElement(psiClass, module, includeTests = true, inputs = emptyList())
+      return endpointElement(psiClass, module, includeTestsFor(psiClass, module), inputs = emptyList())
     }
 
     if (id.startsWith("config:")) {
@@ -308,7 +354,7 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
 
   private fun rootElement(module: Module, includeTests: Boolean, psiElement: PsiElement?): HelidonLangChain4jDiagramElement {
     return HelidonLangChain4jDiagramElement(
-      id = "root:${module.name}",
+      id = diagramId("root", includeTestsPart(includeTests), module.name),
       name = "langchain4j",
       kind = HelidonLangChain4jDiagramNodeKind.ROOT,
       psiElement = psiElement,
@@ -571,11 +617,11 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
       val items = ArrayList<HelidonLangChain4jDiagramItem>()
       val inputs = agentInputKeys(agentClass)
       if (inputs.isNotEmpty()) {
-        items.add(HelidonLangChain4jDiagramItem(inputs.joinToString(", "), "input"))
+        items.add(HelidonLangChain4jDiagramItem(key = "input", value = inputs.joinToString(", ")))
       }
       val outputs = agentOutputKeys(agentClass, conditionalWorkflows)
       if (outputs.isNotEmpty()) {
-        items.add(HelidonLangChain4jDiagramItem(outputs.joinToString(", "), "output"))
+        items.add(HelidonLangChain4jDiagramItem(key = "output", value = outputs.joinToString(", ")))
       }
       items.addAll(agentResourceItems(agentClass))
       return items
@@ -615,19 +661,19 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
           HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_MODERATION_MODEL,
           HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_MODERATION_MODEL -> {
             annotationValues(annotation).takeIf { it.isNotEmpty() }?.let { values ->
-              items.add(HelidonLangChain4jDiagramItem(values.joinToString(", "), "model"))
+              items.add(HelidonLangChain4jDiagramItem(key = "model", value = values.joinToString(", ")))
             }
           }
           HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_CONTENT_RETRIEVER,
           HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_CONTENT_RETRIEVER -> {
             annotationValues(annotation).takeIf { it.isNotEmpty() }?.let { values ->
-              items.add(HelidonLangChain4jDiagramItem(values.joinToString(", "), "retriever"))
+              items.add(HelidonLangChain4jDiagramItem(key = "retriever", value = values.joinToString(", ")))
             }
           }
           HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_MCP_CLIENTS,
           HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_MCP_CLIENTS -> {
             annotationValues(annotation).takeIf { it.isNotEmpty() }?.let { values ->
-              items.add(HelidonLangChain4jDiagramItem(values.joinToString(", "), "mcp"))
+              items.add(HelidonLangChain4jDiagramItem(key = "mcp", value = values.joinToString(", ")))
             }
           }
           HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_TOOLS,
@@ -635,7 +681,7 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
             classValues(annotation, VALUE_ATTRIBUTE)
               .mapNotNull { it.name ?: it.qualifiedName }
               .takeIf { it.isNotEmpty() }
-              ?.let { values -> items.add(HelidonLangChain4jDiagramItem(values.joinToString(", "), "tools")) }
+              ?.let { values -> items.add(HelidonLangChain4jDiagramItem(key = "tools", value = values.joinToString(", "))) }
           }
         }
       }
@@ -819,7 +865,7 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
       val qualifiedName = psiClass?.qualifiedName ?: className
       val name = psiClass?.name ?: className.substringAfterLast('.')
       val node = HelidonLangChain4jDiagramElement(
-        id = "java-class:$qualifiedName",
+        id = diagramId("java-class", includeTestsPart(includeTests), qualifiedName),
         name = name,
         kind = HelidonLangChain4jDiagramNodeKind.JAVA_CLASS,
         psiElement = psiClass ?: context,
@@ -1063,7 +1109,7 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
                                includeTests: Boolean): HelidonLangChain4jDiagramElement {
     val qualifiedName = psiClass.qualifiedName ?: psiClass.name ?: "JavaClass"
     return HelidonLangChain4jDiagramElement(
-      id = "java-class:$qualifiedName",
+      id = diagramId("java-class", includeTestsPart(includeTests), qualifiedName),
       name = psiClass.name ?: qualifiedName,
       kind = HelidonLangChain4jDiagramNodeKind.JAVA_CLASS,
       psiElement = psiClass,
@@ -1078,14 +1124,14 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
                               inputs: List<String>): HelidonLangChain4jDiagramElement {
     val qualifiedName = endpoint.qualifiedName ?: endpoint.name ?: "Endpoint"
     return HelidonLangChain4jDiagramElement(
-      id = "endpoint:$qualifiedName",
+      id = diagramId("endpoint", includeTestsPart(includeTests), qualifiedName),
       name = endpoint.name ?: qualifiedName,
       kind = HelidonLangChain4jDiagramNodeKind.ENDPOINT,
       psiElement = endpoint,
       module = module,
       includeTests = includeTests,
       items = inputs.takeIf { it.isNotEmpty() }
-        ?.let { listOf(HelidonLangChain4jDiagramItem(it.joinToString(", "), "input")) }
+        ?.let { listOf(HelidonLangChain4jDiagramItem(key = "input", value = it.joinToString(", "))) }
         ?: emptyList(),
     )
   }
@@ -1099,7 +1145,7 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
                             includeTests: Boolean): HelidonLangChain4jDiagramElement {
     val displayName = if (runtimeKey == sectionKey) runtimeKey else "$runtimeKey ($sectionKey)"
     return HelidonLangChain4jDiagramElement(
-      id = "config:$section:$runtimeKey",
+      id = diagramId("config", includeTestsPart(includeTests), module.name, section, runtimeKey),
       name = displayName,
       kind = kind,
       psiElement = psiElement,
@@ -1118,13 +1164,17 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
     return ModuleRootManager.getInstance(module).fileIndex.isInTestSourceContent(virtualFile)
   }
 
+  private fun includeTestsFor(context: PsiElement, module: Module?): Boolean {
+    return module != null && includeTestSources(context, module)
+  }
+
   private fun Component.toDiagramElement(module: Module?,
                                          includeTests: Boolean,
                                          group: String? = null,
                                          items: List<HelidonLangChain4jDiagramItem> = emptyList()): HelidonLangChain4jDiagramElement {
     val qualifiedName = target.qualifiedName ?: target.name ?: key
     return HelidonLangChain4jDiagramElement(
-      id = "java:${kind.name}:$qualifiedName",
+      id = diagramId("java", includeTestsPart(includeTests), kind.name, qualifiedName),
       name = target.name ?: qualifiedName,
       kind = kind.nodeKind,
       psiElement = target,
@@ -1133,6 +1183,40 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
       group = group,
       items = items,
     )
+  }
+
+  private fun diagramId(prefix: String, vararg parts: String): String {
+    return "$prefix:" + parts.joinToString(":") { encodeIdPart(it) }
+  }
+
+  private fun parseDiagramId(id: String, prefix: String, expectedPartCount: Int): List<String>? {
+    if (!id.startsWith("$prefix:")) return null
+    val tokens = id.removePrefix("$prefix:").split(':')
+    if (tokens.size != expectedPartCount) return null
+    return tokens.map { decodeIdPart(it) ?: return null }
+  }
+
+  private fun encodeIdPart(value: String): String {
+    return Base64.getUrlEncoder().withoutPadding().encodeToString(value.toByteArray(StandardCharsets.UTF_8))
+  }
+
+  private fun decodeIdPart(value: String): String? {
+    return try {
+      String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8)
+    }
+    catch (_: IllegalArgumentException) {
+      null
+    }
+  }
+
+  private fun includeTestsPart(includeTests: Boolean): String = if (includeTests) "tests" else "main"
+
+  private fun includeTestsPart(part: String): Boolean? {
+    return when (part) {
+      "main" -> false
+      "tests" -> true
+      else -> null
+    }
   }
 
   private data class SequenceWorkflow(

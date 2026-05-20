@@ -4,7 +4,10 @@ package com.intellij.helidon.langchain4j.diagram
 import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.HelidonIcons
 import com.intellij.helidon.config.HELIDON_APPLICATION_YAML
+import com.intellij.openapi.Disposable
+import com.intellij.openapi.util.Disposer
 import com.intellij.psi.PsiClass
+import com.intellij.testFramework.PsiTestUtil
 
 class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
   fun testBuildsWorkflowGraphFromLangChain4jYamlAndAnnotations() {
@@ -47,7 +50,16 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
 
     val seed = HelidonLangChain4jWorkflowGraphBuilder.seedFromPsiElement(file)!!
     val graph = HelidonLangChain4jWorkflowGraphBuilder.build(seed)
-    val resolvedAgent = HelidonLangChain4jWorkflowGraphBuilder.findElement(project, "java:AGENT:demo.HelidonAgent")
+    val agentNode = graph.nodes.single {
+      it.kind == HelidonLangChain4jDiagramNodeKind.JAVA_AGENT && it.name == "HelidonAgent"
+    }
+    val resolvedAgent = HelidonLangChain4jWorkflowGraphBuilder.findElement(project, agentNode.id)
+    val resolvedLegacyAgent = HelidonLangChain4jWorkflowGraphBuilder.findElement(project, "java:AGENT:demo.HelidonAgent")
+    val agentConfig = graph.nodes.single {
+      it.kind == HelidonLangChain4jDiagramNodeKind.AGENT_CONFIG && it.name == "helidon-agent"
+    }
+    val resolvedAgentConfig = HelidonLangChain4jWorkflowGraphBuilder.findElement(project, agentConfig.id)
+    val configIdParts = agentConfig.id.split(':')
 
     assertNode(graph, HelidonLangChain4jDiagramNodeKind.SERVICE_CONFIG, "assistant-service")
     assertNode(graph, HelidonLangChain4jDiagramNodeKind.AGENT_CONFIG, "helidon-agent")
@@ -66,6 +78,13 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
                 graph.nodes.any { it.kind == HelidonLangChain4jDiagramNodeKind.JAVA_MCP_CLIENTS })
     assertEquals(HelidonLangChain4jDiagramNodeKind.JAVA_AGENT, resolvedAgent?.kind)
     assertEquals("HelidonAgent", resolvedAgent?.name)
+    assertFalse(resolvedAgent?.includeTests ?: true)
+    assertEquals(HelidonLangChain4jDiagramNodeKind.JAVA_AGENT, resolvedLegacyAgent?.kind)
+    assertEquals("config", configIdParts.first())
+    assertEquals("Config diagram IDs must include scope, module, section, and runtime key", 5, configIdParts.size)
+    assertEquals(module, resolvedAgentConfig?.module)
+    assertFalse(resolvedAgentConfig?.includeTests ?: true)
+    assertEquals("helidon-agent", resolvedAgentConfig?.name)
 
     assertEdge(graph, "assistant-service", "assistant-model", "chat-model")
     assertEdge(graph, "assistant-service", "AssistantService", "declares")
@@ -126,6 +145,24 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
     """.trimIndent())
 
     assertNull(HelidonLangChain4jWorkflowGraphBuilder.seedFromPsiElement(file))
+  }
+
+  fun testRestoredDiagramElementKeepsTestScope() {
+    addLangChain4jStubs()
+    configureMavenLikeRoots()
+    val file = myFixture.addFileToProject("src/test/resources/$HELIDON_APPLICATION_YAML", """
+      langchain4j:
+        agents:
+          test-agent:
+            chat-model: test-model
+    """.trimIndent())
+
+    val seed = HelidonLangChain4jWorkflowGraphBuilder.seedFromPsiElement(file)!!
+    val restored = HelidonLangChain4jWorkflowGraphBuilder.findElement(project, seed.id)
+
+    assertTrue(seed.includeTests)
+    assertTrue(restored?.includeTests ?: false)
+    assertEquals(module, restored?.module)
   }
 
   fun testRobotIconIsLimitedToAgentsAndServices() {
@@ -275,15 +312,29 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
 
   private fun assertItem(graph: HelidonLangChain4jWorkflowGraph,
                          nodeName: String,
-                         type: String,
-                         name: String) {
+                         key: String,
+                         value: String) {
     val node = graph.nodes.firstOrNull { it.name == nodeName }
     if (node == null) {
       fail("Expected node $nodeName, got ${graph.nodes.map { it.name }}")
       return
     }
-    assertTrue("Expected item $type '$name' on $nodeName, got ${node.items}",
-               node.items.any { it.type == type && it.name == name })
+    assertTrue("Expected item $key '$value' on $nodeName, got ${node.items}",
+               node.items.any { it.key == key && it.value == value })
+  }
+
+  private fun configureMavenLikeRoots() {
+    val mainResources = myFixture.tempDirFixture.findOrCreateDir("src/main/resources")
+    val testResources = myFixture.tempDirFixture.findOrCreateDir("src/test/resources")
+
+    PsiTestUtil.addResourceContentToRoots(module, mainResources, false)
+    PsiTestUtil.addResourceContentToRoots(module, testResources, true)
+
+    Disposer.register(myFixture.testRootDisposable,
+                      Disposable {
+                        PsiTestUtil.removeContentEntry(module, mainResources)
+                        PsiTestUtil.removeContentEntry(module, testResources)
+                      })
   }
 
   private fun diagramElement(kind: HelidonLangChain4jDiagramNodeKind): HelidonLangChain4jDiagramElement {

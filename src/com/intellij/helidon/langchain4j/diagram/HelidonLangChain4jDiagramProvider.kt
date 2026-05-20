@@ -116,7 +116,7 @@ private class HelidonLangChain4jDiagramElementManager(
                            item: Any?,
                            builder: DiagramBuilder): SimpleColoredText {
     if (item is HelidonLangChain4jDiagramItem) {
-      return SimpleColoredText(item.type, SimpleTextAttributes.REGULAR_ATTRIBUTES)
+      return SimpleColoredText(item.key, SimpleTextAttributes.REGULAR_ATTRIBUTES)
     }
     return SimpleColoredText(element?.name ?: "", SimpleTextAttributes.REGULAR_ATTRIBUTES)
   }
@@ -125,7 +125,7 @@ private class HelidonLangChain4jDiagramElementManager(
                            item: Any?,
                            builder: DiagramBuilder?): SimpleColoredText {
     if (item is HelidonLangChain4jDiagramItem) {
-      return SimpleColoredText(item.name, SimpleTextAttributes.GRAY_ATTRIBUTES)
+      return SimpleColoredText(item.value, SimpleTextAttributes.GRAY_ATTRIBUTES)
     }
     return SimpleColoredText(element?.kind?.presentableName ?: "", SimpleTextAttributes.GRAY_ATTRIBUTES)
   }

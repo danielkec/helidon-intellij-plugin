@@ -58,8 +58,13 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
     val agentConfig = graph.nodes.single {
       it.kind == HelidonLangChain4jDiagramNodeKind.AGENT_CONFIG && it.name == "helidon-agent"
     }
+    val javaClassNode = graph.nodes.single {
+      it.kind == HelidonLangChain4jDiagramNodeKind.JAVA_CLASS && it.name == "CalendarTools"
+    }
     val resolvedAgentConfig = HelidonLangChain4jWorkflowGraphBuilder.findElement(project, agentConfig.id)
+    val resolvedJavaClass = HelidonLangChain4jWorkflowGraphBuilder.findElement(project, javaClassNode.id)
     val configIdParts = agentConfig.id.split(':')
+    val javaClassIdParts = javaClassNode.id.split(':')
 
     assertNode(graph, HelidonLangChain4jDiagramNodeKind.SERVICE_CONFIG, "assistant-service")
     assertNode(graph, HelidonLangChain4jDiagramNodeKind.AGENT_CONFIG, "helidon-agent")
@@ -82,9 +87,13 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
     assertEquals(HelidonLangChain4jDiagramNodeKind.JAVA_AGENT, resolvedLegacyAgent?.kind)
     assertEquals("config", configIdParts.first())
     assertEquals("Config diagram IDs must include scope, module, section, and runtime key", 5, configIdParts.size)
+    assertEquals("java-class", javaClassIdParts.first())
+    assertEquals("Java class diagram IDs must include scope, module, and qualified name", 4, javaClassIdParts.size)
     assertEquals(module, resolvedAgentConfig?.module)
     assertFalse(resolvedAgentConfig?.includeTests ?: true)
     assertEquals("helidon-agent", resolvedAgentConfig?.name)
+    assertEquals(module, resolvedJavaClass?.module)
+    assertEquals(HelidonLangChain4jDiagramNodeKind.JAVA_CLASS, resolvedJavaClass?.kind)
 
     assertEdge(graph, "assistant-service", "assistant-model", "chat-model")
     assertEdge(graph, "assistant-service", "AssistantService", "declares")

@@ -273,10 +273,10 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
       return Component(kind, parts[2], psiClass).toDiagramElement(module, includeTests)
     }
 
-    parseDiagramId(id, "java-class", 2)?.let { parts ->
+    parseDiagramId(id, "java-class", 3)?.let { parts ->
       val includeTests = includeTestsPart(parts[0]) ?: return null
-      val psiClass = findClass(project, parts[1]) ?: return null
-      val module = ModuleUtilCore.findModuleForPsiElement(psiClass)
+      val module = ModuleManager.getInstance(project).findModuleByName(parts[1]) ?: return null
+      val psiClass = findClass(module, includeTests, parts[2]) ?: return null
       return javaClassElement(psiClass, module, includeTests)
     }
 
@@ -904,7 +904,7 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
       val qualifiedName = psiClass?.qualifiedName ?: className
       val name = psiClass?.name ?: className.substringAfterLast('.')
       val node = HelidonLangChain4jDiagramElement(
-        id = diagramId("java-class", includeTestsPart(includeTests), qualifiedName),
+        id = diagramId("java-class", includeTestsPart(includeTests), module.name, qualifiedName),
         name = name,
         kind = HelidonLangChain4jDiagramNodeKind.JAVA_CLASS,
         psiElement = psiClass ?: context,
@@ -1163,6 +1163,11 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
     return JavaPsiFacade.getInstance(project).findClass(qualifiedName, GlobalSearchScope.allScope(project))
   }
 
+  private fun findClass(module: Module, includeTests: Boolean, qualifiedName: String): PsiClass? {
+    return JavaPsiFacade.getInstance(module.project)
+      .findClass(qualifiedName, module.getModuleWithDependenciesAndLibrariesScope(includeTests))
+  }
+
   private fun findConfigEntry(module: Module,
                               includeTests: Boolean,
                               section: String,
@@ -1189,7 +1194,7 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
                                includeTests: Boolean): HelidonLangChain4jDiagramElement {
     val qualifiedName = psiClass.qualifiedName ?: psiClass.name ?: "JavaClass"
     return HelidonLangChain4jDiagramElement(
-      id = diagramId("java-class", includeTestsPart(includeTests), qualifiedName),
+      id = diagramId("java-class", includeTestsPart(includeTests), module?.name ?: "", qualifiedName),
       name = psiClass.name ?: qualifiedName,
       kind = HelidonLangChain4jDiagramNodeKind.JAVA_CLASS,
       psiElement = psiClass,

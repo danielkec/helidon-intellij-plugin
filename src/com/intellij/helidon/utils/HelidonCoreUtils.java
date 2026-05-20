@@ -6,6 +6,7 @@ import com.intellij.java.library.JavaLibraryModificationTracker;
 import com.intellij.java.library.JavaLibraryUtil;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.roots.ProjectRootModificationTracker;
 import com.intellij.openapi.util.Key;
 import com.intellij.psi.*;
 import com.intellij.psi.search.searches.ReferencesSearch;
@@ -17,6 +18,7 @@ import com.intellij.uast.UastModificationTracker;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -24,8 +26,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class HelidonCoreUtils {
-  private static final Key<CachedValue<Map<String, Set<PsiElement>>>> SERVICE_USAGE_TARGETS_BY_CONTRACT_KEY =
-    Key.create("HELIDON_SERVICE_USAGE_TARGETS_KEY");
+  private static final Key<CachedValue<Map<PsiClass, Set<PsiElement>>>> SERVICE_USAGE_TARGETS_BY_CONTRACT_KEY =
+    Key.create("HELIDON_SERVICE_USAGE_TARGETS_BY_CONTRACT_KEY");
   private static final Set<String> HELIDON_SERVICE_SCOPE_ANNOTATIONS = Set.of(HelidonConstants.SERVICE_SINGLETON,
                                                                                HelidonConstants.SERVICE_PROVIDER,
                                                                                HelidonConstants.SERVICE_PER_LOOKUP,
@@ -74,17 +76,18 @@ public final class HelidonCoreUtils {
   }
 
   public static @NotNull Set<PsiElement> getHelidonServiceUsageTargets(@NotNull Module module, @NotNull PsiClass serviceClass) {
-    Map<String, Set<PsiElement>> usageTargetsByContract = CachedValuesManager.getManager(module.getProject())
+    Map<PsiClass, Set<PsiElement>> usageTargetsByContract = CachedValuesManager.getManager(module.getProject())
       .getCachedValue(module, SERVICE_USAGE_TARGETS_BY_CONTRACT_KEY, () -> {
         return Result.create(new ConcurrentHashMap<>(),
                              UastModificationTracker.getInstance(module.getProject()),
-                             JavaLibraryModificationTracker.getInstance(module.getProject()));
+                             JavaLibraryModificationTracker.getInstance(module.getProject()),
+                             ProjectRootModificationTracker.getInstance(module.getProject()));
       }, false);
 
     Set<PsiElement> targets = new LinkedHashSet<>();
     for (PsiClass contract : getHelidonServiceContracts(serviceClass)) {
-      Set<PsiElement> contractTargets = usageTargetsByContract.computeIfAbsent(getServiceContractKey(contract),
-                                                                                key -> calculateHelidonServiceUsageTargets(module, contract));
+      Set<PsiElement> contractTargets = usageTargetsByContract.computeIfAbsent(contract, key ->
+        Collections.unmodifiableSet(new LinkedHashSet<>(calculateHelidonServiceUsageTargets(module, key))));
       for (PsiElement target : contractTargets) {
         if (!PsiTreeUtil.isAncestor(serviceClass, target, false)) {
           targets.add(target);
@@ -92,16 +95,6 @@ public final class HelidonCoreUtils {
       }
     }
     return targets;
-  }
-
-  private static @NotNull String getServiceContractKey(@NotNull PsiClass contract) {
-    String qualifiedName = contract.getQualifiedName();
-    if (qualifiedName != null) {
-      return qualifiedName;
-    }
-    PsiFile containingFile = contract.getContainingFile();
-    String fileUrl = containingFile == null || containingFile.getVirtualFile() == null ? "" : containingFile.getVirtualFile().getUrl();
-    return fileUrl + ":" + contract.getTextRange();
   }
 
   private static @NotNull Set<PsiElement> calculateHelidonServiceUsageTargets(@NotNull Module module, @NotNull PsiClass contract) {

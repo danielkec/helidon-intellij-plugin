@@ -147,8 +147,8 @@ class HelidonClassAnnotatorTest : HelidonHighlightingTestCase() {
     val fieldText = "  @Service.Inject\n  Greeting greeting;\n\n"
     val lookupText = "    Services.get(Greeting.class);\n"
     WriteCommandAction.runWriteCommandAction(project) {
-      document.insertString(document.text.indexOf("  void lookup()"), fieldText)
-      document.insertString(document.text.indexOf("  }\n}"), lookupText)
+      document.insertString(requireOffset(document.text, "  void lookup()"), fieldText)
+      document.insertString(requireOffset(document.text, "  }\n}"), lookupText)
     }
     PsiDocumentManager.getInstance(project).commitAllDocuments()
 
@@ -157,14 +157,20 @@ class HelidonClassAnnotatorTest : HelidonHighlightingTestCase() {
     assertTrue(addedTargets.any { it.text == "Greeting.class" })
 
     WriteCommandAction.runWriteCommandAction(project) {
-      val fieldOffset = document.text.indexOf(fieldText)
+      val fieldOffset = requireOffset(document.text, fieldText)
       document.deleteString(fieldOffset, fieldOffset + fieldText.length)
-      val lookupOffset = document.text.indexOf(lookupText)
+      val lookupOffset = requireOffset(document.text, lookupText)
       document.deleteString(lookupOffset, lookupOffset + lookupText.length)
     }
     PsiDocumentManager.getInstance(project).commitAllDocuments()
 
     assertEmpty(HelidonCoreUtils.getHelidonServiceUsageTargets(module, serviceClass))
+  }
+
+  private fun requireOffset(text: String, needle: String): Int {
+    val offset = text.indexOf(needle)
+    assertTrue("Missing text in test fixture: $needle", offset >= 0)
+    return offset
   }
 
   private fun assertLangChain4jGutterMarker(packageName: String, annotationName: String) {

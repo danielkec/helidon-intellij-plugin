@@ -8,6 +8,8 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.util.Disposer
 import com.intellij.psi.PsiClass
 import com.intellij.testFramework.PsiTestUtil
+import java.nio.charset.StandardCharsets
+import java.util.Base64
 
 class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
   fun testBuildsWorkflowGraphFromLangChain4jYamlAndAnnotations() {
@@ -55,6 +57,10 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
     }
     val resolvedAgent = HelidonLangChain4jWorkflowGraphBuilder.findElement(project, agentNode.id)
     val resolvedLegacyAgent = HelidonLangChain4jWorkflowGraphBuilder.findElement(project, "java:AGENT:demo.HelidonAgent")
+    val resolvedEncodedLegacyAgent = HelidonLangChain4jWorkflowGraphBuilder.findElement(
+      project,
+      encodedDiagramId("java", "main", "AGENT", "demo.HelidonAgent"),
+    )
     val agentConfig = graph.nodes.single {
       it.kind == HelidonLangChain4jDiagramNodeKind.AGENT_CONFIG && it.name == "helidon-agent"
     }
@@ -63,6 +69,7 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
     }
     val resolvedAgentConfig = HelidonLangChain4jWorkflowGraphBuilder.findElement(project, agentConfig.id)
     val resolvedJavaClass = HelidonLangChain4jWorkflowGraphBuilder.findElement(project, javaClassNode.id)
+    val javaIdParts = agentNode.id.split(':')
     val configIdParts = agentConfig.id.split(':')
     val javaClassIdParts = javaClassNode.id.split(':')
 
@@ -83,8 +90,15 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
                 graph.nodes.any { it.kind == HelidonLangChain4jDiagramNodeKind.JAVA_MCP_CLIENTS })
     assertEquals(HelidonLangChain4jDiagramNodeKind.JAVA_AGENT, resolvedAgent?.kind)
     assertEquals("HelidonAgent", resolvedAgent?.name)
+    assertEquals(module, resolvedAgent?.module)
     assertFalse(resolvedAgent?.includeTests ?: true)
     assertEquals(HelidonLangChain4jDiagramNodeKind.JAVA_AGENT, resolvedLegacyAgent?.kind)
+    assertEquals(HelidonLangChain4jDiagramNodeKind.JAVA_AGENT, resolvedEncodedLegacyAgent?.kind)
+    assertEquals("java", javaIdParts.first())
+    assertEquals("Java diagram IDs must include scope, module, kind, and qualified name", 5, javaIdParts.size)
+    assertEquals(module.name, decodeIdPart(javaIdParts[2]))
+    assertEquals("AGENT", decodeIdPart(javaIdParts[3]))
+    assertEquals("demo.HelidonAgent", decodeIdPart(javaIdParts[4]))
     assertEquals("config", configIdParts.first())
     assertEquals("Config diagram IDs must include scope, module, section, and runtime key", 5, configIdParts.size)
     assertEquals("java-class", javaClassIdParts.first())
@@ -505,6 +519,18 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
                         PsiTestUtil.removeContentEntry(module, mainResources)
                         PsiTestUtil.removeContentEntry(module, testResources)
                       })
+  }
+
+  private fun encodedDiagramId(prefix: String, vararg parts: String): String {
+    return "$prefix:" + parts.joinToString(":") { encodeIdPart(it) }
+  }
+
+  private fun encodeIdPart(value: String): String {
+    return Base64.getUrlEncoder().withoutPadding().encodeToString(value.toByteArray(StandardCharsets.UTF_8))
+  }
+
+  private fun decodeIdPart(value: String): String {
+    return String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8)
   }
 
   private fun diagramElement(kind: HelidonLangChain4jDiagramNodeKind): HelidonLangChain4jDiagramElement {

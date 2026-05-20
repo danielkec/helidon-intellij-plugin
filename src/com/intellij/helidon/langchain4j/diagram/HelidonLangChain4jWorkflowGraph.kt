@@ -265,6 +265,17 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
         ?.let { rootElement(it, includeTests, psiElement = null) }
     }
 
+    parseDiagramId(id, "java", 4)?.let { parts ->
+      val includeTests = includeTestsPart(parts[0]) ?: return null
+      val module = parts[1].takeIf { it.isNotBlank() }
+        ?.let { ModuleManager.getInstance(project).findModuleByName(it) ?: return null }
+      val kind = ComponentKind.entries.firstOrNull { it.name == parts[2] } ?: return null
+      val psiClass = module?.let { findClass(it, includeTests, parts[3]) }
+        ?: findClass(project, parts[3])
+        ?: return null
+      return Component(kind, parts[3], psiClass).toDiagramElement(module, includeTests)
+    }
+
     parseDiagramId(id, "java", 3)?.let { parts ->
       val includeTests = includeTestsPart(parts[0]) ?: return null
       val kind = ComponentKind.entries.firstOrNull { it.name == parts[1] } ?: return null
@@ -1259,7 +1270,7 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
                                          items: List<HelidonLangChain4jDiagramItem> = emptyList()): HelidonLangChain4jDiagramElement {
     val qualifiedName = target.qualifiedName ?: target.name ?: key
     return HelidonLangChain4jDiagramElement(
-      id = diagramId("java", includeTestsPart(includeTests), kind.name, qualifiedName),
+      id = diagramId("java", includeTestsPart(includeTests), module?.name ?: "", kind.name, qualifiedName),
       name = target.name ?: qualifiedName,
       kind = kind.nodeKind,
       psiElement = target,

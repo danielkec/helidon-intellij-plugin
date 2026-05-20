@@ -1,6 +1,7 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.helidon.config.yaml
 
+import com.intellij.codeInsight.lookup.LookupElementPresentation
 import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.config.HELIDON_APPLICATION_YAML
 import com.intellij.helidon.config.HelidonConfigFileModificationTracker
@@ -186,6 +187,33 @@ class HelidonYamlConfigTest : HelidonHighlightingTestCase() {
     assertDoesntContain(lookupStrings, "old.key")
   }
 
+  fun testPlaceholderReferenceCompletionDoesNotCacheYamlValuePresentation() {
+    val contributingFile = myFixture.addFileToProject("application-dev.yml", """
+      server:
+        host: localhost
+    """.trimIndent())
+
+    val applicationYaml = """
+      server:
+        port: ${'$'}{<caret>}
+    """.trimIndent()
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, applicationYaml)
+    myFixture.completeBasic()
+    assertNull(lookupPresentation("server.host").typeText)
+
+    val documentManager = PsiDocumentManager.getInstance(project)
+    val document = documentManager.getDocument(contributingFile)!!
+    WriteCommandAction.runWriteCommandAction(project) {
+      val valueStart = document.text.indexOf("localhost")
+      document.replaceString(valueStart, valueStart + "localhost".length, "remotehost")
+    }
+    documentManager.commitAllDocuments()
+
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, applicationYaml)
+    myFixture.completeBasic()
+    assertNull(lookupPresentation("server.host").typeText)
+  }
+
   fun testHelidonConfigFileModificationTrackerTracksOnlyConfigKeyChanges() {
     val javaFile = myFixture.addFileToProject("src/main/java/example/Main.java", """
       package example;
@@ -244,6 +272,12 @@ class HelidonYamlConfigTest : HelidonHighlightingTestCase() {
     documentManager.commitAllDocuments()
 
     assertTrue(tracker.modificationCount > beforeKeyChange)
+  }
+
+  private fun lookupPresentation(lookupString: String): LookupElementPresentation {
+    val lookupElement = myFixture.lookupElements?.firstOrNull { it.lookupString == lookupString }
+      ?: throw AssertionError("Expected lookup element '$lookupString', got ${myFixture.lookupElementStrings}")
+    return LookupElementPresentation.renderElement(lookupElement)
   }
 
   fun testPlaceholderReferenceCompletionWithIncompleteNestedPrefix() {

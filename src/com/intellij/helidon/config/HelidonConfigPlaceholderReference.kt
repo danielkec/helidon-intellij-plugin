@@ -4,7 +4,6 @@ package com.intellij.helidon.config
 import com.intellij.codeInsight.highlighting.HighlightedReference
 import com.intellij.codeInsight.lookup.LookupElement
 import com.intellij.codeInsight.lookup.LookupElementBuilder
-import com.intellij.codeInsight.lookup.LookupElementPresentation
 import com.intellij.helidon.HelidonIcons
 import com.intellij.lang.properties.psi.PropertiesElementFactory
 import com.intellij.lang.properties.psi.PropertiesFile
@@ -25,7 +24,6 @@ import com.intellij.util.ArrayUtil
 import com.intellij.util.PairProcessor
 import com.intellij.util.SmartList
 import com.intellij.util.containers.addIfNotNull
-import javax.swing.Icon
 
 class HelidonConfigPlaceholderReference private constructor(builder: Builder) :
   PsiReferenceBase.Poly<PsiElement>(builder.element, builder.range, builder.soft), HighlightedReference, ConfigPlaceholderReference {
@@ -137,33 +135,14 @@ private fun collectKeyVariants(module: Module, isInTests: Boolean): CachedValueP
   return CachedValueProvider.Result.create(variants, *dependencies.toTypedArray())
 }
 
-private data class CachedConfigKeyVariant(val lookupString: String,
-                                          val presentableText: String?,
-                                          val typeText: String?,
-                                          val icon: Icon?) {
+private data class CachedConfigKeyVariant(val lookupString: String) {
   fun createLookupElement(): LookupElement {
-    var builder = LookupElementBuilder.create(lookupString)
-    if (presentableText != null) {
-      builder = builder.withPresentableText(presentableText)
-    }
-    if (typeText != null) {
-      builder = builder.withTypeText(typeText)
-    }
-    if (icon != null) {
-      builder = builder.withIcon(icon)
-    }
-    return builder
+    return LookupElementBuilder.create(lookupString)
   }
 }
 
 private fun createCachedConfigKeyVariant(lookupElement: LookupElement): CachedConfigKeyVariant {
-  val presentation = LookupElementPresentation.renderElement(lookupElement)
-  val lookupString = lookupElement.lookupString
-  val presentableText = presentation.itemText?.takeIf { it != lookupString }
-  return CachedConfigKeyVariant(lookupString,
-                                presentableText,
-                                presentation.typeText,
-                                presentation.icon)
+  return CachedConfigKeyVariant(lookupElement.lookupString)
 }
 
 private fun processConfigFiles(module: Module,

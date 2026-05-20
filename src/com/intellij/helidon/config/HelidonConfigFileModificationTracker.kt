@@ -24,6 +24,7 @@ internal class HelidonConfigFileModificationTracker(private val project: Project
 
   private val modificationCounter = AtomicLong()
   private val trackedFiles = ConcurrentHashMap<String, VirtualFile>()
+  private val fileStamps = ConcurrentHashMap<String, Long>()
   private val keySignatures = ConcurrentHashMap<String, String>()
 
   fun track(file: PsiFile) {
@@ -32,6 +33,7 @@ internal class HelidonConfigFileModificationTracker(private val project: Project
     val virtualFile = originalFile.virtualFile ?: originalFile.viewProvider.virtualFile
     val fileId = fileId(originalFile)
     trackedFiles[fileId] = virtualFile
+    fileStamps[fileId] = fileStamp(originalFile, virtualFile)
     keySignatures[fileId] = keySignature(originalFile)
   }
 
@@ -40,16 +42,24 @@ internal class HelidonConfigFileModificationTracker(private val project: Project
     for ((fileId, virtualFile) in trackedFiles) {
       if (!virtualFile.isValid) {
         trackedFiles.remove(fileId)
+        fileStamps.remove(fileId)
         keySignatures.remove(fileId)
         continue
       }
       val psiFile = psiManager.findFile(virtualFile)?.originalFile
       if (psiFile == null || !isTrackedConfigFile(psiFile)) {
+        trackedFiles.remove(fileId)
+        fileStamps.remove(fileId)
         keySignatures.remove(fileId)
         modificationCounter.incrementAndGet()
         continue
       }
 
+      val currentStamp = fileStamp(psiFile, virtualFile)
+      val previousStamp = fileStamps.put(fileId, currentStamp)
+      if (previousStamp != null && previousStamp == currentStamp) {
+        continue
+      }
       val newSignature = keySignature(psiFile)
       val oldSignature = keySignatures.put(fileId, newSignature)
       if (oldSignature != null && oldSignature != newSignature) {
@@ -66,6 +76,10 @@ internal class HelidonConfigFileModificationTracker(private val project: Project
 
   private fun fileId(file: PsiFile): String {
     return file.virtualFile?.url ?: file.viewProvider.virtualFile.url
+  }
+
+  private fun fileStamp(file: PsiFile, virtualFile: VirtualFile): Long {
+    return maxOf(file.modificationStamp, file.viewProvider.modificationStamp, virtualFile.modificationStamp)
   }
 
   private fun keySignature(file: PsiFile): String {

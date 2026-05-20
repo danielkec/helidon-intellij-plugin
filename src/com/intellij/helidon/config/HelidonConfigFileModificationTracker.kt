@@ -26,6 +26,17 @@ internal class HelidonConfigFileModificationTracker(private val project: Project
 
   companion object {
     fun getInstance(project: Project): HelidonConfigFileModificationTracker = project.service()
+
+    fun keySignature(lookupStrings: Iterable<String>): String {
+      return keySignature(lookupStrings.asSequence())
+    }
+
+    fun keySignature(lookupStrings: Sequence<String>): String {
+      return lookupStrings
+        .distinct()
+        .sorted()
+        .joinToString("\n")
+    }
   }
 
   private val modificationCounter = AtomicLong()
@@ -33,11 +44,15 @@ internal class HelidonConfigFileModificationTracker(private val project: Project
   private val keySignatures = ConcurrentHashMap<VirtualFile, String>()
 
   fun track(file: PsiFile) {
+    track(file, keySignature(file.originalFile))
+  }
+
+  fun track(file: PsiFile, keySignature: String) {
     val originalFile = file.originalFile
     if (!isTrackedConfigFile(originalFile)) return
     val virtualFile = originalFile.virtualFile ?: originalFile.viewProvider.virtualFile
     fileStamps[virtualFile] = fileStamp(originalFile, virtualFile)
-    keySignatures[virtualFile] = keySignature(originalFile)
+    keySignatures[virtualFile] = keySignature
   }
 
   override fun getModificationCount(): Long {
@@ -92,9 +107,7 @@ internal class HelidonConfigFileModificationTracker(private val project: Project
       is YAMLFile -> yamlKeySignature(file)
       is PropertiesFile -> file.properties
         .mapNotNull { it.key }
-        .distinct()
-        .sorted()
-        .joinToString("\n")
+        .let(::keySignature)
       else -> file.text
     }
   }
@@ -108,8 +121,6 @@ internal class HelidonConfigFileModificationTracker(private val project: Project
         yamlValue is YAMLScalar || yamlValue is YAMLSequence
       }
       .map(::getQualifiedConfigKeyName)
-      .distinct()
-      .sorted()
-      .joinToString("\n")
+      .let(::keySignature)
   }
 }

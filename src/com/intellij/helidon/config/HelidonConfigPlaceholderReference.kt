@@ -127,8 +127,12 @@ private fun collectKeyVariants(module: Module, isInTests: Boolean): CachedValueP
   val pointerManager = SmartPointerManager.getInstance(module.project)
 
   processConfigFiles(module, isInTests, PairProcessor { contributor: HelidonConfigFileContributor, psiFile: PsiFile ->
-    configFileModificationTracker.track(psiFile)
-    contributor.getKeyVariants(psiFile).mapTo(variants) { createCachedConfigKeyVariant(pointerManager, it) }
+    val keyVariants = contributor.getKeyVariants(psiFile)
+    configFileModificationTracker.track(
+      psiFile,
+      HelidonConfigFileModificationTracker.keySignature(keyVariants.map { it.lookupString }),
+    )
+    keyVariants.mapTo(variants) { createCachedConfigKeyVariant(pointerManager, it) }
     return@PairProcessor true
   })
 

@@ -274,7 +274,7 @@ class HelidonYamlConfigTest : HelidonHighlightingTestCase() {
     assertTrue(tracker.modificationCount > beforeKeyChange)
   }
 
-  fun testHelidonConfigFileModificationTrackerIgnoresKeyOrderAndSequenceItemKeys() {
+  fun testHelidonConfigFileModificationTrackerIgnoresKeyOrderAndSequenceItemKeysWithPrecomputedSignature() {
     val configFile = myFixture.addFileToProject("application-dev.yml", """
       server:
         host: localhost
@@ -284,7 +284,8 @@ class HelidonYamlConfigTest : HelidonHighlightingTestCase() {
     """.trimIndent())
     val tracker = HelidonConfigFileModificationTracker.getInstance(project)
     val documentManager = PsiDocumentManager.getInstance(project)
-    tracker.track(configFile)
+    tracker.track(configFile,
+                  HelidonConfigFileModificationTracker.keySignature(listOf("server.host", "server.port", "services")))
     val configDocument = documentManager.getDocument(configFile)!!
     val beforeEquivalentChange = tracker.modificationCount
 

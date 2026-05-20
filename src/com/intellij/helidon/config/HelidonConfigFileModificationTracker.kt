@@ -29,18 +29,15 @@ internal class HelidonConfigFileModificationTracker(private val project: Project
   }
 
   private val modificationCounter = AtomicLong()
-  private val trackedFiles = ConcurrentHashMap<String, VirtualFile>()
-  private val fileStamps = ConcurrentHashMap<String, Long>()
-  private val keySignatures = ConcurrentHashMap<String, String>()
+  private val fileStamps = ConcurrentHashMap<VirtualFile, Long>()
+  private val keySignatures = ConcurrentHashMap<VirtualFile, String>()
 
   fun track(file: PsiFile) {
     val originalFile = file.originalFile
     if (!isTrackedConfigFile(originalFile)) return
     val virtualFile = originalFile.virtualFile ?: originalFile.viewProvider.virtualFile
-    val fileId = fileId(originalFile)
-    trackedFiles[fileId] = virtualFile
-    fileStamps[fileId] = fileStamp(originalFile, virtualFile)
-    keySignatures[fileId] = keySignature(originalFile)
+    fileStamps[virtualFile] = fileStamp(originalFile, virtualFile)
+    keySignatures[virtualFile] = keySignature(originalFile)
   }
 
   override fun getModificationCount(): Long {
@@ -53,29 +50,27 @@ internal class HelidonConfigFileModificationTracker(private val project: Project
 
   private fun computeModificationCount(): Long {
     val psiManager = PsiManager.getInstance(project)
-    for ((fileId, virtualFile) in trackedFiles) {
+    for (virtualFile in fileStamps.keys) {
       if (!virtualFile.isValid) {
-        trackedFiles.remove(fileId)
-        fileStamps.remove(fileId)
-        keySignatures.remove(fileId)
+        fileStamps.remove(virtualFile)
+        keySignatures.remove(virtualFile)
         continue
       }
       val psiFile = psiManager.findFile(virtualFile)?.originalFile
       if (psiFile == null || !isTrackedConfigFile(psiFile)) {
-        trackedFiles.remove(fileId)
-        fileStamps.remove(fileId)
-        keySignatures.remove(fileId)
+        fileStamps.remove(virtualFile)
+        keySignatures.remove(virtualFile)
         modificationCounter.incrementAndGet()
         continue
       }
 
       val currentStamp = fileStamp(psiFile, virtualFile)
-      val previousStamp = fileStamps.put(fileId, currentStamp)
+      val previousStamp = fileStamps.put(virtualFile, currentStamp)
       if (previousStamp != null && previousStamp == currentStamp) {
         continue
       }
       val newSignature = keySignature(psiFile)
-      val oldSignature = keySignatures.put(fileId, newSignature)
+      val oldSignature = keySignatures.put(virtualFile, newSignature)
       if (oldSignature != null && oldSignature != newSignature) {
         modificationCounter.incrementAndGet()
       }
@@ -86,10 +81,6 @@ internal class HelidonConfigFileModificationTracker(private val project: Project
   private fun isTrackedConfigFile(file: PsiFile): Boolean {
     val originalFile = file.originalFile
     return originalFile.isValid && isHelidonConfigFile(originalFile)
-  }
-
-  private fun fileId(file: PsiFile): String {
-    return file.virtualFile?.url ?: file.viewProvider.virtualFile.url
   }
 
   private fun fileStamp(file: PsiFile, virtualFile: VirtualFile): Long {

@@ -62,6 +62,8 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
     assertNode(graph, HelidonLangChain4jDiagramNodeKind.JAVA_TOOL_PROVIDER, "CliToolProvider")
     assertNode(graph, HelidonLangChain4jDiagramNodeKind.JAVA_CLASS, "CalendarTools")
     assertNode(graph, HelidonLangChain4jDiagramNodeKind.JAVA_CLASS, "InputGuardrail")
+    assertFalse("MCP client usages should not be rendered as declared Java components",
+                graph.nodes.any { it.kind == HelidonLangChain4jDiagramNodeKind.JAVA_MCP_CLIENTS })
     assertEquals(HelidonLangChain4jDiagramNodeKind.JAVA_AGENT, resolvedAgent?.kind)
     assertEquals("HelidonAgent", resolvedAgent?.name)
 
@@ -73,6 +75,12 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
     assertEdge(graph, "helidon-agent", "filesystem (files)", "mcp-clients")
     assertEdge(graph, "helidon-agent", "CalendarTools", "tools")
     assertEdge(graph, "helidon-agent", "InputGuardrail", "input-guardrails")
+    assertFalse("MCP client config entries should not declare classes that only use the client",
+                graph.edges.any {
+                  it.source.kind == HelidonLangChain4jDiagramNodeKind.MCP_CLIENT_CONFIG &&
+                    it.target.name == "HelidonAgent" &&
+                    it.label == "declares"
+                })
   }
 
   fun testSeedCanBeLangChain4jAnnotatedClass() {
@@ -96,8 +104,16 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
     val graph = HelidonLangChain4jWorkflowGraphBuilder.build(seed)
 
     assertEquals(HelidonLangChain4jDiagramNodeKind.JAVA_AGENT, seed.kind)
+    assertNode(graph, HelidonLangChain4jDiagramNodeKind.ROOT, "langchain4j")
     assertNode(graph, HelidonLangChain4jDiagramNodeKind.AGENT_CONFIG, "helidon-agent")
+    assertEdge(graph, "langchain4j", "helidon-agent", "agents")
     assertEdge(graph, "helidon-agent", "HelidonAgent", "declares")
+    assertFalse("Java seeds should not become the config root container",
+                graph.edges.any {
+                  it.source.kind == HelidonLangChain4jDiagramNodeKind.JAVA_AGENT &&
+                    it.target.kind == HelidonLangChain4jDiagramNodeKind.AGENT_CONFIG &&
+                    it.label == "agents"
+                })
   }
 
   fun testRobotIconIsLimitedToAgentsAndServices() {

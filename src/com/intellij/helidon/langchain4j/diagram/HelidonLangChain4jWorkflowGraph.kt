@@ -133,7 +133,6 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
     AGENTS to setOf(ComponentKind.AGENT),
     MODELS to setOf(ComponentKind.CHAT_MODEL, ComponentKind.STREAMING_CHAT_MODEL, ComponentKind.MODERATION_MODEL),
     CONTENT_RETRIEVERS to setOf(ComponentKind.CONTENT_RETRIEVER),
-    MCP_CLIENTS to setOf(ComponentKind.MCP_CLIENTS),
   )
 
   private val VALUE_CONFIG_TARGETS = mapOf(
@@ -154,7 +153,6 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
     "content-retriever" to setOf(ComponentKind.CONTENT_RETRIEVER),
     "retrieval-augmentor" to setOf(ComponentKind.RETRIEVAL_AUGMENTOR),
     "tool-provider" to setOf(ComponentKind.TOOL_PROVIDER),
-    MCP_CLIENTS to setOf(ComponentKind.MCP_CLIENTS),
   )
 
   private val CLASS_VALUED_KEYS = setOf("tools", "input-guardrails", "output-guardrails")
@@ -195,10 +193,6 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
     ComponentKind.TOOL_PROVIDER to setOf(
       HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_TOOL_PROVIDER,
       HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_TOOL_PROVIDER,
-    ),
-    ComponentKind.MCP_CLIENTS to setOf(
-      HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_MCP_CLIENTS,
-      HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_MCP_CLIENTS,
     ),
   )
 
@@ -645,7 +639,7 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
       for (file in files) {
         for (document in file.documents) {
           val root = HelidonConfigYamlAccessor(document).findExistingKey(ROOT) ?: continue
-          val rootNode = seed.copyWithPsi(root)
+          val rootNode = rootNode(root)
           addNode(rootNode)
           for ((section, kind) in CONFIG_NODE_KINDS) {
             val sectionKey = (root.value as? YAMLMapping)?.getKeyValueByKey(section) ?: continue
@@ -861,6 +855,15 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
                               kind: HelidonLangChain4jDiagramNodeKind,
                               psiElement: YAMLKeyValue): HelidonLangChain4jDiagramElement {
       return configElement(section, runtimeKey, sectionKey, kind, psiElement, module, includeTests)
+    }
+
+    private fun rootNode(root: YAMLKeyValue): HelidonLangChain4jDiagramElement {
+      return if (seed.kind == HelidonLangChain4jDiagramNodeKind.ROOT) {
+        seed.copyWithPsi(root)
+      }
+      else {
+        rootElement(module, includeTests, root)
+      }
     }
 
     private fun HelidonLangChain4jDiagramElement.copyWithPsi(psiElement: PsiElement): HelidonLangChain4jDiagramElement {

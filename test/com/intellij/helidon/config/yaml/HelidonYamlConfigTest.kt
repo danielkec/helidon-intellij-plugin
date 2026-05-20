@@ -187,7 +187,7 @@ class HelidonYamlConfigTest : HelidonHighlightingTestCase() {
     assertDoesntContain(lookupStrings, "old.key")
   }
 
-  fun testPlaceholderReferenceCompletionDoesNotCacheYamlValuePresentation() {
+  fun testPlaceholderReferenceCompletionUpdatesYamlValuePresentationFromCachedVariant() {
     val contributingFile = myFixture.addFileToProject("application-dev.yml", """
       server:
         host: localhost
@@ -199,7 +199,7 @@ class HelidonYamlConfigTest : HelidonHighlightingTestCase() {
     """.trimIndent()
     myFixture.configureByText(HELIDON_APPLICATION_YAML, applicationYaml)
     myFixture.completeBasic()
-    assertNull(lookupPresentation("server.host").typeText)
+    assertEquals("localhost", lookupPresentation("server.host").typeText)
 
     val documentManager = PsiDocumentManager.getInstance(project)
     val document = documentManager.getDocument(contributingFile)!!
@@ -211,7 +211,7 @@ class HelidonYamlConfigTest : HelidonHighlightingTestCase() {
 
     myFixture.configureByText(HELIDON_APPLICATION_YAML, applicationYaml)
     myFixture.completeBasic()
-    assertNull(lookupPresentation("server.host").typeText)
+    assertEquals("remotehost", lookupPresentation("server.host").typeText)
   }
 
   fun testHelidonConfigFileModificationTrackerTracksOnlyConfigKeyChanges() {
@@ -272,6 +272,34 @@ class HelidonYamlConfigTest : HelidonHighlightingTestCase() {
     documentManager.commitAllDocuments()
 
     assertTrue(tracker.modificationCount > beforeKeyChange)
+  }
+
+  fun testHelidonConfigFileModificationTrackerIgnoresKeyOrderAndSequenceItemKeys() {
+    val configFile = myFixture.addFileToProject("application-dev.yml", """
+      server:
+        host: localhost
+        port: 8080
+      services:
+        - name: first
+    """.trimIndent())
+    val tracker = HelidonConfigFileModificationTracker.getInstance(project)
+    val documentManager = PsiDocumentManager.getInstance(project)
+    tracker.track(configFile)
+    val configDocument = documentManager.getDocument(configFile)!!
+    val beforeEquivalentChange = tracker.modificationCount
+
+    WriteCommandAction.runWriteCommandAction(project) {
+      configDocument.setText("""
+        services:
+          - label: first
+        server:
+          port: 8080
+          host: localhost
+      """.trimIndent())
+    }
+    documentManager.commitAllDocuments()
+
+    assertEquals(beforeEquivalentChange, tracker.modificationCount)
   }
 
   private fun lookupPresentation(lookupString: String): LookupElementPresentation {

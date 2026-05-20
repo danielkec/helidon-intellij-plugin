@@ -59,6 +59,22 @@ class HelidonPropertiesConfigTest : HelidonHighlightingTestCase() {
     assertContainsElements(variants!!, "my.key")
   }
 
+  fun testPlaceholderReferenceCompletionKeepsPropertyLookupObject() {
+    configureApplicationProperties("""
+      my.key=value
+      my.completion.key=${"$"}{<caret>}
+    """.trimIndent())
+    myFixture.completeBasic()
+
+    val lookupElement = myFixture.lookupElements?.firstOrNull { it.lookupString == "my.key" }
+    if (lookupElement == null) {
+      fail("Expected lookup element 'my.key', got ${myFixture.lookupElementStrings}")
+      return
+    }
+    val property = assertInstanceOf(lookupElement.`object`, PropertyImpl::class.java)
+    assertEquals("my.key", property.key)
+  }
+
   fun testPlaceholderReferenceResolveToSystemProperty() {
     configureApplicationProperties("my.key=\${os.<caret>name}\n")
     val resolve = resolvePlaceholderReference()

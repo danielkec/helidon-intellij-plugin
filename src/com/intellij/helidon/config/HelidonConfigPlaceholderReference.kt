@@ -5,9 +5,12 @@ import com.intellij.codeInsight.highlighting.HighlightedReference
 import com.intellij.codeInsight.lookup.LookupElement
 import com.intellij.codeInsight.lookup.LookupElementBuilder
 import com.intellij.helidon.HelidonIcons
+import com.intellij.helidon.config.yaml.getYamlPlaceholderLookupRenderer
+import com.intellij.lang.properties.IProperty
 import com.intellij.lang.properties.psi.PropertiesElementFactory
 import com.intellij.lang.properties.psi.PropertiesFile
 import com.intellij.lang.properties.psi.PropertyKeyIndex
+import com.intellij.lang.properties.references.PropertiesCompletionContributor
 import com.intellij.microservices.jvm.config.ConfigPlaceholderReference
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleUtilCore
@@ -24,6 +27,7 @@ import com.intellij.util.ArrayUtil
 import com.intellij.util.PairProcessor
 import com.intellij.util.SmartList
 import com.intellij.util.containers.addIfNotNull
+import org.jetbrains.yaml.psi.YAMLKeyValue
 
 class HelidonConfigPlaceholderReference private constructor(builder: Builder) :
   PsiReferenceBase.Poly<PsiElement>(builder.element, builder.range, builder.soft), HighlightedReference, ConfigPlaceholderReference {
@@ -77,7 +81,7 @@ class HelidonConfigPlaceholderReference private constructor(builder: Builder) :
     val variants: MutableList<LookupElement> = ArrayList()
 
     val module = ModuleUtilCore.findModuleForPsiElement(element)
-    getCachedKeyVariants(module).mapTo(variants) { it.createLookupElement() }
+    getCachedKeyVariants(module).mapNotNullTo(variants) { it.createLookupElement() }
     if (withSystemProperties) {
       for (property in getSystemProperties().properties) {
         val key = property.key ?: continue
@@ -123,7 +127,8 @@ private fun collectKeyVariants(module: Module, isInTests: Boolean): CachedValueP
 
   processConfigFiles(module, isInTests, PairProcessor { contributor: HelidonConfigFileContributor, psiFile: PsiFile ->
     configFileModificationTracker.track(psiFile)
-    contributor.getKeyVariants(psiFile).mapTo(variants, ::createCachedConfigKeyVariant)
+    val pointerManager = SmartPointerManager.getInstance(psiFile.project)
+    contributor.getKeyVariants(psiFile).mapTo(variants) { createCachedConfigKeyVariant(pointerManager, it) }
     return@PairProcessor true
   })
 
@@ -135,14 +140,65 @@ private fun collectKeyVariants(module: Module, isInTests: Boolean): CachedValueP
   return CachedValueProvider.Result.create(variants, *dependencies.toTypedArray())
 }
 
-private data class CachedConfigKeyVariant(val lookupString: String) {
-  fun createLookupElement(): LookupElement {
+private sealed interface CachedConfigKeyVariant {
+  fun createLookupElement(): LookupElement?
+}
+
+private data class YamlCachedConfigKeyVariant(
+  val lookupString: String,
+  val keyValuePointer: SmartPsiElementPointer<YAMLKeyValue>,
+) : CachedConfigKeyVariant {
+  override fun createLookupElement(): LookupElement? {
+    val keyValue = keyValuePointer.element ?: return null
+    return LookupElementBuilder.create(keyValue, lookupString)
+      .withRenderer(getYamlPlaceholderLookupRenderer())
+  }
+}
+
+private data class PropertiesCachedConfigKeyVariant(
+  val propertyPointer: SmartPsiElementPointer<PsiElement>,
+) : CachedConfigKeyVariant {
+  override fun createLookupElement(): LookupElement? {
+    val property = propertyPointer.element as? IProperty ?: return null
+    return PropertiesCompletionContributor.createVariant(property)
+  }
+}
+
+private data class PsiCachedConfigKeyVariant(
+  val lookupString: String,
+  val elementPointer: SmartPsiElementPointer<PsiElement>,
+) : CachedConfigKeyVariant {
+  override fun createLookupElement(): LookupElement? {
+    val element = elementPointer.element ?: return null
+    return LookupElementBuilder.create(element, lookupString)
+  }
+}
+
+private data class PlainCachedConfigKeyVariant(
+  val lookupString: String,
+) : CachedConfigKeyVariant {
+  override fun createLookupElement(): LookupElement {
     return LookupElementBuilder.create(lookupString)
   }
 }
 
-private fun createCachedConfigKeyVariant(lookupElement: LookupElement): CachedConfigKeyVariant {
-  return CachedConfigKeyVariant(lookupElement.lookupString)
+private fun createCachedConfigKeyVariant(pointerManager: SmartPointerManager,
+                                         lookupElement: LookupElement): CachedConfigKeyVariant {
+  val lookupObject = lookupElement.`object`
+  return when (lookupObject) {
+    is YAMLKeyValue -> YamlCachedConfigKeyVariant(
+      lookupElement.lookupString,
+      pointerManager.createSmartPsiElementPointer(lookupObject),
+    )
+    is IProperty -> PropertiesCachedConfigKeyVariant(
+      pointerManager.createSmartPsiElementPointer(lookupObject.psiElement),
+    )
+    is PsiElement -> PsiCachedConfigKeyVariant(
+      lookupElement.lookupString,
+      pointerManager.createSmartPsiElementPointer(lookupObject),
+    )
+    else -> PlainCachedConfigKeyVariant(lookupElement.lookupString)
+  }
 }
 
 private fun processConfigFiles(module: Module,

@@ -352,6 +352,26 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
                 graph.nodes.any { it.kind == HelidonLangChain4jDiagramNodeKind.ROOT })
   }
 
+  fun testInvalidAgenticAnnotationKeepsNormalConfigGraph() {
+    addLangChain4jStubs()
+    addAgenticStubs()
+    addInvalidAgenticWorkflowClasses()
+    val file = myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      langchain4j:
+        agents:
+          invalid-agent:
+            chat-model: assistant-model
+    """.trimIndent())
+
+    val seed = HelidonLangChain4jWorkflowGraphBuilder.seedFromPsiElement(file)!!
+    val graph = HelidonLangChain4jWorkflowGraphBuilder.build(seed)
+
+    assertNode(graph, HelidonLangChain4jDiagramNodeKind.ROOT, "langchain4j")
+    assertNode(graph, HelidonLangChain4jDiagramNodeKind.AGENT_CONFIG, "invalid-agent")
+    assertNode(graph, HelidonLangChain4jDiagramNodeKind.JAVA_AGENT, "InvalidSequenceAgent")
+    assertEdge(graph, "invalid-agent", "InvalidSequenceAgent", "declares")
+  }
+
   private fun assertNode(graph: HelidonLangChain4jWorkflowGraph,
                          kind: HelidonLangChain4jDiagramNodeKind,
                          name: String) {
@@ -761,6 +781,22 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
       interface HelidonMpExpert {
         @Agent(value = "A Helidon MP expert", outputKey = "lastResponse")
         String askExpert(@V("question") String question);
+      }
+    """.trimIndent())
+  }
+
+  private fun addInvalidAgenticWorkflowClasses() {
+    myFixture.addClass("""
+      package demo;
+
+      import io.helidon.integrations.langchain4j.Ai;
+      import dev.langchain4j.agentic.declarative.SequenceAgent;
+      import dev.langchain4j.service.V;
+
+      @Ai.Agent("invalid-agent")
+      interface InvalidSequenceAgent {
+        @SequenceAgent(subAgents = {})
+        String chat(@V("question") String question);
       }
     """.trimIndent())
   }

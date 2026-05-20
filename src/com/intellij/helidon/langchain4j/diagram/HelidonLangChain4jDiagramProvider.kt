@@ -15,7 +15,6 @@ import com.intellij.diagram.DiagramRelationshipInfoAdapter
 import com.intellij.diagram.DiagramVfsResolver
 import com.intellij.diagram.EmptyDiagramVisibilityManager
 import com.intellij.diagram.presentation.DiagramLineType
-import com.intellij.helidon.config.HelidonConfigFileContributor
 import com.intellij.helidon.HelidonIcons
 import com.intellij.java.library.JavaLibraryModificationTracker
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -31,6 +30,7 @@ import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.pom.Navigatable
 import com.intellij.psi.PsiElement
+import com.intellij.psi.util.PsiModificationTracker
 import com.intellij.ui.SimpleColoredText
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.uml.core.actions.ShowDiagram
@@ -230,17 +230,11 @@ private class HelidonLangChain4jDiagramModificationTracker(
 ) : ModificationTracker {
   override fun getModificationCount(): Long {
     val project = seed.psiElement?.project ?: seed.module?.project ?: return 0
-    val configFileStamp = seed.module
-      ?.let { module ->
-        HelidonConfigFileContributor.findConfigFiles(module, seed.includeTests)
-          .sumOf { configFile -> configFile.first.modificationStamp }
-      }
-      ?: 0
     return UastModificationTracker.getInstance(project).modificationCount +
            JavaLibraryModificationTracker.getInstance(project).modificationCount +
+           PsiModificationTracker.getInstance(project).modificationCount +
            ProjectRootModificationTracker.getInstance(project).modificationCount +
-           VirtualFileManager.VFS_STRUCTURE_MODIFICATIONS.modificationCount +
-           configFileStamp
+           VirtualFileManager.VFS_STRUCTURE_MODIFICATIONS.modificationCount
   }
 }
 

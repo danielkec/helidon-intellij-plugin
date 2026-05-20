@@ -380,7 +380,7 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
       val components = collectComponents(module, includeTests)
       components.forEach(::addComponentNode)
 
-      if (components.any { it.kind == ComponentKind.AGENT && it.target.hasAgenticWorkflowAnnotation() }) {
+      if (hasValidAgenticWorkflow(components)) {
         return buildAgenticWorkflow(components)
       }
 
@@ -400,6 +400,13 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
           HelidonLangChain4jWorkflowEdge(source, target, edge.label, edge.navigationElement, edge.kind)
         },
       )
+    }
+
+    private fun hasValidAgenticWorkflow(components: List<Component>): Boolean {
+      return components.any { component ->
+        component.kind == ComponentKind.AGENT &&
+          (sequenceWorkflow(component.target) != null || conditionalWorkflow(component.target) != null)
+      }
     }
 
     private fun buildAgenticWorkflow(components: List<Component>): HelidonLangChain4jWorkflowGraph {
@@ -1082,10 +1089,6 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
 
   private fun classValue(element: PsiElement): PsiClass? {
     return ((element as? PsiClassObjectAccessExpression)?.operand?.type as? PsiClassType)?.resolve()
-  }
-
-  private fun PsiClass.hasAgenticWorkflowAnnotation(): Boolean {
-    return methods.any { method -> method.annotation(SEQUENCE_AGENT) != null || method.annotation(CONDITIONAL_AGENT) != null }
   }
 
   private fun PsiType?.collectResolvedClasses(result: MutableSet<PsiClass>) {

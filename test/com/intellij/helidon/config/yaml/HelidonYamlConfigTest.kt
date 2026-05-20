@@ -1,11 +1,15 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.helidon.config.yaml
 
+import com.intellij.codeInsight.lookup.LookupElementPresentation
 import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.config.HELIDON_APPLICATION_YAML
+import com.intellij.helidon.config.HelidonConfigFileModificationTracker
 import com.intellij.helidon.config.HelidonConfigPlaceholderReference
 import com.intellij.microservices.jvm.config.MetaConfigKeyReference
+import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.util.TextRange
+import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiNamedElement
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.testFramework.TestDataPath
@@ -146,6 +150,163 @@ class HelidonYamlConfigTest : HelidonHighlightingTestCase() {
     assertContainsElements(myFixture.lookupElementStrings!!,
                            "proxy.concurrency",
                            "proxy.read-timeout")
+  }
+
+  fun testPlaceholderReferenceCompletionInvalidatesAfterConfigFileChange() {
+    val contributingFile = myFixture.addFileToProject("application-dev.yml", """
+      old:
+        key: before
+    """.trimIndent())
+
+    val applicationYaml = """
+      server:
+        host: ${'$'}{<caret>}
+    """.trimIndent()
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, applicationYaml)
+    myFixture.completeBasic()
+
+    var lookupStrings = myFixture.lookupElementStrings!!
+    assertContainsElements(lookupStrings, "old.key")
+    assertDoesntContain(lookupStrings, "new.key")
+
+    val documentManager = PsiDocumentManager.getInstance(project)
+    val document = documentManager.getDocument(contributingFile)!!
+    WriteCommandAction.runWriteCommandAction(project) {
+      document.setText("""
+        new:
+          key: after
+      """.trimIndent())
+    }
+    documentManager.commitAllDocuments()
+
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, applicationYaml)
+    myFixture.completeBasic()
+
+    lookupStrings = myFixture.lookupElementStrings!!
+    assertContainsElements(lookupStrings, "new.key")
+    assertDoesntContain(lookupStrings, "old.key")
+  }
+
+  fun testPlaceholderReferenceCompletionUpdatesYamlValuePresentationFromCachedVariant() {
+    val contributingFile = myFixture.addFileToProject("application-dev.yml", """
+      server:
+        host: localhost
+    """.trimIndent())
+
+    val applicationYaml = """
+      server:
+        port: ${'$'}{<caret>}
+    """.trimIndent()
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, applicationYaml)
+    myFixture.completeBasic()
+    assertEquals("localhost", lookupPresentation("server.host").typeText)
+
+    val documentManager = PsiDocumentManager.getInstance(project)
+    val document = documentManager.getDocument(contributingFile)!!
+    WriteCommandAction.runWriteCommandAction(project) {
+      val valueStart = document.text.indexOf("localhost")
+      document.replaceString(valueStart, valueStart + "localhost".length, "remotehost")
+    }
+    documentManager.commitAllDocuments()
+
+    myFixture.configureByText(HELIDON_APPLICATION_YAML, applicationYaml)
+    myFixture.completeBasic()
+    assertEquals("remotehost", lookupPresentation("server.host").typeText)
+  }
+
+  fun testHelidonConfigFileModificationTrackerTracksOnlyConfigKeyChanges() {
+    val javaFile = myFixture.addFileToProject("src/main/java/example/Main.java", """
+      package example;
+
+      import io.helidon.config.Config;
+
+      class Main {
+        void read(Config config) {
+          config.get("${'$'}{server.host}");
+        }
+      }
+    """.trimIndent())
+    val tracker = HelidonConfigFileModificationTracker.getInstance(project)
+    val documentManager = PsiDocumentManager.getInstance(project)
+    val javaDocument = documentManager.getDocument(javaFile)!!
+    val beforeJavaChange = tracker.modificationCount
+
+    WriteCommandAction.runWriteCommandAction(project) {
+      javaDocument.setText("""
+        package example;
+
+        import io.helidon.config.Config;
+
+        class Main {
+          void read(Config config) {
+            config.get("${'$'}{server.port}");
+          }
+        }
+      """.trimIndent())
+    }
+    documentManager.commitAllDocuments()
+
+    assertEquals(beforeJavaChange, tracker.modificationCount)
+
+    val configFile = myFixture.addFileToProject("application-dev.yml", """
+      server:
+        host: localhost
+    """.trimIndent())
+    tracker.track(configFile)
+    val configDocument = documentManager.getDocument(configFile)!!
+    val beforeValueChange = tracker.modificationCount
+
+    WriteCommandAction.runWriteCommandAction(project) {
+      val valueStart = configDocument.text.indexOf("localhost")
+      configDocument.replaceString(valueStart, valueStart + "localhost".length, "remotehost")
+    }
+    documentManager.commitAllDocuments()
+
+    assertEquals(beforeValueChange, tracker.modificationCount)
+
+    val beforeKeyChange = tracker.modificationCount
+    WriteCommandAction.runWriteCommandAction(project) {
+      val keyStart = configDocument.text.indexOf("host")
+      configDocument.replaceString(keyStart, keyStart + "host".length, "port")
+    }
+    documentManager.commitAllDocuments()
+
+    assertTrue(tracker.modificationCount > beforeKeyChange)
+  }
+
+  fun testHelidonConfigFileModificationTrackerIgnoresKeyOrderAndSequenceItemKeysWithPrecomputedSignature() {
+    val configFile = myFixture.addFileToProject("application-dev.yml", """
+      server:
+        host: localhost
+        port: 8080
+      services:
+        - name: first
+    """.trimIndent())
+    val tracker = HelidonConfigFileModificationTracker.getInstance(project)
+    val documentManager = PsiDocumentManager.getInstance(project)
+    tracker.track(configFile,
+                  HelidonConfigFileModificationTracker.keySignature(listOf("server.host", "server.port", "services")))
+    val configDocument = documentManager.getDocument(configFile)!!
+    val beforeEquivalentChange = tracker.modificationCount
+
+    WriteCommandAction.runWriteCommandAction(project) {
+      configDocument.setText("""
+        services:
+          - label: first
+        server:
+          port: 8080
+          host: localhost
+      """.trimIndent())
+    }
+    documentManager.commitAllDocuments()
+
+    assertEquals(beforeEquivalentChange, tracker.modificationCount)
+  }
+
+  private fun lookupPresentation(lookupString: String): LookupElementPresentation {
+    val lookupElement = myFixture.lookupElements?.firstOrNull { it.lookupString == lookupString }
+      ?: throw AssertionError("Expected lookup element '$lookupString', got ${myFixture.lookupElementStrings}")
+    return LookupElementPresentation.renderElement(lookupElement)
   }
 
   fun testPlaceholderReferenceCompletionWithIncompleteNestedPrefix() {

@@ -614,8 +614,8 @@ public final class HelidonCommonUtils {
   private static boolean processRestServerEndpointClass(@NotNull Processor<? super HelidonUrlTargetInfo> processor,
                                                         @NotNull PsiClass endpointClass,
                                                         @NotNull RestServerEndpointMethodFilter filter) {
-    List<PathDefinition> parentPaths = getEndpointTypePaths(endpointClass);
     Set<String> processed = new HashSet<>();
+    List<PathDefinition> endpointClassPaths = findClosestEndpointClassTypePaths(endpointClass);
 
     for (PsiMethod method : endpointClass.getAllMethods()) {
       PsiMethod endpointMethod = getConcreteRestServerEndpointMethod(endpointClass, method);
@@ -626,6 +626,9 @@ public final class HelidonCommonUtils {
       if (httpMethods.isEmpty()) continue;
       if (!filter.accepts(endpointMethod, methodHierarchy, httpMethods)) continue;
 
+      List<PathDefinition> parentPaths = endpointClassPaths.isEmpty()
+                                         ? getEndpointHierarchyTypePaths(endpointClass, methodHierarchy)
+                                         : endpointClassPaths;
       List<PathDefinition> methodPaths = getMethodPaths(endpointMethod, methodHierarchy);
       for (PathDefinition methodPath : methodPaths) {
         if (parentPaths.isEmpty()) {
@@ -812,25 +815,86 @@ public final class HelidonCommonUtils {
     return metaAnnotation == null ? null : getAnnotationStringValue(metaAnnotation);
   }
 
-  private static @NotNull List<PathDefinition> getEndpointTypePaths(@NotNull PsiClass endpointClass) {
-    List<PathDefinition> result = new ArrayList<>();
-    collectEndpointTypePaths(endpointClass, result, new HashSet<>());
-    return result;
+  private static @NotNull List<PathDefinition> getEndpointHierarchyTypePaths(@NotNull PsiClass endpointClass,
+                                                                             @NotNull List<PsiMethod> methodHierarchy) {
+    List<PathDefinition> interfacePaths = findClosestEndpointInterfaceTypePaths(endpointClass, methodHierarchy);
+    if (!interfacePaths.isEmpty()) return interfacePaths;
+
+    return findClosestMethodHierarchyTypePaths(methodHierarchy);
   }
 
-  private static void collectEndpointTypePaths(@NotNull PsiClass psiClass,
-                                               @NotNull List<? super PathDefinition> result,
-                                               @NotNull Set<? super PsiClass> visited) {
-    if (!visited.add(psiClass)) return;
-    result.addAll(getPathDefinitions(psiClass));
+  private static @NotNull List<PathDefinition> findClosestEndpointClassTypePaths(@NotNull PsiClass endpointClass) {
+    PsiClass currentClass = endpointClass;
+    while (currentClass != null && !CommonClassNames.JAVA_LANG_OBJECT.equals(currentClass.getQualifiedName())) {
+      List<PathDefinition> paths = getPathDefinitions(currentClass);
+      if (!paths.isEmpty()) return paths;
+      currentClass = currentClass.getSuperClass();
+    }
+    return Collections.emptyList();
+  }
 
-    PsiClass superClass = psiClass.getSuperClass();
-    if (superClass != null && !CommonClassNames.JAVA_LANG_OBJECT.equals(superClass.getQualifiedName())) {
-      collectEndpointTypePaths(superClass, result, visited);
+  private static @NotNull List<PathDefinition> findClosestEndpointInterfaceTypePaths(@NotNull PsiClass endpointClass,
+                                                                                     @NotNull List<PsiMethod> methodHierarchy) {
+    if (methodHierarchy.isEmpty()) return Collections.emptyList();
+
+    List<PsiClass> currentLevel = Collections.singletonList(endpointClass);
+    Set<PsiClass> visited = new HashSet<>();
+    while (!currentLevel.isEmpty()) {
+      List<PathDefinition> result = new ArrayList<>();
+      List<PsiClass> nextLevel = new ArrayList<>();
+      for (PsiClass psiClass : currentLevel) {
+        if (!visited.add(psiClass)) continue;
+
+        if (psiClass.isInterface() && containsMethodSignature(psiClass, methodHierarchy.get(0))) {
+          result.addAll(getPathDefinitions(psiClass));
+        }
+        Collections.addAll(nextLevel, psiClass.getInterfaces());
+
+        PsiClass superClass = psiClass.getSuperClass();
+        if (superClass != null && !CommonClassNames.JAVA_LANG_OBJECT.equals(superClass.getQualifiedName())) {
+          nextLevel.add(superClass);
+        }
+      }
+      if (!result.isEmpty()) {
+        return result;
+      }
+      currentLevel = nextLevel;
     }
-    for (PsiClass anInterface : psiClass.getInterfaces()) {
-      collectEndpointTypePaths(anInterface, result, visited);
+    return Collections.emptyList();
+  }
+
+  private static boolean containsMethodSignature(@NotNull PsiClass psiClass, @NotNull PsiMethod method) {
+    return psiClass.findMethodsBySignature(method, true).length > 0;
+  }
+
+  private static @NotNull List<PathDefinition> findClosestMethodHierarchyTypePaths(@NotNull List<PsiMethod> methodHierarchy) {
+    if (methodHierarchy.isEmpty()) return Collections.emptyList();
+
+    List<PsiMethod> currentLevel = Collections.singletonList(methodHierarchy.get(0));
+    Set<PsiMethod> visitedMethods = new HashSet<>();
+    Set<PsiClass> visitedClasses = new HashSet<>();
+    while (!currentLevel.isEmpty()) {
+      List<PathDefinition> result = new ArrayList<>();
+      List<PsiMethod> nextLevel = new ArrayList<>();
+      for (PsiMethod method : currentLevel) {
+        if (!visitedMethods.add(method)) continue;
+
+        PsiClass containingClass = method.getContainingClass();
+        if (containingClass != null && visitedClasses.add(containingClass)) {
+          result.addAll(getPathDefinitions(containingClass));
+        }
+        for (PsiMethod superMethod : method.findSuperMethods()) {
+          if (!visitedMethods.contains(superMethod)) {
+            nextLevel.add(superMethod);
+          }
+        }
+      }
+      if (!result.isEmpty()) {
+        return result;
+      }
+      currentLevel = nextLevel;
     }
+    return Collections.emptyList();
   }
 
   private static @NotNull List<PathDefinition> getMethodPaths(@NotNull PsiMethod method,

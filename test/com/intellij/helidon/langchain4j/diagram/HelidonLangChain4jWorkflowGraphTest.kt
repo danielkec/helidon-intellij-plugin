@@ -116,6 +116,18 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
                 })
   }
 
+  fun testYamlSeedRequiresHelidonConfigFile() {
+    addLangChain4jStubs()
+    val file = myFixture.configureByText("notes.yaml", """
+      langchain4j:
+        agents:
+          assistant:
+            chat-model: demo
+    """.trimIndent())
+
+    assertNull(HelidonLangChain4jWorkflowGraphBuilder.seedFromPsiElement(file))
+  }
+
   fun testRobotIconIsLimitedToAgentsAndServices() {
     val provider = HelidonLangChain4jDiagramProvider()
     val elementManager = provider.elementManager

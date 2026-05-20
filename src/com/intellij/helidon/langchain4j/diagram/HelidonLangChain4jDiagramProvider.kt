@@ -20,7 +20,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.actionSystem.LangDataKeys
-import com.intellij.openapi.project.DumbAware
+import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.graph.builder.NodeGroupDescriptor
 import com.intellij.openapi.util.ModificationTracker
@@ -60,18 +60,24 @@ internal class HelidonLangChain4jDiagramProvider : BaseDiagramProvider<HelidonLa
   override fun getVfsResolver(): DiagramVfsResolver<HelidonLangChain4jDiagramElement> = vfsResolver
 }
 
-internal class HelidonLangChain4jShowDiagramAction : ShowDiagram(), DumbAware {
+internal class HelidonLangChain4jShowDiagramAction : ShowDiagram() {
   override fun getForcedProvider(): DiagramProvider<*> {
     return DiagramProvider.findByID<HelidonLangChain4jDiagramElement>(HELIDON_LANGCHAIN4J_DIAGRAM_ID)
       ?: error("Diagram provider '$HELIDON_LANGCHAIN4J_DIAGRAM_ID' is not registered")
   }
 
   override fun update(event: AnActionEvent) {
+    event.presentation.text = "Helidon LangChain4j Workflow Diagram"
+    event.presentation.icon = HelidonIcons.Helidon
+    val project = event.project
+    if (project == null || DumbService.isDumb(project)) {
+      event.presentation.isEnabledAndVisible = false
+      return
+    }
+
     val provider = getForcedProvider() as DiagramProvider<HelidonLangChain4jDiagramElement>
     val element = provider.elementManager.findInDataContext(event.dataContext)
     event.presentation.isEnabledAndVisible = element != null
-    event.presentation.text = "Helidon LangChain4j Workflow Diagram"
-    event.presentation.icon = HelidonIcons.Helidon
   }
 }
 

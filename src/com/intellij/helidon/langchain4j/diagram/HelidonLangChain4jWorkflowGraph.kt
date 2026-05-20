@@ -5,6 +5,8 @@ import com.intellij.helidon.constants.HelidonConstants
 import com.intellij.helidon.config.HelidonConfigFileContributor
 import com.intellij.helidon.config.yaml.HelidonConfigYamlAccessor
 import com.intellij.helidon.config.yaml.getQualifiedConfigKeyName
+import com.intellij.helidon.config.yaml.isInsideApplicationYamlFile
+import com.intellij.helidon.utils.HelidonCoreUtils
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.module.ModuleUtilCore
@@ -224,6 +226,7 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
 
   fun seedFromPsiElement(element: PsiElement): HelidonLangChain4jDiagramElement? {
     val module = ModuleUtilCore.findModuleForPsiElement(element) ?: return null
+    if (!HelidonCoreUtils.hasHelidonLibrary(module)) return null
     val includeTests = includeTestSources(element, module)
 
     val psiClass = PsiTreeUtil.getParentOfType(element, PsiClass::class.java, false)
@@ -236,12 +239,16 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
       is YAMLKeyValue -> element
       else -> PsiTreeUtil.getParentOfType(element, YAMLKeyValue::class.java, false)
     }
-    if (yamlKeyValue != null && getQualifiedConfigKeyName(yamlKeyValue).let { it == ROOT || it.startsWith("$ROOT.") }) {
+    if (yamlKeyValue != null &&
+        isInsideApplicationYamlFile(yamlKeyValue) &&
+        getQualifiedConfigKeyName(yamlKeyValue).let { it == ROOT || it.startsWith("$ROOT.") }) {
       return rootElement(module, includeTests, yamlKeyValue)
     }
 
     val yamlFile = element.containingFile as? YAMLFile
-    if (yamlFile != null && yamlFile.documents.any { HelidonConfigYamlAccessor(it).findExistingKey(ROOT) != null }) {
+    if (yamlFile != null &&
+        isInsideApplicationYamlFile(yamlFile) &&
+        yamlFile.documents.any { HelidonConfigYamlAccessor(it).findExistingKey(ROOT) != null }) {
       return rootElement(module, includeTests, yamlFile)
     }
 
@@ -872,6 +879,7 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
   }
 
   private fun applicationYamlFiles(module: Module, includeTests: Boolean): List<YAMLFile> {
+    if (!HelidonCoreUtils.hasHelidonLibrary(module)) return emptyList()
     val psiManager = PsiManager.getInstance(module.project)
     return HelidonConfigFileContributor.findConfigFiles(module, includeTests)
       .map { it.first }

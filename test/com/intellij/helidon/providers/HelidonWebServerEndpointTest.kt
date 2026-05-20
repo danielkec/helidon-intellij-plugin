@@ -2069,6 +2069,43 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     })
   }
 
+  fun testRestServerEndpointSubinterfaceTypePathOverridesBaseInterfacePathForInheritedMethod() {
+    addHelidonDeclarativeStubs()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Http;
+      import io.helidon.service.registry.Service;
+      import io.helidon.webserver.http.RestServer;
+
+      @Http.Path("/base")
+      interface BaseResource {
+        @Http.GET
+        @Http.Path("/message")
+        String message();
+      }
+
+      @Http.Path("/direct")
+      interface DirectResource extends BaseResource {
+      }
+
+      @RestServer.Endpoint
+      @Service.Singleton
+      class GreetingEndpoint implements DirectResource {
+        public String message() {
+          return "hello";
+        }
+      }
+    """.trimIndent())
+
+    val endpoints = collectRestServerEndpoints()
+
+    assertTrue(endpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/direct" && it.urlDefinition == "/message"
+    })
+    assertFalse(endpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/base" && it.urlDefinition == "/message"
+    })
+  }
+
   fun testRestServerEndpointCollectsMultipleDirectInterfacePaths() {
     addHelidonDeclarativeStubs()
     myFixture.configureByText("Main.java", """
@@ -2112,10 +2149,10 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
       it.type == HelidonRequestMethods.POST && it.parentUrl == "/beta" && it.urlDefinition == "/beta-message"
     })
     assertFalse(endpoints.any {
-      it.parentUrl == "/alpha" && it.urlDefinition == "/beta-message"
+      it.type == HelidonRequestMethods.POST && it.parentUrl == "/alpha" && it.urlDefinition == "/beta-message"
     })
     assertFalse(endpoints.any {
-      it.parentUrl == "/beta" && it.urlDefinition == "/alpha-message"
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/beta" && it.urlDefinition == "/alpha-message"
     })
   }
 

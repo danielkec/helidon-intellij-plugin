@@ -746,6 +746,9 @@ public final class HelidonCommonUtils {
     List<PathDefinition> classPaths = findClosestEndpointClassTypePaths(endpointClass);
     if (!classPaths.isEmpty()) return classPaths;
 
+    List<PathDefinition> interfacePaths = findClosestEndpointInterfaceTypePaths(endpointClass, methodHierarchy);
+    if (!interfacePaths.isEmpty()) return interfacePaths;
+
     return findClosestMethodHierarchyTypePaths(methodHierarchy);
   }
 
@@ -759,15 +762,68 @@ public final class HelidonCommonUtils {
     return Collections.emptyList();
   }
 
-  private static @NotNull List<PathDefinition> findClosestMethodHierarchyTypePaths(@NotNull List<PsiMethod> methodHierarchy) {
-    List<PathDefinition> result = new ArrayList<>();
+  private static @NotNull List<PathDefinition> findClosestEndpointInterfaceTypePaths(@NotNull PsiClass endpointClass,
+                                                                                     @NotNull List<PsiMethod> methodHierarchy) {
+    if (methodHierarchy.isEmpty()) return Collections.emptyList();
+
+    List<PsiClass> currentLevel = Collections.singletonList(endpointClass);
     Set<PsiClass> visited = new HashSet<>();
-    for (PsiMethod method : methodHierarchy) {
-      PsiClass containingClass = method.getContainingClass();
-      if (containingClass == null || !visited.add(containingClass)) continue;
-      result.addAll(getPathDefinitions(containingClass));
+    while (!currentLevel.isEmpty()) {
+      List<PathDefinition> result = new ArrayList<>();
+      List<PsiClass> nextLevel = new ArrayList<>();
+      for (PsiClass psiClass : currentLevel) {
+        if (!visited.add(psiClass)) continue;
+
+        if (psiClass.isInterface() && containsMethodSignature(psiClass, methodHierarchy.get(0))) {
+          result.addAll(getPathDefinitions(psiClass));
+        }
+        Collections.addAll(nextLevel, psiClass.getInterfaces());
+
+        PsiClass superClass = psiClass.getSuperClass();
+        if (superClass != null && !CommonClassNames.JAVA_LANG_OBJECT.equals(superClass.getQualifiedName())) {
+          nextLevel.add(superClass);
+        }
+      }
+      if (!result.isEmpty()) {
+        return result;
+      }
+      currentLevel = nextLevel;
     }
-    return result;
+    return Collections.emptyList();
+  }
+
+  private static boolean containsMethodSignature(@NotNull PsiClass psiClass, @NotNull PsiMethod method) {
+    return psiClass.findMethodsBySignature(method, true).length > 0;
+  }
+
+  private static @NotNull List<PathDefinition> findClosestMethodHierarchyTypePaths(@NotNull List<PsiMethod> methodHierarchy) {
+    if (methodHierarchy.isEmpty()) return Collections.emptyList();
+
+    List<PsiMethod> currentLevel = Collections.singletonList(methodHierarchy.get(0));
+    Set<PsiMethod> visitedMethods = new HashSet<>();
+    Set<PsiClass> visitedClasses = new HashSet<>();
+    while (!currentLevel.isEmpty()) {
+      List<PathDefinition> result = new ArrayList<>();
+      List<PsiMethod> nextLevel = new ArrayList<>();
+      for (PsiMethod method : currentLevel) {
+        if (!visitedMethods.add(method)) continue;
+
+        PsiClass containingClass = method.getContainingClass();
+        if (containingClass != null && visitedClasses.add(containingClass)) {
+          result.addAll(getPathDefinitions(containingClass));
+        }
+        for (PsiMethod superMethod : method.findSuperMethods()) {
+          if (!visitedMethods.contains(superMethod)) {
+            nextLevel.add(superMethod);
+          }
+        }
+      }
+      if (!result.isEmpty()) {
+        return result;
+      }
+      currentLevel = nextLevel;
+    }
+    return Collections.emptyList();
   }
 
   private static @NotNull List<PathDefinition> getMethodPaths(@NotNull PsiMethod method,

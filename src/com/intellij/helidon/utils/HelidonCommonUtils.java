@@ -544,6 +544,7 @@ public final class HelidonCommonUtils {
                                                         @NotNull PsiClass endpointClass,
                                                         @NotNull RestServerEndpointMethodFilter filter) {
     Set<String> processed = new HashSet<>();
+    List<PathDefinition> endpointClassPaths = findClosestEndpointClassTypePaths(endpointClass);
 
     for (PsiMethod method : endpointClass.getAllMethods()) {
       PsiMethod endpointMethod = getConcreteRestServerEndpointMethod(endpointClass, method);
@@ -554,7 +555,9 @@ public final class HelidonCommonUtils {
       if (httpMethods.isEmpty()) continue;
       if (!filter.accepts(endpointMethod, methodHierarchy, httpMethods)) continue;
 
-      List<PathDefinition> parentPaths = getEndpointTypePaths(endpointClass, methodHierarchy);
+      List<PathDefinition> parentPaths = endpointClassPaths.isEmpty()
+                                         ? getEndpointHierarchyTypePaths(endpointClass, methodHierarchy)
+                                         : endpointClassPaths;
       List<PathDefinition> methodPaths = getMethodPaths(endpointMethod, methodHierarchy);
       for (PathDefinition methodPath : methodPaths) {
         if (parentPaths.isEmpty()) {
@@ -741,11 +744,8 @@ public final class HelidonCommonUtils {
     return metaAnnotation == null ? null : getAnnotationStringValue(metaAnnotation);
   }
 
-  private static @NotNull List<PathDefinition> getEndpointTypePaths(@NotNull PsiClass endpointClass,
-                                                                    @NotNull List<PsiMethod> methodHierarchy) {
-    List<PathDefinition> classPaths = findClosestEndpointClassTypePaths(endpointClass);
-    if (!classPaths.isEmpty()) return classPaths;
-
+  private static @NotNull List<PathDefinition> getEndpointHierarchyTypePaths(@NotNull PsiClass endpointClass,
+                                                                             @NotNull List<PsiMethod> methodHierarchy) {
     List<PathDefinition> interfacePaths = findClosestEndpointInterfaceTypePaths(endpointClass, methodHierarchy);
     if (!interfacePaths.isEmpty()) return interfacePaths;
 

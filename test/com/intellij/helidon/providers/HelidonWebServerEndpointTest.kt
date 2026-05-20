@@ -2067,6 +2067,9 @@ class HelidonWebServerEndpointTest : HelidonHighlightingTestCase() {
     assertFalse(endpoints.any {
       it.type == HelidonRequestMethods.GET && it.parentUrl == "/base-contract" && it.urlDefinition == "/direct-message"
     })
+    assertFalse(endpoints.any {
+      it.type == HelidonRequestMethods.GET && it.parentUrl == "/direct-contract" && it.urlDefinition == "/base-message"
+    })
   }
 
   fun testRestServerEndpointSubinterfaceTypePathOverridesBaseInterfacePathForInheritedMethod() {

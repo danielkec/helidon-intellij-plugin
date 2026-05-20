@@ -230,12 +230,17 @@ private class HelidonLangChain4jDiagramModificationTracker(
 ) : ModificationTracker {
   override fun getModificationCount(): Long {
     val project = seed.psiElement?.project ?: seed.module?.project ?: return 0
-    val configFileCount = seed.module?.let { HelidonConfigFileContributor.findConfigFiles(it, seed.includeTests).size } ?: 0
+    val configFileStamp = seed.module
+      ?.let { module ->
+        HelidonConfigFileContributor.findConfigFiles(module, seed.includeTests)
+          .sumOf { configFile -> configFile.first.modificationStamp }
+      }
+      ?: 0
     return UastModificationTracker.getInstance(project).modificationCount +
            JavaLibraryModificationTracker.getInstance(project).modificationCount +
            ProjectRootModificationTracker.getInstance(project).modificationCount +
            VirtualFileManager.VFS_STRUCTURE_MODIFICATIONS.modificationCount +
-           configFileCount
+           configFileStamp
   }
 }
 

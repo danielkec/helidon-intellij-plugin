@@ -416,18 +416,23 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
       val sequenceWorkflows = componentsByClass.keys.mapNotNull(::sequenceWorkflow)
       val conditionalWorkflows = componentsByClass.keys.mapNotNull(::conditionalWorkflow).associateBy { it.agent }
 
-      for (workflow in sequenceWorkflows) {
-        val owner = componentsByClass[workflow.agent]
-        val sequenceAgents = workflow.subAgents.mapNotNull { componentsByClass[it] }
-        val conditionalAgents = sequenceAgents.flatMap { component ->
-          conditionalWorkflows[component.target]?.orderedSubAgents.orEmpty().map { it.agent }
-        }
-        val workflowAgents = (listOfNotNull(owner) + sequenceAgents + conditionalAgents.mapNotNull { componentsByClass[it] })
-          .distinctBy { it.target }
+      if (sequenceWorkflows.isEmpty()) {
+        addConditionalOnlyWorkflows(componentsByClass, conditionalWorkflows)
+      }
+      else {
+        for (workflow in sequenceWorkflows) {
+          val owner = componentsByClass[workflow.agent]
+          val sequenceAgents = workflow.subAgents.mapNotNull { componentsByClass[it] }
+          val conditionalAgents = sequenceAgents.flatMap { component ->
+            conditionalWorkflows[component.target]?.orderedSubAgents.orEmpty().map { it.agent }
+          }
+          val workflowAgents = (listOfNotNull(owner) + sequenceAgents + conditionalAgents.mapNotNull { componentsByClass[it] })
+            .distinctBy { it.target }
 
-        workflowAgents.forEach { addAgentNode(it, conditionalWorkflows) }
-        addEndpointEdges(workflow, workflowAgents, owner, sequenceAgents.firstOrNull(), conditionalWorkflows)
-        addSequenceEdges(workflow, owner, componentsByClass, conditionalWorkflows)
+          workflowAgents.forEach { addAgentNode(it, conditionalWorkflows) }
+          addEndpointEdges(workflow, workflowAgents, owner, sequenceAgents.firstOrNull(), conditionalWorkflows)
+          addSequenceEdges(workflow, owner, componentsByClass, conditionalWorkflows)
+        }
       }
 
       if (nodes.isEmpty()) {
@@ -435,6 +440,19 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
       }
 
       return toGraph()
+    }
+
+    private fun addConditionalOnlyWorkflows(componentsByClass: Map<PsiClass, Component>,
+                                            conditionalWorkflows: Map<PsiClass, ConditionalWorkflow>) {
+      for (workflow in conditionalWorkflows.values) {
+        val owner = componentsByClass[workflow.agent] ?: continue
+        val branchAgents = workflow.orderedSubAgents.mapNotNull { componentsByClass[it.agent] }
+        val workflowAgents = (listOf(owner) + branchAgents).distinctBy { it.target }
+
+        workflowAgents.forEach { addAgentNode(it, conditionalWorkflows) }
+        addConditionalEndpointEdges(workflowAgents, owner, conditionalWorkflows)
+        addConditionalEdges(addAgentNode(owner, conditionalWorkflows), workflow, 1, componentsByClass, null, conditionalWorkflows)
+      }
     }
 
     private fun addEndpointEdges(workflow: SequenceWorkflow,
@@ -451,6 +469,21 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
         val targetComponent = workflowAgents.firstOrNull { it.target == targetAgent } ?: fallbackComponent
         val targetNode = addAgentNode(targetComponent, conditionalWorkflows)
         val inputs = if (targetAgent == workflow.agent) workflow.inputKeys else agentInputKeys(targetAgent)
+        val label = inputs.takeIf { it.isNotEmpty() }?.joinToString(" + ") ?: "input"
+        val endpointNode = endpointElement(endpoint, module, includeTests, inputs)
+        addNode(endpointNode)
+        addEdge(endpointNode, targetNode, label, endpoint)
+      }
+    }
+
+    private fun addConditionalEndpointEdges(workflowAgents: List<Component>,
+                                            owner: Component,
+                                            conditionalWorkflows: Map<PsiClass, ConditionalWorkflow>) {
+      val workflowAgentClasses = workflowAgents.map { it.target }.ifEmpty { listOf(owner.target) }
+      for ((endpoint, targetAgent) in endpointClassesReferencing(workflowAgentClasses)) {
+        val targetComponent = workflowAgents.firstOrNull { it.target == targetAgent } ?: owner
+        val targetNode = addAgentNode(targetComponent, conditionalWorkflows)
+        val inputs = agentInputKeys(targetAgent)
         val label = inputs.takeIf { it.isNotEmpty() }?.joinToString(" + ") ?: "input"
         val endpointNode = endpointElement(endpoint, module, includeTests, inputs)
         addNode(endpointNode)
@@ -701,9 +734,9 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
               val key = entry.keyText.takeIf { it.isNotBlank() } ?: continue
               val runtimeKey = if (section == MCP_CLIENTS) mcpClientRuntimeKey(entry) else key
               val node = configElement(section, runtimeKey, key, kind, entry)
-              addNode(node)
-              configNodes[section to runtimeKey] = node
-              addEdge(rootNode, node, section, entry)
+              val graphNode = addNode(node)
+              configNodes[section to runtimeKey] = graphNode
+              addEdge(rootNode, graphNode, section, entry)
             }
           }
         }
@@ -884,7 +917,7 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
     private fun addNode(node: HelidonLangChain4jDiagramElement): HelidonLangChain4jDiagramElement {
       val existing = nodes[node.id]
       if (existing != null) {
-        if (existing.psiElement == null && node.psiElement != null) {
+        if (shouldReplaceNode(existing, node)) {
           nodes[node.id] = node
           return node
         }
@@ -892,6 +925,17 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
       }
       nodes[node.id] = node
       return node
+    }
+
+    private fun shouldReplaceNode(existing: HelidonLangChain4jDiagramElement,
+                                  candidate: HelidonLangChain4jDiagramElement): Boolean {
+      if (candidate.psiElement == null) return false
+      if (existing.psiElement == null) return true
+
+      val seedFile = seed.psiElement?.containingFile?.originalFile ?: return false
+      val existingFile = existing.psiElement.containingFile?.originalFile
+      val candidateFile = candidate.psiElement.containingFile?.originalFile
+      return existingFile != seedFile && candidateFile == seedFile
     }
 
     private fun addEdge(source: HelidonLangChain4jDiagramElement,

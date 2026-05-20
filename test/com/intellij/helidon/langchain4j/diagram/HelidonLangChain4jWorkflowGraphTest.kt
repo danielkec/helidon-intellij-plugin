@@ -135,6 +135,32 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
                 })
   }
 
+  fun testBlankServiceAnnotationLinksByQualifiedNameFallback() {
+    addLangChain4jStubs()
+    myFixture.addClass("""
+      package demo;
+
+      import io.helidon.extensions.langchain4j.Ai;
+
+      @Ai.Service("")
+      interface BlankValueService {
+      }
+    """.trimIndent())
+    val file = myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+      langchain4j:
+        services:
+          demo.BlankValueService:
+            chat-model: assistant-model
+    """.trimIndent())
+
+    val seed = HelidonLangChain4jWorkflowGraphBuilder.seedFromPsiElement(file)!!
+    val graph = HelidonLangChain4jWorkflowGraphBuilder.build(seed)
+
+    assertNode(graph, HelidonLangChain4jDiagramNodeKind.SERVICE_CONFIG, "demo.BlankValueService")
+    assertNode(graph, HelidonLangChain4jDiagramNodeKind.JAVA_SERVICE, "BlankValueService")
+    assertEdge(graph, "demo.BlankValueService", "BlankValueService", "declares")
+  }
+
   fun testYamlSeedRequiresHelidonConfigFile() {
     addLangChain4jStubs()
     val file = myFixture.configureByText("notes.yaml", """

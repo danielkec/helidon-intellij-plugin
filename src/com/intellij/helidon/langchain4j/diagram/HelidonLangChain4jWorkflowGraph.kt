@@ -798,7 +798,7 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
         val source = nodeForComponent(component) ?: continue
         for (annotation in component.target.modifierList?.annotations ?: emptyArray()) {
           val annotationName = annotation.qualifiedName ?: continue
-          val values = annotationValues(annotation).filter { it.isNotBlank() }
+          val values = componentKeys(component.kind, component.target, annotation)
           if (annotationName in ANNOTATION_CONFIG_SECTIONS) {
             val section = ANNOTATION_CONFIG_SECTIONS.getValue(annotationName)
             values.forEach { value ->
@@ -944,9 +944,7 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
         val annotationClass = facade.findClass(annotationName, scope) ?: continue
         AnnotatedElementsSearch.searchPsiClasses(annotationClass, scope).forEach { psiClass ->
           val annotation = findAnnotation(psiClass, annotationName) ?: return@forEach
-          val values = annotationValues(annotation).filter { it.isNotBlank() }
-          val keys = if (values.isEmpty()) fallbackKeys(kind, psiClass) else values
-          keys.filter { it.isNotBlank() }.forEach { key ->
+          componentKeys(kind, psiClass, annotation).forEach { key ->
             result.add(Component(kind, key, psiClass))
           }
         }
@@ -960,8 +958,7 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
     for ((kind, annotationNames) in ANNOTATION_KINDS) {
       for (annotationName in annotationNames) {
         val annotation = findAnnotation(psiClass, annotationName) ?: continue
-        val values = annotationValues(annotation).filter { it.isNotBlank() }
-        val key = (if (values.isEmpty()) fallbackKeys(kind, psiClass) else values).firstOrNull { it.isNotBlank() } ?: continue
+        val key = componentKeys(kind, psiClass, annotation).firstOrNull() ?: continue
         return Component(kind, key, psiClass)
       }
     }
@@ -985,6 +982,11 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
       return element.value as? String
     }
     return JavaPsiFacade.getInstance(element.project).constantEvaluationHelper.computeConstantExpression(element) as? String
+  }
+
+  private fun componentKeys(kind: ComponentKind, psiClass: PsiClass, annotation: PsiAnnotation): List<String> {
+    val values = annotationValues(annotation).filter { it.isNotBlank() }
+    return if (values.isEmpty()) fallbackKeys(kind, psiClass) else values
   }
 
   private fun fallbackKeys(kind: ComponentKind, psiClass: PsiClass): List<String> {

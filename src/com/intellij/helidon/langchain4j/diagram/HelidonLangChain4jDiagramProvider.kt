@@ -15,7 +15,9 @@ import com.intellij.diagram.DiagramRelationshipInfoAdapter
 import com.intellij.diagram.DiagramVfsResolver
 import com.intellij.diagram.EmptyDiagramVisibilityManager
 import com.intellij.diagram.presentation.DiagramLineType
+import com.intellij.helidon.config.HelidonConfigFileContributor
 import com.intellij.helidon.HelidonIcons
+import com.intellij.java.library.JavaLibraryModificationTracker
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataContext
@@ -23,14 +25,16 @@ import com.intellij.openapi.actionSystem.LangDataKeys
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.graph.builder.NodeGroupDescriptor
+import com.intellij.openapi.roots.ProjectRootModificationTracker
 import com.intellij.openapi.util.ModificationTracker
+import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.pom.Navigatable
 import com.intellij.psi.PsiElement
-import com.intellij.psi.util.PsiModificationTracker
 import com.intellij.ui.SimpleColoredText
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.uml.core.actions.ShowDiagram
+import com.intellij.uast.UastModificationTracker
 import javax.swing.Icon
 
 internal class HelidonLangChain4jDiagramProvider : BaseDiagramProvider<HelidonLangChain4jDiagramElement>() {
@@ -161,13 +165,14 @@ private class HelidonLangChain4jDiagramDataModel(
   private var nodes = graph.nodes.associateWith { HelidonLangChain4jDiagramNode(it, diagramProvider) }.toMutableMap()
   private var edges = graph.edges.map { HelidonLangChain4jDiagramEdge(nodes.getValue(it.source), nodes.getValue(it.target), it) }.toMutableList()
   private var groups = createGroups(graph.nodes)
+  private val modificationTracker = HelidonLangChain4jDiagramModificationTracker(seed)
 
   init {
     setOriginalElement(seed)
     setModelInitializationFinished()
   }
 
-  override fun getModificationTracker(): ModificationTracker = PsiModificationTracker.getInstance(project)
+  override fun getModificationTracker(): ModificationTracker = modificationTracker
 
   override fun getNodes(): Collection<DiagramNode<HelidonLangChain4jDiagramElement>> = nodes.values
 
@@ -217,6 +222,20 @@ private class HelidonLangChain4jDiagramDataModel(
       .distinct()
       .associateWith { HelidonLangChain4jNodeGroupDescriptor(it) }
       .toMutableMap()
+  }
+}
+
+private class HelidonLangChain4jDiagramModificationTracker(
+  private val seed: HelidonLangChain4jDiagramElement,
+) : ModificationTracker {
+  override fun getModificationCount(): Long {
+    val project = seed.psiElement?.project ?: seed.module?.project ?: return 0
+    val configFileCount = seed.module?.let { HelidonConfigFileContributor.findConfigFiles(it, seed.includeTests).size } ?: 0
+    return UastModificationTracker.getInstance(project).modificationCount +
+           JavaLibraryModificationTracker.getInstance(project).modificationCount +
+           ProjectRootModificationTracker.getInstance(project).modificationCount +
+           VirtualFileManager.VFS_STRUCTURE_MODIFICATIONS.modificationCount +
+           configFileCount
   }
 }
 

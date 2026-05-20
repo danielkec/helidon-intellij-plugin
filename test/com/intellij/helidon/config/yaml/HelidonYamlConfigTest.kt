@@ -3,6 +3,7 @@ package com.intellij.helidon.config.yaml
 
 import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.config.HELIDON_APPLICATION_YAML
+import com.intellij.helidon.config.HelidonConfigFileModificationTracker
 import com.intellij.helidon.config.HelidonConfigPlaceholderReference
 import com.intellij.microservices.jvm.config.MetaConfigKeyReference
 import com.intellij.openapi.command.WriteCommandAction
@@ -183,6 +184,66 @@ class HelidonYamlConfigTest : HelidonHighlightingTestCase() {
     lookupStrings = myFixture.lookupElementStrings!!
     assertContainsElements(lookupStrings, "new.key")
     assertDoesntContain(lookupStrings, "old.key")
+  }
+
+  fun testHelidonConfigFileModificationTrackerTracksOnlyConfigKeyChanges() {
+    val javaFile = myFixture.addFileToProject("src/main/java/example/Main.java", """
+      package example;
+
+      import io.helidon.config.Config;
+
+      class Main {
+        void read(Config config) {
+          config.get("${'$'}{server.host}");
+        }
+      }
+    """.trimIndent())
+    val tracker = HelidonConfigFileModificationTracker.getInstance(project)
+    val documentManager = PsiDocumentManager.getInstance(project)
+    val javaDocument = documentManager.getDocument(javaFile)!!
+    val beforeJavaChange = tracker.modificationCount
+
+    WriteCommandAction.runWriteCommandAction(project) {
+      javaDocument.setText("""
+        package example;
+
+        import io.helidon.config.Config;
+
+        class Main {
+          void read(Config config) {
+            config.get("${'$'}{server.port}");
+          }
+        }
+      """.trimIndent())
+    }
+    documentManager.commitAllDocuments()
+
+    assertEquals(beforeJavaChange, tracker.modificationCount)
+
+    val configFile = myFixture.addFileToProject("application-dev.yml", """
+      server:
+        host: localhost
+    """.trimIndent())
+    tracker.track(configFile)
+    val configDocument = documentManager.getDocument(configFile)!!
+    val beforeValueChange = tracker.modificationCount
+
+    WriteCommandAction.runWriteCommandAction(project) {
+      val valueStart = configDocument.text.indexOf("localhost")
+      configDocument.replaceString(valueStart, valueStart + "localhost".length, "remotehost")
+    }
+    documentManager.commitAllDocuments()
+
+    assertEquals(beforeValueChange, tracker.modificationCount)
+
+    val beforeKeyChange = tracker.modificationCount
+    WriteCommandAction.runWriteCommandAction(project) {
+      val keyStart = configDocument.text.indexOf("host")
+      configDocument.replaceString(keyStart, keyStart + "host".length, "port")
+    }
+    documentManager.commitAllDocuments()
+
+    assertTrue(tracker.modificationCount > beforeKeyChange)
   }
 
   fun testPlaceholderReferenceCompletionWithIncompleteNestedPrefix() {

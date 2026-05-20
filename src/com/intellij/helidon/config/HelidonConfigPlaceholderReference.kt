@@ -21,7 +21,6 @@ import com.intellij.psi.*
 import com.intellij.psi.util.CachedValue
 import com.intellij.psi.util.CachedValueProvider
 import com.intellij.psi.util.CachedValuesManager
-import com.intellij.psi.util.PsiModificationTracker
 import com.intellij.util.ArrayUtil
 import com.intellij.util.PairProcessor
 import com.intellij.util.SmartList
@@ -122,14 +121,16 @@ private fun getCachedKeyVariants(module: Module, isInTests: Boolean): List<Cache
 
 private fun collectKeyVariants(module: Module, isInTests: Boolean): CachedValueProvider.Result<List<CachedConfigKeyVariant>> {
   val variants = ArrayList<CachedConfigKeyVariant>()
+  val configFileModificationTracker = HelidonConfigFileModificationTracker.getInstance(module.project)
 
   processConfigFiles(module, isInTests, PairProcessor { contributor: HelidonConfigFileContributor, psiFile: PsiFile ->
+    configFileModificationTracker.track(psiFile)
     contributor.getKeyVariants(psiFile).mapTo(variants, ::createCachedConfigKeyVariant)
     return@PairProcessor true
   })
 
   val dependencies = ArrayList<Any>(3)
-  dependencies.add(PsiModificationTracker.MODIFICATION_COUNT)
+  dependencies.add(configFileModificationTracker)
   dependencies.add(ProjectRootModificationTracker.getInstance(module.project))
   dependencies.add(VirtualFileManager.VFS_STRUCTURE_MODIFICATIONS)
 

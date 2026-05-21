@@ -97,10 +97,16 @@ class HelidonPluginDescriptorTest {
   }
 
   @Test
-  fun testMicroservicesSubDescriptorDoesNotDeclareDependencies() {
-    val document = parseDescriptor(Path.of("resources/META-INF/helidon-microservices.xml"))
+  fun testOptionalSubDescriptorsDoNotDeclareDependencies() {
+    listOf(
+      Path.of("resources/META-INF/helidon-microservices.xml"),
+      Path.of("resources/META-INF/helidon-langchain4j-diagram.xml"),
+    ).forEach { path ->
+      val document = parseDescriptor(path)
 
-    assertFalse(document.getElementsByTagName("dependencies").elements().isNotEmpty())
+      assertFalse("$path should not declare hard dependencies",
+                  document.getElementsByTagName("dependencies").elements().isNotEmpty())
+    }
   }
 
   @Test

@@ -199,7 +199,7 @@ private class HelidonLangChain4jDiagramDataModel(
   override fun getGroupNodes(): Collection<NodeGroupDescriptor> = groups.values
 
   override fun removeEdge(edge: com.intellij.diagram.DiagramEdge<HelidonLangChain4jDiagramElement>) {
-    edges.remove(edge)
+    (edge as? HelidonLangChain4jDiagramEdge)?.let { edges.remove(it) }
   }
 
   override fun refreshDataModel() {

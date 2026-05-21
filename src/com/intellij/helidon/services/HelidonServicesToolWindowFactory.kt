@@ -6,10 +6,10 @@ import com.intellij.helidon.HelidonIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
-import com.intellij.pom.Navigatable
 import com.intellij.psi.PsiManager
 import com.intellij.psi.PsiTreeChangeAdapter
 import com.intellij.psi.PsiTreeChangeEvent
@@ -234,11 +234,8 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
   private fun navigateSelected() {
     val node = tree.lastSelectedPathComponent as? DefaultMutableTreeNode ?: return
     val servicesNode = node.userObject as? HelidonServicesNode ?: return
-    val element = servicesNode.navigationElement ?: return
-    val navigatable = element as? Navigatable ?: return
-    if (navigatable.canNavigate()) {
-      navigatable.navigate(true)
-    }
+    val file = servicesNode.navigationFile ?: return
+    OpenFileDescriptor(project, file, servicesNode.navigationOffset).navigate(true)
   }
 
   override fun dispose() {

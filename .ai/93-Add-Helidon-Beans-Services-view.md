@@ -34,6 +34,7 @@
 - 2026-05-21: Removed startup-time tool window applicability gating after manual `runIde` showed the view could be hidden before project dependencies were available.
 - 2026-05-21: Hid generated Helidon service implementation artifacts and generated injection/lookups from the default view, simplified unresolved labels, and aligned tree backgrounds with the tool window.
 - 2026-05-21: Added package/class grouping metadata so Services/Contracts group under packages and member/component rows group under their owning classes.
+- 2026-05-21: Reworked tree navigation to use read-action-captured file/offset descriptors instead of resolving PSI smart pointers on the EDT.
 
 ## Validation
 
@@ -46,6 +47,7 @@
 - 2026-05-21: Re-ran focused descriptor/model tests after removing tool window applicability gating; passed.
 - 2026-05-21: Re-ran focused descriptor/model tests after generated-artifact filtering and UI presentation cleanup; passed.
 - 2026-05-21: Re-ran focused descriptor/model tests after package/class grouping; passed.
+- 2026-05-21: Re-ran focused descriptor/model tests after EDT-safe navigation change; passed.
 - 2026-05-21: Two LangChain4j config reference tests were excluded from the final impacted slice after reproducing the same failures on unchanged `origin/main`:
   `testAiChatModelAnnotationConstantValueResolvesToModelConfigKey` and
   `testAiChatModelAnnotationConstantExpressionResolvesToModelConfigKey`.

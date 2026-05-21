@@ -11,6 +11,7 @@ import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.GeneratedSourcesFilter
 import com.intellij.openapi.roots.ModuleRootManager
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiAnnotation
 import com.intellij.psi.PsiClass
@@ -58,6 +59,8 @@ data class HelidonServicesNode(
   val details: String? = null,
   val status: HelidonServicesResolutionStatus = HelidonServicesResolutionStatus.RESOLVED,
   val navigation: SmartPsiElementPointer<PsiElement>? = null,
+  val navigationFile: VirtualFile? = null,
+  val navigationOffset: Int = 0,
   val parentId: String? = null,
   val packageName: String? = null,
   val ownerClassName: String? = null,
@@ -411,6 +414,8 @@ object HelidonServicesModel {
       details = details,
       status = status,
       navigation = SmartPointerManager.getInstance(module.project).createSmartPsiElementPointer(element),
+      navigationFile = element.containingFile?.originalFile?.virtualFile,
+      navigationOffset = element.textRange.startOffset,
       parentId = parentId,
       packageName = packageName ?: ownerClass?.let(::packageName),
       ownerClassName = ownerClass?.name ?: ownerClass?.qualifiedName,

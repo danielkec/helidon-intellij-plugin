@@ -42,6 +42,8 @@ class HelidonHttpServicesViewContributor : HelidonServicesViewContributor {
       name = path,
       details = details,
       navigation = SmartPointerManager.getInstance(module.project).createSmartPsiElementPointer(target),
+      navigationFile = target.containingFile?.originalFile?.virtualFile,
+      navigationOffset = target.textRange.startOffset,
       packageName = container?.let(::packageName),
       ownerClassName = container?.name ?: container?.qualifiedName,
       ownerClassQualifiedName = container?.qualifiedName,

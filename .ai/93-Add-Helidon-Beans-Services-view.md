@@ -35,6 +35,7 @@
 - 2026-05-21: Hid generated Helidon service implementation artifacts and generated injection/lookups from the default view, simplified unresolved labels, and aligned tree backgrounds with the tool window.
 - 2026-05-21: Added package/class grouping metadata so Services/Contracts group under packages and member/component rows group under their owning classes.
 - 2026-05-21: Reworked tree navigation to use read-action-captured file/offset descriptors instead of resolving PSI smart pointers on the EDT.
+- 2026-05-21: Fixed PR review findings: unwrapped common generic injection wrappers, made named injections/lookups qualifier-aware, discovered meta-annotated service scopes, limited default scans to module scope, skipped irrelevant collectors for filters, narrowed PSI refresh triggers, avoided combo-triggered rescans, and capped initial tree expansion.
 
 ## Validation
 
@@ -48,6 +49,10 @@
 - 2026-05-21: Re-ran focused descriptor/model tests after generated-artifact filtering and UI presentation cleanup; passed.
 - 2026-05-21: Re-ran focused descriptor/model tests after package/class grouping; passed.
 - 2026-05-21: Re-ran focused descriptor/model tests after EDT-safe navigation change; passed.
+- 2026-05-21: `git diff --check` passed after PR review fixes.
+- 2026-05-21: Re-ran focused descriptor/model tests after PR review fixes; passed.
+- 2026-05-21: Re-ran broader impacted slice after PR review fixes; passed.
+- 2026-05-21: Re-ran `./gradlew verifyPlugin --no-daemon --no-configuration-cache` after PR review fixes; passed with verifier status `Compatible`.
 - 2026-05-21: Two LangChain4j config reference tests were excluded from the final impacted slice after reproducing the same failures on unchanged `origin/main`:
   `testAiChatModelAnnotationConstantValueResolvesToModelConfigKey` and
   `testAiChatModelAnnotationConstantExpressionResolvesToModelConfigKey`.

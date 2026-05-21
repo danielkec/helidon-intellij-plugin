@@ -8,18 +8,23 @@ import com.intellij.helidon.utils.HelidonCoreUtils
 import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleManager
+import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.GeneratedSourcesFilter
 import com.intellij.openapi.roots.ModuleRootManager
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiAnnotation
+import com.intellij.psi.PsiAnnotationMemberValue
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiClassType
 import com.intellij.psi.PsiClassObjectAccessExpression
 import com.intellij.psi.PsiElement
+import com.intellij.psi.PsiExpressionList
 import com.intellij.psi.PsiField
+import com.intellij.psi.PsiLiteralExpression
 import com.intellij.psi.PsiMethod
+import com.intellij.psi.PsiMethodCallExpression
 import com.intellij.psi.PsiModifierListOwner
 import com.intellij.psi.PsiParameter
 import com.intellij.psi.PsiType
@@ -105,6 +110,13 @@ interface HelidonServicesViewContributor {
 object HelidonServicesModel {
   private const val HELIDON_COMMON_GENERATED = "io.helidon.common.Generated"
 
+  private val SERVICE_REGISTRY_KINDS = setOf(
+    HelidonServicesNodeKind.SERVICE,
+    HelidonServicesNodeKind.CONTRACT,
+    HelidonServicesNodeKind.INJECTION_POINT,
+    HelidonServicesNodeKind.SERVICE_LOOKUP,
+  )
+
   private val SERVICE_SCOPE_ANNOTATIONS = listOf(
     HelidonConstants.SERVICE_SINGLETON,
     HelidonConstants.SERVICE_PROVIDER,
@@ -115,6 +127,18 @@ object HelidonServicesModel {
     HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_AGENT,
     HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_SERVICE,
     HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_AGENT,
+  )
+
+  private val SERVICE_INJECTION_WRAPPER_TYPES = setOf(
+    "java.lang.Iterable",
+    "java.util.Collection",
+    "java.util.List",
+    "java.util.Optional",
+    "java.util.Set",
+    "java.util.function.Supplier",
+    "java.util.stream.Stream",
+    "javax.inject.Provider",
+    "jakarta.inject.Provider",
   )
 
   fun collect(project: Project, filter: HelidonServicesFilter = HelidonServicesFilter()): HelidonServicesSnapshot {
@@ -131,10 +155,16 @@ object HelidonServicesModel {
 
     val nodes = ArrayList<HelidonServicesNode>()
     for (module in modules) {
-      nodes.addAll(collectServiceRegistryNodes(module, filter))
-      nodes.addAll(collectLangChain4jNodes(module, filter))
-      for (contributor in HelidonServicesViewContributor.EP_NAME.extensionList) {
-        nodes.addAll(contributor.collect(module, filter))
+      if (shouldCollectServiceRegistry(filter)) {
+        nodes.addAll(collectServiceRegistryNodes(module, filter))
+      }
+      if (shouldCollectLangChain4j(filter)) {
+        nodes.addAll(collectLangChain4jNodes(module, filter))
+      }
+      if (shouldCollectContributors(filter)) {
+        for (contributor in HelidonServicesViewContributor.EP_NAME.extensionList) {
+          nodes.addAll(contributor.collect(module, filter))
+        }
       }
     }
 
@@ -155,7 +185,12 @@ object HelidonServicesModel {
   }
 
   fun searchScope(module: Module, filter: HelidonServicesFilter): GlobalSearchScope =
-    module.getModuleWithDependenciesAndLibrariesScope(filter.includeTests)
+    if (filter.includeLibraries) {
+      module.getModuleWithDependenciesAndLibrariesScope(filter.includeTests)
+    }
+    else {
+      module.getModuleWithDependenciesScope()
+    }
 
   fun sourceSet(module: Module, element: PsiElement): HelidonServicesSourceSet {
     val virtualFile = element.containingFile?.originalFile?.virtualFile ?: return HelidonServicesSourceSet.MAIN
@@ -186,6 +221,18 @@ object HelidonServicesModel {
     return true
   }
 
+  private fun shouldCollectServiceRegistry(filter: HelidonServicesFilter): Boolean =
+    filter.kind == null || filter.kind in SERVICE_REGISTRY_KINDS
+
+  private fun shouldCollectLangChain4j(filter: HelidonServicesFilter): Boolean =
+    !filter.showOnlyProblems &&
+    (filter.kind == null ||
+     filter.kind == HelidonServicesNodeKind.LANGCHAIN4J_COMPONENT ||
+     filter.kind == HelidonServicesNodeKind.LANGCHAIN4J_CONFIG)
+
+  private fun shouldCollectContributors(filter: HelidonServicesFilter): Boolean =
+    !filter.showOnlyProblems && (filter.kind == null || filter.kind == HelidonServicesNodeKind.HTTP_ENDPOINT)
+
   private fun collectServiceRegistryNodes(module: Module, filter: HelidonServicesFilter): List<HelidonServicesNode> {
     val scope = searchScope(module, filter)
     val services = collectServiceClasses(module, scope)
@@ -193,31 +240,58 @@ object HelidonServicesModel {
 
     val serviceInfos = services.map { psiClass ->
       val contracts = HelidonCoreUtils.getHelidonServiceContracts(psiClass).toList()
-      ServiceInfo(serviceNodeId(module, psiClass), psiClass, contracts)
+      val names = HelidonCoreUtils.getHelidonServiceNames(psiClass)
+      val serviceModule = ModuleUtilCore.findModuleForPsiElement(psiClass) ?: module
+      ServiceInfo(serviceNodeId(serviceModule, psiClass), psiClass, contracts, names)
     }
     val nodes = ArrayList<HelidonServicesNode>()
 
-    for (service in serviceInfos) {
-      nodes.add(serviceNode(module, service))
-      nodes.addAll(contractNodes(module, service))
+    if (!filter.showOnlyProblems && (filter.kind == null || filter.kind == HelidonServicesNodeKind.SERVICE)) {
+      for (service in serviceInfos) {
+        nodes.add(serviceNode(module, service))
+      }
     }
-    nodes.addAll(injectionPointNodes(module, scope, serviceInfos))
-    nodes.addAll(serviceLookupNodes(module, serviceInfos))
+    if (!filter.showOnlyProblems && (filter.kind == null || filter.kind == HelidonServicesNodeKind.CONTRACT)) {
+      for (service in serviceInfos) {
+        nodes.addAll(contractNodes(module, service))
+      }
+    }
+    if (filter.kind == null || filter.kind == HelidonServicesNodeKind.INJECTION_POINT) {
+      nodes.addAll(injectionPointNodes(module, scope, serviceInfos))
+    }
+    if (filter.kind == null || filter.kind == HelidonServicesNodeKind.SERVICE_LOOKUP) {
+      nodes.addAll(serviceLookupNodes(module, scope, serviceInfos))
+    }
     return nodes
   }
 
   private fun collectServiceClasses(module: Module, scope: GlobalSearchScope): List<PsiClass> {
     val facade = JavaPsiFacade.getInstance(module.project)
     val services = LinkedHashSet<PsiClass>()
+    val visitedAnnotations = HashSet<String>()
     for (annotationName in SERVICE_SCOPE_ANNOTATIONS) {
-      val annotationClass = facade.findClass(annotationName, scope) ?: continue
-      AnnotatedElementsSearch.searchPsiClasses(annotationClass, scope).forEach { psiClass ->
-        if (!isGenerated(psiClass) && HelidonCoreUtils.isHelidonServiceRegistryClass(psiClass)) {
-          services.add(psiClass)
-        }
-      }
+      collectServiceClassesAnnotatedWith(facade, scope, annotationName, services, visitedAnnotations)
     }
     return services.toList()
+  }
+
+  private fun collectServiceClassesAnnotatedWith(facade: JavaPsiFacade,
+                                                 scope: GlobalSearchScope,
+                                                 annotationName: String,
+                                                 services: MutableSet<PsiClass>,
+                                                 visitedAnnotations: MutableSet<String>) {
+    val annotationClass = facade.findClass(annotationName, scope) ?: return
+    val annotationKey = annotationClass.qualifiedName ?: elementKey(annotationClass)
+    if (!visitedAnnotations.add(annotationKey)) return
+
+    AnnotatedElementsSearch.searchPsiClasses(annotationClass, scope).forEach { psiClass ->
+      if (psiClass.isAnnotationType) {
+        psiClass.qualifiedName?.let { collectServiceClassesAnnotatedWith(facade, scope, it, services, visitedAnnotations) }
+      }
+      else if (!isGenerated(psiClass) && HelidonCoreUtils.isHelidonServiceRegistryClass(psiClass)) {
+        services.add(psiClass)
+      }
+    }
   }
 
   private fun serviceNode(module: Module, service: ServiceInfo): HelidonServicesNode {
@@ -276,13 +350,13 @@ object HelidonServicesModel {
     val result = ArrayList<HelidonServicesNode>()
     for (point in points.values) {
       val contract = point.contractClass
-      val matches = if (contract == null) emptyList() else matchingServices(contract, services)
+      val matches = if (contract == null) emptyList() else matchingServices(contract, services, point.name)
       val status = when (matches.size) {
         0 -> HelidonServicesResolutionStatus.UNRESOLVED
         1 -> HelidonServicesResolutionStatus.RESOLVED
         else -> HelidonServicesResolutionStatus.AMBIGUOUS
       }
-      val detail = point.contractName
+      val detail = listOfNotNull(point.contractName, point.name?.let { "name: $it" }).joinToString(" | ")
       if (matches.isEmpty()) {
         result.add(injectionNode(module, point, status, detail, parentId = null))
       }
@@ -297,25 +371,42 @@ object HelidonServicesModel {
 
   private fun collectInjectionPoints(annotation: PsiAnnotation, result: MutableMap<String, InjectionPoint>) {
     val owner = PsiTreeUtil.getParentOfType(annotation, PsiModifierListOwner::class.java) ?: return
+    val name = injectionName(annotation)
     when (owner) {
-      is PsiField -> addInjectionPoint(owner.nameIdentifier, owner.type, result)
-      is PsiParameter -> addInjectionPoint(owner.nameIdentifier ?: owner, owner.type, result)
+      is PsiField -> addInjectionPoint(owner.nameIdentifier, owner.type, name, result)
+      is PsiParameter -> addInjectionPoint(owner.nameIdentifier ?: owner, owner.type, name, result)
       is PsiMethod -> owner.parameterList.parameters.forEach { parameter ->
-        addInjectionPoint(parameter.nameIdentifier ?: parameter, parameter.type, result)
+        addInjectionPoint(parameter.nameIdentifier ?: parameter, parameter.type, name, result)
       }
     }
   }
 
-  private fun addInjectionPoint(anchor: PsiElement, type: PsiType, result: MutableMap<String, InjectionPoint>) {
+  private fun addInjectionPoint(anchor: PsiElement,
+                                type: PsiType,
+                                name: String?,
+                                result: MutableMap<String, InjectionPoint>) {
     if (PsiTypes.voidType() == type) return
-    val contract = (type as? PsiClassType)?.resolve()
-    val contractName = contract?.qualifiedName ?: type.presentableText
-    result.putIfAbsent(elementKey(anchor), InjectionPoint(anchor, contract, contractName))
+    val contractType = unwrapInjectionType(type)
+    val contract = (contractType as? PsiClassType)?.resolve()
+    val contractName = contract?.qualifiedName ?: contractType.presentableText
+    result.putIfAbsent(elementKey(anchor), InjectionPoint(anchor, contract, contractName, name))
   }
 
-  private fun matchingServices(contract: PsiClass, services: List<ServiceInfo>): List<ServiceInfo> =
+  private fun unwrapInjectionType(type: PsiType): PsiType {
+    val classType = type as? PsiClassType ?: return type
+    val resolved = classType.resolve() ?: return type
+    if (resolved.qualifiedName !in SERVICE_INJECTION_WRAPPER_TYPES) return type
+    return classType.parameters.firstOrNull()?.let(::unwrapInjectionType) ?: type
+  }
+
+  private fun injectionName(annotation: PsiAnnotation): String? =
+    constantString(annotation.findDeclaredAttributeValue("value"))
+      ?: constantString(annotation.findDeclaredAttributeValue("name"))
+
+  private fun matchingServices(contract: PsiClass, services: List<ServiceInfo>, name: String? = null): List<ServiceInfo> =
     services.filter { service ->
-      service.contracts.any { candidate -> contract.manager.areElementsEquivalent(candidate, contract) }
+      service.contracts.any { candidate -> contract.manager.areElementsEquivalent(candidate, contract) } &&
+      (name == null || service.names.contains(name))
     }
 
   private fun injectionNode(module: Module,
@@ -335,39 +426,46 @@ object HelidonServicesModel {
       ownerClass = ownerClass(point.anchor),
     )
 
-  private fun serviceLookupNodes(module: Module, services: List<ServiceInfo>): List<HelidonServicesNode> {
-    val lookupsByService = services.associateWith { service ->
-      HelidonCoreUtils.getHelidonServiceUsageTargets(module, service.psiClass)
+  private fun serviceLookupNodes(module: Module, scope: GlobalSearchScope, services: List<ServiceInfo>): List<HelidonServicesNode> {
+    val lookups = LinkedHashMap<String, PsiElement>()
+    for (service in services) {
+      HelidonCoreUtils.getHelidonServiceUsageTargets(module, service.psiClass, scope)
         .filter { PsiTreeUtil.getParentOfType(it, PsiClassObjectAccessExpression::class.java, false) != null ||
                   it is PsiClassObjectAccessExpression }
         .filterNot { isGenerated(it) }
+        .forEach { lookup -> lookups.putIfAbsent(elementKey(lookup), lookup) }
     }
-    val lookupCounts = lookupsByService.values.flatten().groupingBy(::elementKey).eachCount()
-    return lookupsByService.flatMap { (service, lookups) ->
-      lookups.map { lookup ->
-        val status = if ((lookupCounts[elementKey(lookup)] ?: 0) > 1) {
-          HelidonServicesResolutionStatus.AMBIGUOUS
-        }
-        else {
-          HelidonServicesResolutionStatus.RESOLVED
-        }
-        node(
-          id = "lookup:${service.nodeId}:${elementKey(lookup)}",
+
+    val result = ArrayList<HelidonServicesNode>()
+    for (lookup in lookups.values) {
+      val lookupInfo = serviceLookupInfo(lookup) ?: continue
+      val matches = lookupInfo.contractClass?.let { matchingServices(it, services, lookupInfo.name) }.orEmpty()
+      val status = when (matches.size) {
+        0 -> HelidonServicesResolutionStatus.UNRESOLVED
+        1 -> HelidonServicesResolutionStatus.RESOLVED
+        else -> HelidonServicesResolutionStatus.AMBIGUOUS
+      }
+      val parentIds = matches.map { it.nodeId }.ifEmpty { listOf(null) }
+      for (parentId in parentIds) {
+        result.add(node(
+          id = "lookup:${parentId.orEmpty()}:${elementKey(lookup)}",
           kind = HelidonServicesNodeKind.SERVICE_LOOKUP,
           module = module,
           element = lookup,
           name = lookup.text,
+          details = lookupInfo.name?.let { "name: $it" },
           status = status,
-          parentId = service.nodeId,
+          parentId = parentId,
           ownerClass = ownerClass(lookup),
-        )
+        ))
       }
     }
+    return result
   }
 
   private fun collectLangChain4jNodes(module: Module, filter: HelidonServicesFilter): List<HelidonServicesNode> {
     val nodes = ArrayList<HelidonServicesNode>()
-    for (component in HelidonLangChain4jConfigResolver.components(module, filter.includeTests)) {
+    for (component in HelidonLangChain4jConfigResolver.components(module, filter.includeTests, filter.includeLibraries)) {
       val componentClass = component.componentTargetClass()
       nodes.add(node(
         id = "langchain4j-component:${module.name}:${component.kind.name}:${component.key}:${elementKey(component.target)}",
@@ -404,12 +502,13 @@ object HelidonServicesModel {
                    status: HelidonServicesResolutionStatus = HelidonServicesResolutionStatus.RESOLVED,
                    parentId: String? = null,
                    packageName: String? = null,
-                   ownerClass: PsiClass? = null): HelidonServicesNode =
-    HelidonServicesNode(
+                   ownerClass: PsiClass? = null): HelidonServicesNode {
+    val nodeModule = ModuleUtilCore.findModuleForPsiElement(element) ?: module
+    return HelidonServicesNode(
       id = id,
       kind = kind,
-      moduleName = module.name,
-      sourceSet = sourceSet(module, element),
+      moduleName = nodeModule.name,
+      sourceSet = sourceSet(nodeModule, element),
       name = name,
       details = details,
       status = status,
@@ -421,6 +520,7 @@ object HelidonServicesModel {
       ownerClassName = ownerClass?.name ?: ownerClass?.qualifiedName,
       ownerClassQualifiedName = ownerClass?.qualifiedName,
     )
+  }
 
   private fun serviceNodeId(module: Module, psiClass: PsiClass): String =
     "service:${module.name}:${psiClass.qualifiedName ?: elementKey(psiClass)}"
@@ -454,15 +554,54 @@ object HelidonServicesModel {
   private fun ServiceInfo.contractNames(): List<String> =
     contracts.mapNotNull { it.qualifiedName ?: it.name }.distinct()
 
+  private fun serviceLookupInfo(anchor: PsiElement): ServiceLookup? {
+    val classObjectAccess = anchor as? PsiClassObjectAccessExpression
+                            ?: PsiTreeUtil.getParentOfType(anchor, PsiClassObjectAccessExpression::class.java, false)
+                            ?: return null
+    val contractClass = (classObjectAccess.operand.type as? PsiClassType)?.resolve()
+    val expressionList = PsiTreeUtil.getParentOfType(classObjectAccess, PsiExpressionList::class.java) ?: return null
+    val methodCall = PsiTreeUtil.getParentOfType(expressionList, PsiMethodCallExpression::class.java) ?: return null
+    if (expressionList.parent != methodCall) return null
+    val expressions = expressionList.expressions
+    val methodName = methodCall.methodExpression.referenceName
+    val name = if (methodName?.contains("Named") == true) {
+      expressions.getOrNull(1)?.let(::constantString)
+    }
+    else {
+      null
+    }
+    return ServiceLookup(contractClass, name)
+  }
+
+  private fun constantString(value: PsiElement?): String? {
+    if (value == null) return null
+    if (value is PsiLiteralExpression) {
+      return (value.value as? String)?.takeIf { it.isNotBlank() }
+    }
+    if (value is PsiAnnotationMemberValue) {
+      val constant = JavaPsiFacade.getInstance(value.project).constantEvaluationHelper.computeConstantExpression(value)
+      return (constant as? String)?.takeIf { it.isNotBlank() }
+    }
+    val constant = JavaPsiFacade.getInstance(value.project).constantEvaluationHelper.computeConstantExpression(value)
+    return (constant as? String)?.takeIf { it.isNotBlank() }
+  }
+
   private data class ServiceInfo(
     val nodeId: String,
     val psiClass: PsiClass,
     val contracts: List<PsiClass>,
+    val names: Set<String>,
   )
 
   private data class InjectionPoint(
     val anchor: PsiElement,
     val contractClass: PsiClass?,
     val contractName: String,
+    val name: String?,
+  )
+
+  private data class ServiceLookup(
+    val contractClass: PsiClass?,
+    val name: String?,
   )
 }

@@ -58,6 +58,12 @@ internal object HelidonLangChain4jConfigResolver {
   private val TEST_COMPONENTS_KEY: Key<CachedValue<List<LangChain4jComponent>>> =
     Key.create("HELIDON_LANGCHAIN4J_TEST_COMPONENTS")
 
+  private val MAIN_PROJECT_COMPONENTS_KEY: Key<CachedValue<List<LangChain4jComponent>>> =
+    Key.create("HELIDON_LANGCHAIN4J_MAIN_PROJECT_COMPONENTS")
+
+  private val TEST_PROJECT_COMPONENTS_KEY: Key<CachedValue<List<LangChain4jComponent>>> =
+    Key.create("HELIDON_LANGCHAIN4J_TEST_PROJECT_COMPONENTS")
+
   private val MAIN_CONFIG_FILES_KEY: Key<CachedValue<List<ConfigFile>>> =
     Key.create("HELIDON_LANGCHAIN4J_MAIN_CONFIG_FILES")
 
@@ -236,7 +242,10 @@ internal object HelidonLangChain4jConfigResolver {
   }
 
   fun components(module: Module, includeTests: Boolean): List<LangChain4jComponent> =
-    getComponents(module, includeTests)
+    getComponents(module, includeTests, includeLibraries = true)
+
+  fun components(module: Module, includeTests: Boolean, includeLibraries: Boolean): List<LangChain4jComponent> =
+    getComponents(module, includeTests, includeLibraries)
 
   fun configEntries(module: Module, includeTests: Boolean): List<LangChain4jConfigEntry> {
     val entries = LinkedHashSet<LangChain4jConfigEntry>()
@@ -303,7 +312,7 @@ internal object HelidonLangChain4jConfigResolver {
     val parentPath = qualifiedConfigKeyName(parent)
     return CONFIG_SECTION_KINDS.flatMap { (section, kinds) ->
       val key = configSectionComponentKey(yamlKeyValue, section) ?: return@flatMap emptyList()
-      getComponents(module, includeTestSources(yamlKeyValue, module)).filter { component ->
+      getComponents(module, includeTestSources(yamlKeyValue, module), includeLibraries = true).filter { component ->
         component.kind in kinds &&
         component.key == key &&
         parentPath == "$ROOT.$section"
@@ -420,23 +429,36 @@ internal object HelidonLangChain4jConfigResolver {
                                module: Module,
                                kinds: Set<LangChain4jComponentKind>,
                                key: String? = null): List<PsiElement> {
-    return getComponents(module, includeTestSources(context, module))
+    return getComponents(module, includeTestSources(context, module), includeLibraries = true)
       .filter { it.kind in kinds && (key == null || it.key == key) }
       .map { it.target }
   }
 
-  private fun getComponents(module: Module, includeTests: Boolean): List<LangChain4jComponent> {
-    val key = if (includeTests) TEST_COMPONENTS_KEY else MAIN_COMPONENTS_KEY
+  private fun getComponents(module: Module, includeTests: Boolean, includeLibraries: Boolean): List<LangChain4jComponent> {
+    val key = componentCacheKey(includeTests, includeLibraries)
     return CachedValuesManager.getManager(module.project).getCachedValue(module, key, {
-      CachedValueProvider.Result.create(calculateComponents(module, includeTests),
+      CachedValueProvider.Result.create(calculateComponents(module, includeTests, includeLibraries),
                                         PsiModificationTracker.MODIFICATION_COUNT,
                                         JavaLibraryModificationTracker.getInstance(module.project))
     }, false)
   }
 
-  private fun calculateComponents(module: Module, includeTests: Boolean): List<LangChain4jComponent> {
+  private fun componentCacheKey(includeTests: Boolean, includeLibraries: Boolean): Key<CachedValue<List<LangChain4jComponent>>> =
+    when {
+      includeTests && includeLibraries -> TEST_COMPONENTS_KEY
+      includeLibraries -> MAIN_COMPONENTS_KEY
+      includeTests -> TEST_PROJECT_COMPONENTS_KEY
+      else -> MAIN_PROJECT_COMPONENTS_KEY
+    }
+
+  private fun calculateComponents(module: Module, includeTests: Boolean, includeLibraries: Boolean): List<LangChain4jComponent> {
     val project = module.project
-    val scope = module.getModuleWithDependenciesAndLibrariesScope(includeTests)
+    val scope = if (includeLibraries) {
+      module.getModuleWithDependenciesAndLibrariesScope(includeTests)
+    }
+    else {
+      module.getModuleWithDependenciesScope()
+    }
     val result = LinkedHashSet<LangChain4jComponent>()
     val facade = JavaPsiFacade.getInstance(project)
 

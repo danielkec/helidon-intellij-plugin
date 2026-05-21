@@ -23,6 +23,7 @@ import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
+import java.util.Locale
 import java.util.concurrent.Callable
 import java.util.function.Consumer
 import javax.swing.JButton
@@ -55,6 +56,7 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
   private val treeRoot = DefaultMutableTreeNode("Helidon Services")
   private val treeModel = DefaultTreeModel(treeRoot)
   private val tree = Tree(treeModel)
+  private var updatingModuleFilter = false
 
   init {
     background = UIUtil.getPanelBackground()
@@ -81,15 +83,15 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
     scrollPane.viewport.background = background
     add(scrollPane, BorderLayout.CENTER)
     PsiManager.getInstance(project).addPsiTreeChangeListener(object : PsiTreeChangeAdapter() {
-      override fun childAdded(event: PsiTreeChangeEvent) = scheduleRefresh()
+      override fun childAdded(event: PsiTreeChangeEvent) = scheduleRefresh(event)
 
-      override fun childRemoved(event: PsiTreeChangeEvent) = scheduleRefresh()
+      override fun childRemoved(event: PsiTreeChangeEvent) = scheduleRefresh(event)
 
-      override fun childReplaced(event: PsiTreeChangeEvent) = scheduleRefresh()
+      override fun childReplaced(event: PsiTreeChangeEvent) = scheduleRefresh(event)
 
-      override fun childrenChanged(event: PsiTreeChangeEvent) = scheduleRefresh()
+      override fun childrenChanged(event: PsiTreeChangeEvent) = scheduleRefresh(event)
 
-      override fun propertyChanged(event: PsiTreeChangeEvent) = scheduleRefresh()
+      override fun propertyChanged(event: PsiTreeChangeEvent) = scheduleRefresh(event)
     }, this)
   }
 
@@ -109,17 +111,30 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
       .submit(AppExecutorUtil.getAppExecutorService())
   }
 
+  private fun scheduleRefresh(event: PsiTreeChangeEvent) {
+    if (!isRefreshRelevant(event)) return
+    scheduleRefresh()
+  }
+
   private fun scheduleRefresh() {
     if (project.isDisposed) return
     refreshAlarm.cancelAllRequests()
     refreshAlarm.addRequest({ refresh() }, 300)
   }
 
+  private fun isRefreshRelevant(event: PsiTreeChangeEvent): Boolean {
+    val virtualFile = event.file?.originalFile?.virtualFile ?: return false
+    val extension = virtualFile.extension?.lowercase(Locale.ENGLISH) ?: return false
+    return extension in REFRESH_FILE_EXTENSIONS
+  }
+
   private fun toolbar(): JPanel {
     val panel = JPanel(FlowLayout(FlowLayout.LEFT, 6, 4))
     panel.background = background
     moduleFilter.addItem(ALL_MODULES)
-    moduleFilter.addActionListener { refresh() }
+    moduleFilter.addActionListener {
+      if (!updatingModuleFilter) refresh()
+    }
     kindFilter.addItem(KindFilterItem(null))
     HelidonServicesNodeKind.entries.forEach { kindFilter.addItem(KindFilterItem(it)) }
     kindFilter.addActionListener { refresh() }
@@ -159,9 +174,15 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
     val current = (0 until moduleFilter.itemCount).map { moduleFilter.getItemAt(it) }
     if (current == expected) return
 
-    moduleFilter.removeAllItems()
-    expected.forEach(moduleFilter::addItem)
-    moduleFilter.selectedItem = selected.takeIf { it in expected } ?: ALL_MODULES
+    updatingModuleFilter = true
+    try {
+      moduleFilter.removeAllItems()
+      expected.forEach(moduleFilter::addItem)
+      moduleFilter.selectedItem = selected.takeIf { it in expected } ?: ALL_MODULES
+    }
+    finally {
+      updatingModuleFilter = false
+    }
   }
 
   private fun rebuildTree(snapshot: HelidonServicesSnapshot) {
@@ -180,7 +201,7 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
         }
     }
     treeModel.reload()
-    expandAll()
+    expandInitialRows()
   }
 
   private fun appendGroupedNodes(parent: DefaultMutableTreeNode, nodes: List<HelidonServicesNode>) {
@@ -223,10 +244,15 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
     }
   }
 
-  private fun expandAll() {
+  private fun expandInitialRows() {
     var row = 0
-    while (row < tree.rowCount) {
-      tree.expandRow(row)
+    var expanded = 0
+    while (row < tree.rowCount && expanded < MAX_AUTO_EXPANDED_ROWS) {
+      val path = tree.getPathForRow(row)
+      if (path != null && path.pathCount <= AUTO_EXPAND_PATH_DEPTH) {
+        tree.expandRow(row)
+        expanded++
+      }
       row++
     }
   }
@@ -309,5 +335,8 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
   companion object {
     private const val ALL_MODULES = "All Modules"
     private const val DEFAULT_PACKAGE = "(default package)"
+    private const val AUTO_EXPAND_PATH_DEPTH = 3
+    private const val MAX_AUTO_EXPANDED_ROWS = 200
+    private val REFRESH_FILE_EXTENSIONS = setOf("java", "properties", "yaml", "yml")
   }
 }

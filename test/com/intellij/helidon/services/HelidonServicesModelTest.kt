@@ -80,6 +80,123 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
     })
   }
 
+  fun testResolvesWrappedInjectionPointTypes() {
+    addServiceRegistryStubs()
+    myFixture.configureByText("Main.java", """
+      import java.util.List;
+      import java.util.Optional;
+      import java.util.function.Supplier;
+      import io.helidon.service.registry.Service;
+
+      interface Greeting {
+      }
+
+      @Service.Singleton
+      class GreetingService implements Greeting {
+      }
+
+      @Service.Singleton
+      class GreetingConsumer {
+        @Service.Inject
+        Optional<Greeting> optionalGreeting;
+
+        @Service.Inject
+        Supplier<Greeting> suppliedGreeting;
+
+        @Service.Inject
+        List<Greeting> allGreetings;
+
+        @Service.Inject
+        Supplier<List<Greeting>> suppliedGreetings;
+      }
+    """.trimIndent())
+
+    val snapshot = HelidonServicesModel.collect(project)
+    val injectionNodes = snapshot.nodes.filter { it.kind == HelidonServicesNodeKind.INJECTION_POINT }
+
+    assertEquals(4, injectionNodes.size)
+    assertTrue(injectionNodes.all { it.status == HelidonServicesResolutionStatus.RESOLVED })
+    assertTrue(injectionNodes.all { it.details == "Greeting" })
+  }
+
+  fun testUsesServiceNamesForInjectionAndLookups() {
+    addServiceRegistryStubs()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.service.registry.Service;
+      import io.helidon.service.registry.Services;
+
+      interface Greeting {
+      }
+
+      @Service.Named("casual")
+      @Service.Singleton
+      class CasualGreetingService implements Greeting {
+      }
+
+      @Service.Named("formal")
+      @Service.Singleton
+      class FormalGreetingService implements Greeting {
+      }
+
+      @Service.Singleton
+      class GreetingConsumer {
+        @Service.Inject("formal")
+        Greeting greeting;
+
+        void lookup() {
+          Services.getNamed(Greeting.class, "formal");
+        }
+      }
+    """.trimIndent())
+
+    val snapshot = HelidonServicesModel.collect(project)
+
+    val injectionNode = snapshot.nodes.single {
+      it.kind == HelidonServicesNodeKind.INJECTION_POINT && it.name == "greeting"
+    }
+    val lookupNode = snapshot.nodes.single {
+      it.kind == HelidonServicesNodeKind.SERVICE_LOOKUP && it.name == "Greeting.class"
+    }
+    assertEquals(HelidonServicesResolutionStatus.RESOLVED, injectionNode.status)
+    assertTrue(injectionNode.parentId?.contains("FormalGreetingService") == true)
+    assertEquals("Greeting | name: formal", injectionNode.details)
+    assertEquals(HelidonServicesResolutionStatus.RESOLVED, lookupNode.status)
+    assertTrue(lookupNode.parentId?.contains("FormalGreetingService") == true)
+    assertEquals("name: formal", lookupNode.details)
+  }
+
+  fun testCollectsMetaAnnotatedServiceScopes() {
+    addServiceRegistryStubs()
+    myFixture.configureByText("Main.java", """
+      import java.lang.annotation.ElementType;
+      import java.lang.annotation.Retention;
+      import java.lang.annotation.RetentionPolicy;
+      import java.lang.annotation.Target;
+      import io.helidon.service.registry.Service;
+
+      @Retention(RetentionPolicy.CLASS)
+      @Target(ElementType.TYPE)
+      @Service.Singleton
+      @interface ApplicationService {
+      }
+
+      @ApplicationService
+      class GreetingService {
+      }
+    """.trimIndent())
+
+    val snapshot = HelidonServicesModel.collect(project)
+
+    assertTrue(snapshot.nodes.any {
+      it.kind == HelidonServicesNodeKind.SERVICE &&
+        it.name == "GreetingService"
+    })
+    assertTrue(snapshot.nodes.none {
+      it.kind == HelidonServicesNodeKind.SERVICE &&
+        it.name == "ApplicationService"
+    })
+  }
+
   fun testKindAndModuleFilters() {
     addServiceRegistryStubs()
     myFixture.configureByText("Main.java", """
@@ -296,6 +413,8 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
         @Retention(RetentionPolicy.CLASS)
         @Target({ElementType.METHOD, ElementType.CONSTRUCTOR, ElementType.FIELD, ElementType.PARAMETER})
         public @interface Inject {
+          String value() default "";
+          String name() default "";
         }
 
         @Retention(RetentionPolicy.CLASS)
@@ -326,6 +445,10 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
         public static <T> T get(Class<T> contract) {
           return null;
         }
+
+        public static <T> T getNamed(Class<T> contract, String name) {
+          return null;
+        }
       }
     """.trimIndent())
     myFixture.addClass("""
@@ -333,6 +456,8 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
 
       public interface ServiceRegistry {
         <T> T get(Class<T> contract);
+
+        <T> T getNamed(Class<T> contract, String name);
       }
     """.trimIndent())
   }

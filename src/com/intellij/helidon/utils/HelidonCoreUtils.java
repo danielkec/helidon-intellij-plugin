@@ -9,6 +9,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ProjectRootModificationTracker;
 import com.intellij.openapi.util.Key;
 import com.intellij.psi.*;
+import com.intellij.psi.search.SearchScope;
 import com.intellij.psi.search.searches.ReferencesSearch;
 import com.intellij.psi.util.CachedValue;
 import com.intellij.psi.util.CachedValueProvider.Result;
@@ -42,8 +43,11 @@ public final class HelidonCoreUtils {
                                                                    "first",
                                                                    "firstNamed",
                                                                    "all",
+                                                                   "allNamed",
                                                                    "supply",
+                                                                   "supplyNamed",
                                                                    "supplyFirst",
+                                                                   "supplyFirstNamed",
                                                                    "supplyAll");
 
   private HelidonCoreUtils() {
@@ -97,9 +101,27 @@ public final class HelidonCoreUtils {
     return targets;
   }
 
-  private static @NotNull Set<PsiElement> calculateHelidonServiceUsageTargets(@NotNull Module module, @NotNull PsiClass contract) {
+  public static @NotNull Set<PsiElement> getHelidonServiceUsageTargets(@NotNull Module module,
+                                                                       @NotNull PsiClass serviceClass,
+                                                                       @NotNull SearchScope scope) {
     Set<PsiElement> targets = new LinkedHashSet<>();
-    ReferencesSearch.search(contract, module.getModuleWithDependenciesScope()).forEach(reference -> {
+    for (PsiClass contract : getHelidonServiceContracts(serviceClass)) {
+      for (PsiElement target : calculateHelidonServiceUsageTargets(contract, scope)) {
+        if (!PsiTreeUtil.isAncestor(serviceClass, target, false)) {
+          targets.add(target);
+        }
+      }
+    }
+    return targets;
+  }
+
+  private static @NotNull Set<PsiElement> calculateHelidonServiceUsageTargets(@NotNull Module module, @NotNull PsiClass contract) {
+    return calculateHelidonServiceUsageTargets(contract, module.getModuleWithDependenciesScope());
+  }
+
+  private static @NotNull Set<PsiElement> calculateHelidonServiceUsageTargets(@NotNull PsiClass contract, @NotNull SearchScope scope) {
+    Set<PsiElement> targets = new LinkedHashSet<>();
+    ReferencesSearch.search(contract, scope).forEach(reference -> {
       PsiElement element = reference.getElement();
       PsiElement target = getServiceUsageTarget(element);
       if (target != null) {

@@ -74,6 +74,16 @@ internal object HelidonLangChain4jConfigResolver {
     MCP_CLIENTS to setOf(LangChain4jComponentKind.MCP_CLIENTS),
   )
 
+  private val CONFIG_SECTIONS: Set<String> = setOf(
+    SERVICES,
+    AGENTS,
+    MODELS,
+    PROVIDERS,
+    EMBEDDING_STORES,
+    CONTENT_RETRIEVERS,
+    MCP_CLIENTS,
+  )
+
   private val VALUE_CONFIG_TARGETS: Map<String, String> = mapOf(
     "provider" to PROVIDERS,
     "chat-model" to MODELS,
@@ -223,6 +233,20 @@ internal object HelidonLangChain4jConfigResolver {
 
     return findYamlSectionEntryKeys(yamlFile, "$ROOT.$section")
       .mapNotNull { it.keyText.takeIf { key -> key.isNotBlank() } }
+  }
+
+  fun components(module: Module, includeTests: Boolean): List<LangChain4jComponent> =
+    getComponents(module, includeTests)
+
+  fun configEntries(module: Module, includeTests: Boolean): List<LangChain4jConfigEntry> {
+    val entries = LinkedHashSet<LangChain4jConfigEntry>()
+    for (configFile in getConfigFiles(module, includeTests)) {
+      when (val psiFile = configFile.psiFile) {
+        is YAMLFile -> collectYamlConfigEntries(psiFile, entries)
+        is PropertiesFile -> collectPropertiesConfigEntries(psiFile, entries)
+      }
+    }
+    return entries.toList()
   }
 
   fun markerTargets(element: PsiElement): MarkerTargets? {
@@ -498,6 +522,28 @@ internal object HelidonLangChain4jConfigResolver {
       .flatMap { section -> (section.value as? YAMLMapping)?.keyValues?.toList() ?: emptyList() }
   }
 
+  private fun collectYamlConfigEntries(file: YAMLFile, result: MutableSet<LangChain4jConfigEntry>) {
+    for (section in CONFIG_SECTIONS) {
+      for (entry in findYamlSectionEntryKeys(file, "$ROOT.$section")) {
+        val key = entry.keyText.takeIf { it.isNotBlank() } ?: continue
+        result.add(LangChain4jConfigEntry(section, key, entry))
+      }
+    }
+  }
+
+  private fun collectPropertiesConfigEntries(file: PropertiesFile, result: MutableSet<LangChain4jConfigEntry>) {
+    for (property in file.properties) {
+      val propertyImpl = property.psiElement as? PropertyImpl ?: continue
+      val key = property.key ?: continue
+      val parts = key.split('.')
+      if (parts.size < 3 || parts[0] != ROOT) continue
+      val section = parts[1]
+      if (section !in CONFIG_SECTIONS) continue
+      val runtimeKey = parts[2].takeIf { it.isNotBlank() } ?: continue
+      result.add(LangChain4jConfigEntry(section, runtimeKey, propertyImpl))
+    }
+  }
+
   private fun findYamlSectionEntryKey(file: YAMLFile?, section: String, key: String): YAMLKeyValue? {
     if (file == null) return null
     return findYamlKeys(file, "$ROOT.$section")
@@ -680,8 +726,14 @@ internal object HelidonLangChain4jConfigResolver {
     return com.intellij.helidon.config.yaml.getQualifiedConfigKeyName(yamlKeyValue)
   }
 
-  private data class LangChain4jComponent(
+  data class LangChain4jComponent(
     val kind: LangChain4jComponentKind,
+    val key: String,
+    val target: PsiElement,
+  )
+
+  data class LangChain4jConfigEntry(
+    val section: String,
     val key: String,
     val target: PsiElement,
   )
@@ -703,16 +755,16 @@ internal object HelidonLangChain4jConfigResolver {
     AI,
   }
 
-  private enum class LangChain4jComponentKind {
-    SERVICE,
-    AGENT,
-    CHAT_MODEL,
-    STREAMING_CHAT_MODEL,
-    CHAT_MEMORY_PROVIDER,
-    MODERATION_MODEL,
-    CONTENT_RETRIEVER,
-    RETRIEVAL_AUGMENTOR,
-    TOOL_PROVIDER,
-    MCP_CLIENTS,
+  enum class LangChain4jComponentKind(val presentableName: String) {
+    SERVICE("@Ai.Service"),
+    AGENT("@Ai.Agent"),
+    CHAT_MODEL("@Ai.ChatModel"),
+    STREAMING_CHAT_MODEL("@Ai.StreamingChatModel"),
+    CHAT_MEMORY_PROVIDER("@Ai.ChatMemoryProvider"),
+    MODERATION_MODEL("@Ai.ModerationModel"),
+    CONTENT_RETRIEVER("@Ai.ContentRetriever"),
+    RETRIEVAL_AUGMENTOR("@Ai.RetrievalAugmentor"),
+    TOOL_PROVIDER("@Ai.ToolProvider"),
+    MCP_CLIENTS("@Ai.McpClients"),
   }
 }

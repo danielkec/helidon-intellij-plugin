@@ -110,7 +110,7 @@ public final class HelidonCoreUtils {
     return targets;
   }
 
-  private static @NotNull Set<PsiClass> getHelidonServiceContracts(@NotNull PsiClass serviceClass) {
+  public static @NotNull Set<PsiClass> getHelidonServiceContracts(@NotNull PsiClass serviceClass) {
     Set<PsiClass> contracts = new LinkedHashSet<>();
     contracts.add(serviceClass);
     collectAllInterfaces(serviceClass, contracts, new HashSet<>());
@@ -121,6 +121,19 @@ public final class HelidonCoreUtils {
     }
     collectExternalContractClasses(serviceClass, contracts);
     return contracts;
+  }
+
+  public static @Nullable String getHelidonServiceScopeAnnotationName(@NotNull PsiClass serviceClass) {
+    return findAnnotationOrMetaAnnotation(serviceClass, HELIDON_SERVICE_SCOPE_ANNOTATIONS, new HashSet<>());
+  }
+
+  public static @NotNull Set<String> getHelidonServiceNames(@NotNull PsiClass serviceClass) {
+    Set<String> names = new LinkedHashSet<>();
+    PsiAnnotation named = findAnnotation(serviceClass, HelidonConstants.SERVICE_NAMED);
+    if (named != null) {
+      collectAnnotationStringValues(named.findDeclaredAttributeValue("value"), names);
+    }
+    return names;
   }
 
   private static void collectAllInterfaces(@NotNull PsiClass psiClass,
@@ -224,6 +237,26 @@ public final class HelidonCoreUtils {
     return false;
   }
 
+  private static @Nullable String findAnnotationOrMetaAnnotation(@NotNull PsiModifierListOwner owner,
+                                                                 @NotNull Set<String> annotations,
+                                                                 @NotNull Set<? super PsiModifierListOwner> visited) {
+    if (!visited.add(owner)) return null;
+    for (PsiAnnotation annotation : getAnnotations(owner)) {
+      String qualifiedName = annotation.getQualifiedName();
+      if (qualifiedName != null && annotations.contains(qualifiedName)) {
+        return qualifiedName;
+      }
+      PsiClass annotationClass = annotation.resolveAnnotationType();
+      if (annotationClass != null) {
+        String metaAnnotation = findAnnotationOrMetaAnnotation(annotationClass, annotations, visited);
+        if (metaAnnotation != null) {
+          return metaAnnotation;
+        }
+      }
+    }
+    return null;
+  }
+
   private static boolean hasAnnotation(@NotNull PsiModifierListOwner owner, @NotNull String annotationName) {
     return findAnnotation(owner, annotationName) != null;
   }
@@ -240,5 +273,21 @@ public final class HelidonCoreUtils {
   private static @NotNull PsiAnnotation[] getAnnotations(@NotNull PsiModifierListOwner owner) {
     PsiModifierList modifierList = owner.getModifierList();
     return modifierList == null ? PsiAnnotation.EMPTY_ARRAY : modifierList.getAnnotations();
+  }
+
+  private static void collectAnnotationStringValues(@Nullable PsiAnnotationMemberValue value, @NotNull Set<? super String> result) {
+    if (value == null) return;
+    if (value instanceof PsiArrayInitializerMemberValue) {
+      for (PsiAnnotationMemberValue initializer : ((PsiArrayInitializerMemberValue)value).getInitializers()) {
+        collectAnnotationStringValues(initializer, result);
+      }
+      return;
+    }
+    Object constantValue = JavaPsiFacade.getInstance(value.getProject())
+      .getConstantEvaluationHelper()
+      .computeConstantExpression(value);
+    if (constantValue instanceof String && !((String)constantValue).isBlank()) {
+      result.add((String)constantValue);
+    }
   }
 }

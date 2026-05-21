@@ -18,6 +18,7 @@
 
     <microservices.urlResolverFactory implementation="com.intellij.helidon.providers.HelidonResolverFactory"/>
     <microservices.endpointsProvider implementation="com.intellij.helidon.providers.view.HelidonUrlFramework"/>
+    <helidon.servicesViewContributor implementation="com.intellij.helidon.services.HelidonHttpServicesViewContributor"/>
     <semContributor implementation="com.intellij.helidon.providers.HelidonInlaySemContributor"/>
 
     <!-- Config -->

@@ -63,20 +63,34 @@ public final class HelidonClassAnnotator extends RelatedItemLineMarkerProvider {
       if (parent instanceof PsiClass) {
         PsiClass psiClass = (PsiClass)parent;
         if (HelidonCoreUtils.isHelidonServiceRegistryClass(psiClass)) {
-          Set<PsiElement> targets = HelidonCoreUtils.getHelidonServiceUsageTargets(module, psiClass);
+          Set<PsiElement> targets = new LinkedHashSet<>(HelidonCoreUtils.getHelidonServiceUsageTargets(module, psiClass));
+          Set<PsiElement> contributedTargets = getContributedTargets(module, psiClass);
+          targets.addAll(contributedTargets);
           if (targets.isEmpty()) {
             targets = Collections.singleton(psiElement);
           }
           NavigationGutterIconBuilder<PsiElement> builder =
             NavigationGutterIconBuilder.create(HelidonIcons.HelidonBeanGutter, HelidonBundle.HELIDON_LIBRARY).
               setTargets(targets).
-              setPopupTitle(HelidonBundle.message("gutter.choose.service.usage")).
-              setTooltipText(HelidonBundle.message("gutter.navigate.to.service.usage")).
+              setPopupTitle(HelidonBundle.message(contributedTargets.isEmpty()
+                                                  ? "gutter.choose.service.usage"
+                                                  : "gutter.choose.service.target")).
+              setTooltipText(HelidonBundle.message(contributedTargets.isEmpty()
+                                                   ? "gutter.navigate.to.service.usage"
+                                                   : "gutter.navigate.to.service.target")).
               setTargetRenderer(HelidonClassAnnotator::getMethodCallRenderer);
           result.add(builder.createLineMarkerInfo(psiElement));
         }
       }
     }
+  }
+
+  private static @NotNull Set<PsiElement> getContributedTargets(@NotNull Module module, @NotNull PsiClass psiClass) {
+    Set<PsiElement> targets = new LinkedHashSet<>();
+    for (HelidonServiceClassLineMarkerTargetProvider provider : HelidonServiceClassLineMarkerTargetProvider.EP_NAME.getExtensionList()) {
+      targets.addAll(provider.getTargets(module, psiClass));
+    }
+    return targets;
   }
 
   @Override

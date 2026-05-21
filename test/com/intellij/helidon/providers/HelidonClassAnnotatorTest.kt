@@ -30,6 +30,76 @@ class HelidonClassAnnotatorTest : HelidonHighlightingTestCase() {
     assertSame(HelidonIcons.HelidonBeanGutter, result.single().icon)
   }
 
+  fun testServiceSingletonHttpServiceUsesSingleClassGutterMarker() {
+    addServiceRegistryStubs()
+    addHelidonHttpServiceStubs()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.service.registry.Service;
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.HttpService;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.register("/chat", new ChatBotService());
+        }
+      }
+
+      @Service.Singleton
+      class ChatConsumer {
+        @Service.Inject
+        ChatBotService service;
+      }
+
+      @Service.Singleton
+      class ChatBotService implements HttpService {
+      }
+    """.trimIndent())
+
+    val serviceClass = myFixture.findClass("ChatBotService")
+    val anchor = serviceClass.nameIdentifier!!
+    val classMarkers = mutableListOf<RelatedItemLineMarkerInfo<*>>()
+    val httpMarkers = mutableListOf<RelatedItemLineMarkerInfo<*>>()
+
+    HelidonClassAnnotator().collectNavigationMarkers(listOf(anchor), classMarkers, true)
+    HelidonHttpServiceLineMarkerProvider().collectNavigationMarkers(listOf(anchor), httpMarkers, true)
+
+    assertSize(1, classMarkers)
+    assertSame(HelidonIcons.HelidonBeanGutter, classMarkers.single().icon)
+    assertEmpty(httpMarkers)
+
+    val relatedItemTexts = classMarkers.single().createGotoRelatedItems().mapNotNull { it.element?.text }
+    assertTrue(relatedItemTexts.any { it == "service" })
+    assertTrue(relatedItemTexts.any { it == "\"/chat\"" })
+  }
+
+  fun testPlainHttpServiceKeepsHttpServiceGutterMarker() {
+    addHelidonHttpServiceStubs()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.webserver.http.HttpRouting;
+      import io.helidon.webserver.http.HttpService;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.register("/plain", new PlainService());
+        }
+      }
+
+      class PlainService implements HttpService {
+      }
+    """.trimIndent())
+
+    val serviceClass = myFixture.findClass("PlainService")
+    val anchor = serviceClass.nameIdentifier!!
+    val httpMarkers = mutableListOf<RelatedItemLineMarkerInfo<*>>()
+
+    HelidonHttpServiceLineMarkerProvider().collectNavigationMarkers(listOf(anchor), httpMarkers, true)
+
+    assertSize(1, httpMarkers)
+    assertSame(HelidonIcons.HelidonGutter, httpMarkers.single().icon)
+    val relatedItemTexts = httpMarkers.single().createGotoRelatedItems().mapNotNull { it.element?.text }
+    assertTrue(relatedItemTexts.any { it == "\"/plain\"" })
+  }
+
   fun testLangChain4jAiServiceHasGutterMarkerForExtensionsPackage() {
     assertLangChain4jGutterMarker("io.helidon.extensions.langchain4j", "Service")
   }
@@ -273,6 +343,31 @@ class HelidonClassAnnotatorTest : HelidonHighlightingTestCase() {
 
       public interface ServiceRegistry {
         <T> T get(Class<T> contract);
+      }
+    """.trimIndent())
+  }
+
+  private fun addHelidonHttpServiceStubs() {
+    myFixture.addClass("""
+      package io.helidon.webserver.http;
+
+      public interface HttpService {
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package io.helidon.webserver.http;
+
+      public interface HttpRules {
+        HttpRules register(String path, HttpService service);
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package io.helidon.webserver.http;
+
+      public interface HttpRouting {
+        interface Builder extends HttpRules {
+          Builder register(String path, HttpService service);
+        }
       }
     """.trimIndent())
   }

@@ -13,6 +13,8 @@
                                     implementationClass="com.intellij.helidon.providers.HelidonHttpServiceLineMarkerProvider"/>
     <codeInsight.lineMarkerProvider language="JAVA" order="last"
                                     implementationClass="com.intellij.helidon.providers.HelidonHttpMappingsLineMarkerProvider"/>
+    <helidon.serviceClassLineMarkerTargetProvider
+                                    implementation="com.intellij.helidon.providers.HelidonHttpServiceLineMarkerProvider"/>
 
     <microservices.urlResolverFactory implementation="com.intellij.helidon.providers.HelidonResolverFactory"/>
     <microservices.endpointsProvider implementation="com.intellij.helidon.providers.view.HelidonUrlFramework"/>

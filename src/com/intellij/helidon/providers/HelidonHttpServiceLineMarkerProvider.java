@@ -28,7 +28,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-public final class HelidonHttpServiceLineMarkerProvider extends RelatedItemLineMarkerProvider {
+public final class HelidonHttpServiceLineMarkerProvider extends RelatedItemLineMarkerProvider
+  implements HelidonServiceClassLineMarkerTargetProvider {
   private static PsiTargetPresentationRenderer<PsiElement> getMethodCallRenderer() {
     return new PsiTargetPresentationRenderer<>() {
       @Override
@@ -69,13 +70,9 @@ public final class HelidonHttpServiceLineMarkerProvider extends RelatedItemLineM
       final PsiElement parent = psiElement.getParent();
       if (parent instanceof PsiClass) {
         PsiClass psiClass = (PsiClass)parent;
-        if (HelidonCommonUtils.isHelidonHttpServiceClass(psiClass)) {
-          Set<UExpression> calls =
-            getServiceRegisterExpressions(module, JavaPsiFacade.getInstance(module.getProject()).getElementFactory()
-              .createType(psiClass));
-
-          Set<PsiElement> targets =
-            calls.stream().map(UExpression::getSourcePsi).filter(Objects::nonNull).collect(Collectors.toSet());
+        if (HelidonCommonUtils.isHelidonHttpServiceClass(psiClass) &&
+            !HelidonCommonUtils.isHelidonServiceRegistryClass(psiClass)) {
+          Set<PsiElement> targets = getServiceRegistrationTargets(module, psiClass);
           if (!targets.isEmpty()) {
             NavigationGutterIconBuilder<PsiElement> builder =
               NavigationGutterIconBuilder.create(HelidonIcons.HelidonGutter, HelidonBundle.HELIDON_LIBRARY).
@@ -88,6 +85,19 @@ public final class HelidonHttpServiceLineMarkerProvider extends RelatedItemLineM
         }
       }
     }
+  }
+
+  @Override
+  public @NotNull Collection<PsiElement> getTargets(@NotNull Module module, @NotNull PsiClass serviceClass) {
+    if (!HelidonCommonUtils.isHelidonHttpServiceClass(serviceClass)) return Set.of();
+    return getServiceRegistrationTargets(module, serviceClass);
+  }
+
+  static @NotNull Set<PsiElement> getServiceRegistrationTargets(@NotNull Module module, @NotNull PsiClass serviceClass) {
+    Set<UExpression> calls =
+      getServiceRegisterExpressions(module, JavaPsiFacade.getInstance(module.getProject()).getElementFactory()
+        .createType(serviceClass));
+    return calls.stream().map(UExpression::getSourcePsi).filter(Objects::nonNull).collect(Collectors.toSet());
   }
 
   private static @NotNull Set<UExpression> getServiceRegisterExpressions(@NotNull Module module, @NotNull PsiClassType serviceType) {

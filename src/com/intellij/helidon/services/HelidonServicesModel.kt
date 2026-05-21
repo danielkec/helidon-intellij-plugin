@@ -59,6 +59,9 @@ data class HelidonServicesNode(
   val status: HelidonServicesResolutionStatus = HelidonServicesResolutionStatus.RESOLVED,
   val navigation: SmartPsiElementPointer<PsiElement>? = null,
   val parentId: String? = null,
+  val packageName: String? = null,
+  val ownerClassName: String? = null,
+  val ownerClassQualifiedName: String? = null,
 ) {
   val navigationElement: PsiElement?
     get() = navigation?.element
@@ -140,6 +143,8 @@ object HelidonServicesModel {
         .distinctBy { it.id }
         .sortedWith(compareBy<HelidonServicesNode> { it.moduleName }
                       .thenBy { it.kind.ordinal }
+                      .thenBy { it.packageName.orEmpty() }
+                      .thenBy { it.ownerClassQualifiedName.orEmpty() }
                       .thenBy { it.name.lowercase(Locale.ENGLISH) }
                       .thenBy { it.details.orEmpty() })
         .toList(),
@@ -228,8 +233,9 @@ object HelidonServicesModel {
       kind = HelidonServicesNodeKind.SERVICE,
       module = module,
       element = psiClass,
-      name = qualifiedName ?: psiClass.name ?: "Service",
+      name = psiClass.name ?: qualifiedName ?: "Service",
       details = details,
+      ownerClass = psiClass,
     )
   }
 
@@ -243,9 +249,10 @@ object HelidonServicesModel {
           kind = HelidonServicesNodeKind.CONTRACT,
           module = module,
           element = contract,
-          name = contract.qualifiedName ?: contract.name ?: "Contract",
+          name = contract.name ?: contract.qualifiedName ?: "Contract",
           details = "implemented by ${service.psiClass.name ?: service.psiClass.qualifiedName ?: "service"}",
           parentId = service.nodeId,
+          ownerClass = contract,
         )
       }
 
@@ -322,6 +329,7 @@ object HelidonServicesModel {
       details = details,
       status = status,
       parentId = parentId,
+      ownerClass = ownerClass(point.anchor),
     )
 
   private fun serviceLookupNodes(module: Module, services: List<ServiceInfo>): List<HelidonServicesNode> {
@@ -348,6 +356,7 @@ object HelidonServicesModel {
           name = lookup.text,
           status = status,
           parentId = service.nodeId,
+          ownerClass = ownerClass(lookup),
         )
       }
     }
@@ -356,13 +365,15 @@ object HelidonServicesModel {
   private fun collectLangChain4jNodes(module: Module, filter: HelidonServicesFilter): List<HelidonServicesNode> {
     val nodes = ArrayList<HelidonServicesNode>()
     for (component in HelidonLangChain4jConfigResolver.components(module, filter.includeTests)) {
+      val componentClass = component.componentTargetClass()
       nodes.add(node(
         id = "langchain4j-component:${module.name}:${component.kind.name}:${component.key}:${elementKey(component.target)}",
         kind = HelidonServicesNodeKind.LANGCHAIN4J_COMPONENT,
         module = module,
         element = component.target,
-        name = component.componentTargetClassName() ?: component.key,
-        details = "${component.kind.presentableName} | key: ${component.key}",
+        name = component.kind.presentableName,
+        details = "key: ${component.key}",
+        ownerClass = componentClass,
       ))
     }
     for (entry in HelidonLangChain4jConfigResolver.configEntries(module, filter.includeTests)) {
@@ -381,9 +392,6 @@ object HelidonServicesModel {
   private fun HelidonLangChain4jConfigResolver.LangChain4jComponent.componentTargetClass(): PsiClass? =
     target as? PsiClass ?: PsiTreeUtil.getParentOfType(target, PsiClass::class.java, false)
 
-  private fun HelidonLangChain4jConfigResolver.LangChain4jComponent.componentTargetClassName(): String? =
-    componentTargetClass()?.qualifiedName ?: componentTargetClass()?.name
-
   private fun node(id: String,
                    kind: HelidonServicesNodeKind,
                    module: Module,
@@ -391,7 +399,9 @@ object HelidonServicesModel {
                    name: String,
                    details: String? = null,
                    status: HelidonServicesResolutionStatus = HelidonServicesResolutionStatus.RESOLVED,
-                   parentId: String? = null): HelidonServicesNode =
+                   parentId: String? = null,
+                   packageName: String? = null,
+                   ownerClass: PsiClass? = null): HelidonServicesNode =
     HelidonServicesNode(
       id = id,
       kind = kind,
@@ -402,6 +412,9 @@ object HelidonServicesModel {
       status = status,
       navigation = SmartPointerManager.getInstance(module.project).createSmartPsiElementPointer(element),
       parentId = parentId,
+      packageName = packageName ?: ownerClass?.let(::packageName),
+      ownerClassName = ownerClass?.name ?: ownerClass?.qualifiedName,
+      ownerClassQualifiedName = ownerClass?.qualifiedName,
     )
 
   private fun serviceNodeId(module: Module, psiClass: PsiClass): String =
@@ -422,6 +435,15 @@ object HelidonServicesModel {
     }
     val containingClass = element as? PsiClass ?: PsiTreeUtil.getParentOfType(element, PsiClass::class.java, false)
     return containingClass?.modifierList?.findAnnotation(HELIDON_COMMON_GENERATED) != null
+  }
+
+  private fun ownerClass(element: PsiElement): PsiClass? =
+    element as? PsiClass ?: PsiTreeUtil.getParentOfType(element, PsiClass::class.java, false)
+
+  private fun packageName(psiClass: PsiClass): String? {
+    val qualifiedName = psiClass.qualifiedName ?: return null
+    val name = psiClass.name ?: return null
+    return qualifiedName.removeSuffix(".$name").takeIf { it != qualifiedName }
   }
 
   private fun ServiceInfo.contractNames(): List<String> =

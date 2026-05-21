@@ -176,18 +176,51 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
         .forEach { (moduleName, moduleNodes) ->
           val moduleNode = DefaultMutableTreeNode(moduleName)
           treeRoot.add(moduleNode)
-          moduleNodes
-            .groupBy { it.kind }
-            .toSortedMap(compareBy { it.ordinal })
-            .forEach { (kind, kindNodes) ->
-              val kindNode = DefaultMutableTreeNode(kind.presentableName)
-              moduleNode.add(kindNode)
-              kindNodes.forEach { kindNode.add(DefaultMutableTreeNode(it)) }
-            }
+          appendGroupedNodes(moduleNode, moduleNodes)
         }
     }
     treeModel.reload()
     expandAll()
+  }
+
+  private fun appendGroupedNodes(parent: DefaultMutableTreeNode, nodes: List<HelidonServicesNode>) {
+    val ownedNodes = nodes.filter { it.ownerClassName != null }
+    val packageNodes = ownedNodes
+      .groupBy { it.packageName ?: DEFAULT_PACKAGE }
+      .toSortedMap()
+    for ((packageName, packageChildren) in packageNodes) {
+      val packageNode = DefaultMutableTreeNode(PackageGroupNode(packageName))
+      parent.add(packageNode)
+      appendPackageChildren(packageNode, packageChildren)
+    }
+
+    nodes
+      .filter { it.ownerClassName == null }
+      .groupBy { it.kind }
+      .toSortedMap(compareBy { it.ordinal })
+      .forEach { (kind, kindNodes) ->
+        val kindNode = DefaultMutableTreeNode(kind.presentableName)
+        parent.add(kindNode)
+        kindNodes
+          .sortedWith(compareBy<HelidonServicesNode> { it.name }.thenBy { it.details.orEmpty() })
+          .forEach { kindNode.add(DefaultMutableTreeNode(it)) }
+      }
+  }
+
+  private fun appendPackageChildren(parent: DefaultMutableTreeNode, nodes: List<HelidonServicesNode>) {
+    val classChildren = nodes
+      .groupBy { it.ownerClassQualifiedName ?: it.ownerClassName.orEmpty() }
+      .toSortedMap()
+    for ((_, children) in classChildren) {
+      val first = children.first()
+      val classNode = DefaultMutableTreeNode(ClassGroupNode(first.ownerClassName ?: first.ownerClassQualifiedName.orEmpty()))
+      parent.add(classNode)
+      children
+        .sortedWith(compareBy<HelidonServicesNode> { it.kind.ordinal }
+                      .thenBy { it.name }
+                      .thenBy { it.details.orEmpty() })
+        .forEach { classNode.add(DefaultMutableTreeNode(it)) }
+    }
   }
 
   private fun expandAll() {
@@ -211,7 +244,7 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
   override fun dispose() {
   }
 
-  private class ServicesTreeCellRenderer : DefaultTreeCellRenderer() {
+  private inner class ServicesTreeCellRenderer : DefaultTreeCellRenderer() {
     override fun getTreeCellRendererComponent(tree: JTree,
                                               value: Any?,
                                               selected: Boolean,
@@ -229,7 +262,7 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
         is HelidonServicesNode -> {
           icon = HelidonServicesModel.icon(userObject.kind)
           text = buildString {
-            append(userObject.name)
+            append(nodeDisplayName(userObject))
             userObject.details?.let { append("  ").append(it) }
             if (userObject.status != HelidonServicesResolutionStatus.RESOLVED) {
               append("  [").append(userObject.status.presentableName).append("]")
@@ -243,10 +276,34 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
           icon = if (row == 0) HelidonIcons.Helidon else defaultClosedIcon
           text = userObject
         }
+        is PackageGroupNode -> {
+          icon = AllIcons.Nodes.Package
+          text = userObject.name
+        }
+        is ClassGroupNode -> {
+          icon = AllIcons.Nodes.Class
+          text = userObject.name
+        }
       }
       return component
     }
   }
+
+  private data class PackageGroupNode(val name: String)
+
+  private data class ClassGroupNode(val name: String)
+
+  private fun nodeDisplayName(node: HelidonServicesNode): String =
+    if (node.ownerClassName == node.name) {
+      when (node.kind) {
+        HelidonServicesNodeKind.SERVICE -> "Service"
+        HelidonServicesNodeKind.CONTRACT -> "Contract"
+        else -> node.name
+      }
+    }
+    else {
+      node.name
+    }
 
   private data class KindFilterItem(val kind: HelidonServicesNodeKind?) {
     override fun toString(): String = kind?.presentableName ?: "All Kinds"
@@ -254,5 +311,6 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
 
   companion object {
     private const val ALL_MODULES = "All Modules"
+    private const val DEFAULT_PACKAGE = "(default package)"
   }
 }

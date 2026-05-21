@@ -190,13 +190,68 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
 
     assertTrue(snapshot.nodes.any {
       it.kind == HelidonServicesNodeKind.LANGCHAIN4J_COMPONENT &&
-        it.name == "demo.AssistantService" &&
-        it.details?.contains("@Ai.Service") == true
+        it.name == "@Ai.Service" &&
+        it.details == "key: assistant" &&
+        it.packageName == "demo" &&
+        it.ownerClassName == "AssistantService" &&
+        it.ownerClassQualifiedName == "demo.AssistantService"
     })
     assertTrue(snapshot.nodes.any {
       it.kind == HelidonServicesNodeKind.LANGCHAIN4J_CONFIG &&
         it.name == "assistant" &&
         it.details == "langchain4j.services"
+    })
+  }
+
+  fun testProvidesPackageAndOwnerClassGroupingMetadata() {
+    addServiceRegistryStubs()
+    myFixture.addClass("""
+      package demo.alpha;
+
+      import io.helidon.service.registry.Service;
+      import io.helidon.service.registry.Services;
+
+      @Service.Contract
+      interface Greeting {
+      }
+
+      @Service.Singleton
+      class GreetingService implements Greeting {
+      }
+
+      @Service.Singleton
+      class GreetingConsumer {
+        @Service.Inject
+        Greeting greeting;
+
+        void lookup() {
+          Services.get(Greeting.class);
+        }
+      }
+    """.trimIndent())
+
+    val snapshot = HelidonServicesModel.collect(project)
+
+    assertTrue(snapshot.nodes.any {
+      it.kind == HelidonServicesNodeKind.SERVICE &&
+        it.name == "GreetingService" &&
+        it.packageName == "demo.alpha" &&
+        it.ownerClassName == "GreetingService" &&
+        it.ownerClassQualifiedName == "demo.alpha.GreetingService"
+    })
+    assertTrue(snapshot.nodes.any {
+      it.kind == HelidonServicesNodeKind.INJECTION_POINT &&
+        it.name == "greeting" &&
+        it.packageName == "demo.alpha" &&
+        it.ownerClassName == "GreetingConsumer" &&
+        it.ownerClassQualifiedName == "demo.alpha.GreetingConsumer"
+    })
+    assertTrue(snapshot.nodes.any {
+      it.kind == HelidonServicesNodeKind.SERVICE_LOOKUP &&
+        it.name == "Greeting.class" &&
+        it.packageName == "demo.alpha" &&
+        it.ownerClassName == "GreetingConsumer" &&
+        it.ownerClassQualifiedName == "demo.alpha.GreetingConsumer"
     })
   }
 

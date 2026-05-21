@@ -6,6 +6,7 @@ import com.intellij.helidon.utils.HelidonCommonUtils
 import com.intellij.helidon.utils.HelidonUrlTargetInfo
 import com.intellij.openapi.module.Module
 import com.intellij.psi.PsiElement
+import com.intellij.psi.PsiClass
 import com.intellij.psi.SmartPointerManager
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.util.CommonProcessors.CollectProcessor
@@ -31,9 +32,8 @@ class HelidonHttpServicesViewContributor : HelidonServicesViewContributor {
     val path = endpoint.presentationPath.let { if (it.startsWith("/")) it else "/$it" }
     val methods = endpoint.methods.takeIf { it.isNotEmpty() }?.joinToString(", ")
                   ?: endpoint.type.takeIf { it != HelidonRequestMethods.UNKNOWN }?.name
-    val container = PsiTreeUtil.getParentOfType(target, com.intellij.psi.PsiClass::class.java)
-      ?.qualifiedName
-    val details = listOfNotNull(methods, container).joinToString(" | ").ifBlank { null }
+    val container = PsiTreeUtil.getParentOfType(target, PsiClass::class.java)
+    val details = methods
     return HelidonServicesNode(
       id = "http:${module.name}:$path:${elementKey(target)}",
       kind = HelidonServicesNodeKind.HTTP_ENDPOINT,
@@ -42,7 +42,16 @@ class HelidonHttpServicesViewContributor : HelidonServicesViewContributor {
       name = path,
       details = details,
       navigation = SmartPointerManager.getInstance(module.project).createSmartPsiElementPointer(target),
+      packageName = container?.let(::packageName),
+      ownerClassName = container?.name ?: container?.qualifiedName,
+      ownerClassQualifiedName = container?.qualifiedName,
     )
+  }
+
+  private fun packageName(psiClass: PsiClass): String? {
+    val qualifiedName = psiClass.qualifiedName ?: return null
+    val name = psiClass.name ?: return null
+    return qualifiedName.removeSuffix(".$name").takeIf { it != qualifiedName }
   }
 
   private fun elementKey(element: PsiElement): String {

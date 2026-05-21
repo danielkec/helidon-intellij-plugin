@@ -3,7 +3,6 @@ package com.intellij.helidon.services
 
 import com.intellij.icons.AllIcons
 import com.intellij.helidon.HelidonIcons
-import com.intellij.helidon.utils.HelidonCoreUtils
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
@@ -41,9 +40,6 @@ class HelidonServicesToolWindowFactory : ToolWindowFactory {
     toolWindow.contentManager.addContent(content)
     panel.refresh()
   }
-
-  override suspend fun isApplicableAsync(project: Project): Boolean =
-    HelidonCoreUtils.hasHelidonLibrary(project)
 }
 
 private class HelidonServicesPanel(private val project: Project) : JPanel(BorderLayout()), Disposable {

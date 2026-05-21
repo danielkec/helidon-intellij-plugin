@@ -75,6 +75,7 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
     assertTrue(snapshot.nodes.any {
       it.kind == HelidonServicesNodeKind.INJECTION_POINT &&
         it.name == "missing" &&
+        it.details == "MissingService" &&
         it.status == HelidonServicesResolutionStatus.UNRESOLVED
     })
   }
@@ -95,6 +96,43 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
     assertTrue(servicesOnly.nodes.isNotEmpty())
     assertTrue(servicesOnly.nodes.all { it.kind == HelidonServicesNodeKind.SERVICE })
     assertTrue(wrongModule.nodes.isEmpty())
+  }
+
+  fun testSkipsGeneratedServiceImplementationArtifacts() {
+    addServiceRegistryStubs()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.common.Generated;
+      import io.helidon.service.registry.Service;
+
+      @Service.Contract
+      interface Agent {
+      }
+
+      class MissingService {
+      }
+
+      @Service.Singleton
+      class UserAgent implements Agent {
+      }
+
+      @Generated("io.helidon.service.codegen.ServiceRegistryCodegen")
+      @Service.Singleton
+      class UserAgent__Generated implements java.util.function.Supplier<Agent> {
+        @Service.Inject
+        MissingService missing;
+
+        public Agent get() {
+          return null;
+        }
+      }
+    """.trimIndent())
+
+    val snapshot = HelidonServicesModel.collect(project)
+    val problemSnapshot = HelidonServicesModel.collect(project, HelidonServicesFilter(showOnlyProblems = true))
+
+    assertTrue(snapshot.nodes.any { it.kind == HelidonServicesNodeKind.SERVICE && it.name == "UserAgent" })
+    assertTrue(snapshot.nodes.none { it.name.contains("__Generated") })
+    assertTrue(problemSnapshot.nodes.none { it.kind == HelidonServicesNodeKind.INJECTION_POINT && it.name == "missing" })
   }
 
   fun testCollectsHttpEndpointRowsFromOptionalContributor() {
@@ -163,6 +201,21 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
   }
 
   private fun addServiceRegistryStubs() {
+    myFixture.addClass("""
+      package io.helidon.common;
+
+      import java.lang.annotation.ElementType;
+      import java.lang.annotation.Retention;
+      import java.lang.annotation.RetentionPolicy;
+      import java.lang.annotation.Target;
+
+      @Retention(RetentionPolicy.CLASS)
+      @Target(ElementType.TYPE)
+      public @interface Generated {
+        String value();
+        Class<?> trigger() default Void.class;
+      }
+    """.trimIndent())
     myFixture.addClass("""
       package io.helidon.service.registry;
 

@@ -15,7 +15,10 @@ import com.intellij.psi.PsiTreeChangeAdapter
 import com.intellij.psi.PsiTreeChangeEvent
 import com.intellij.util.Alarm
 import com.intellij.ui.content.ContentFactory
+import com.intellij.ui.components.JBScrollPane
+import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.concurrency.AppExecutorUtil
+import com.intellij.util.ui.UIUtil
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.event.MouseAdapter
@@ -51,10 +54,12 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
   private val refreshAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
   private val treeRoot = DefaultMutableTreeNode("Helidon Services")
   private val treeModel = DefaultTreeModel(treeRoot)
-  private val tree = JTree(treeModel)
+  private val tree = Tree(treeModel)
 
   init {
+    background = UIUtil.getPanelBackground()
     add(toolbar(), BorderLayout.NORTH)
+    tree.background = background
     tree.isRootVisible = false
     tree.showsRootHandles = true
     tree.cellRenderer = ServicesTreeCellRenderer()
@@ -71,7 +76,10 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
         navigateSelected()
       }
     })
-    add(javax.swing.JScrollPane(tree), BorderLayout.CENTER)
+    val scrollPane = JBScrollPane(tree)
+    scrollPane.background = background
+    scrollPane.viewport.background = background
+    add(scrollPane, BorderLayout.CENTER)
     PsiManager.getInstance(project).addPsiTreeChangeListener(object : PsiTreeChangeAdapter() {
       override fun childAdded(event: PsiTreeChangeEvent) = scheduleRefresh()
 
@@ -109,6 +117,7 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
 
   private fun toolbar(): JPanel {
     val panel = JPanel(FlowLayout(FlowLayout.LEFT, 6, 4))
+    panel.background = background
     moduleFilter.addItem(ALL_MODULES)
     moduleFilter.addActionListener { refresh() }
     kindFilter.addItem(KindFilterItem(null))
@@ -211,6 +220,10 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
                                               row: Int,
                                               hasFocus: Boolean): java.awt.Component {
       val component = super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus)
+      backgroundNonSelectionColor = tree.background
+      if (!selected) {
+        background = tree.background
+      }
       val userObject = (value as? DefaultMutableTreeNode)?.userObject
       when (userObject) {
         is HelidonServicesNode -> {
@@ -219,7 +232,7 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
             append(userObject.name)
             userObject.details?.let { append("  ").append(it) }
             if (userObject.status != HelidonServicesResolutionStatus.RESOLVED) {
-              append("  ").append(userObject.status.presentableName)
+              append("  [").append(userObject.status.presentableName).append("]")
             }
             if (userObject.sourceSet != HelidonServicesSourceSet.MAIN) {
               append("  ").append(userObject.sourceSet.presentableName)

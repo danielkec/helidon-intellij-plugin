@@ -9,6 +9,7 @@ import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.GeneratedSourcesFilter
 import com.intellij.openapi.roots.ModuleRootManager
 import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiAnnotation
@@ -80,9 +81,9 @@ enum class HelidonServicesSourceSet(val presentableName: String) {
 }
 
 enum class HelidonServicesResolutionStatus(val presentableName: String) {
-  RESOLVED("resolved"),
-  AMBIGUOUS("ambiguous"),
-  UNRESOLVED("unresolved"),
+  RESOLVED("Resolved"),
+  AMBIGUOUS("Ambiguous"),
+  UNRESOLVED("Unresolved"),
 }
 
 interface HelidonServicesViewContributor {
@@ -96,6 +97,8 @@ interface HelidonServicesViewContributor {
 }
 
 object HelidonServicesModel {
+  private const val HELIDON_COMMON_GENERATED = "io.helidon.common.Generated"
+
   private val SERVICE_SCOPE_ANNOTATIONS = listOf(
     HelidonConstants.SERVICE_SINGLETON,
     HelidonConstants.SERVICE_PROVIDER,
@@ -201,7 +204,7 @@ object HelidonServicesModel {
     for (annotationName in SERVICE_SCOPE_ANNOTATIONS) {
       val annotationClass = facade.findClass(annotationName, scope) ?: continue
       AnnotatedElementsSearch.searchPsiClasses(annotationClass, scope).forEach { psiClass ->
-        if (HelidonCoreUtils.isHelidonServiceRegistryClass(psiClass)) {
+        if (!isGenerated(psiClass) && HelidonCoreUtils.isHelidonServiceRegistryClass(psiClass)) {
           services.add(psiClass)
         }
       }
@@ -255,6 +258,7 @@ object HelidonServicesModel {
     ReferencesSearch.search(injectAnnotation, scope).forEach(Processor { reference ->
       val annotation = PsiTreeUtil.getParentOfType(reference.element, PsiAnnotation::class.java, false)
       if (annotation?.qualifiedName != HelidonConstants.SERVICE_INJECT) return@Processor true
+      if (isGenerated(annotation)) return@Processor true
       collectInjectionPoints(annotation, points)
       true
     })
@@ -268,10 +272,7 @@ object HelidonServicesModel {
         1 -> HelidonServicesResolutionStatus.RESOLVED
         else -> HelidonServicesResolutionStatus.AMBIGUOUS
       }
-      val detail = listOfNotNull(
-        point.contractName,
-        status.takeIf { it != HelidonServicesResolutionStatus.RESOLVED }?.presentableName,
-      ).joinToString(" | ").ifBlank { null }
+      val detail = point.contractName
       if (matches.isEmpty()) {
         result.add(injectionNode(module, point, status, detail, parentId = null))
       }
@@ -328,6 +329,7 @@ object HelidonServicesModel {
       HelidonCoreUtils.getHelidonServiceUsageTargets(module, service.psiClass)
         .filter { PsiTreeUtil.getParentOfType(it, PsiClassObjectAccessExpression::class.java, false) != null ||
                   it is PsiClassObjectAccessExpression }
+        .filterNot { isGenerated(it) }
     }
     val lookupCounts = lookupsByService.values.flatten().groupingBy(::elementKey).eachCount()
     return lookupsByService.flatMap { (service, lookups) ->
@@ -344,7 +346,6 @@ object HelidonServicesModel {
           module = module,
           element = lookup,
           name = lookup.text,
-          details = status.takeIf { it != HelidonServicesResolutionStatus.RESOLVED }?.presentableName,
           status = status,
           parentId = service.nodeId,
         )
@@ -412,6 +413,15 @@ object HelidonServicesModel {
     val file = virtualFile?.path ?: containingFile?.name ?: "<unknown>"
     val range = element.textRange
     return "$file:${range.startOffset}:${range.endOffset}"
+  }
+
+  private fun isGenerated(element: PsiElement): Boolean {
+    val virtualFile = element.containingFile?.originalFile?.virtualFile
+    if (virtualFile != null && GeneratedSourcesFilter.isGeneratedSourceByAnyFilter(virtualFile, element.project)) {
+      return true
+    }
+    val containingClass = element as? PsiClass ?: PsiTreeUtil.getParentOfType(element, PsiClass::class.java, false)
+    return containingClass?.modifierList?.findAnnotation(HELIDON_COMMON_GENERATED) != null
   }
 
   private fun ServiceInfo.contractNames(): List<String> =

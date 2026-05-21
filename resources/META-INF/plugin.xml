@@ -31,6 +31,7 @@
   </dependencies>
 
   <depends optional="true" config-file="helidon-microservices.xml">com.intellij.microservices.jvm</depends>
+  <depends optional="true" config-file="helidon-langchain4j-diagram.xml">com.intellij.diagram</depends>
 
   <resource-bundle>messages.HelidonBundle</resource-bundle>
 

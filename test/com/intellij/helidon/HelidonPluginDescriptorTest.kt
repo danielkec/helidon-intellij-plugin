@@ -20,6 +20,7 @@ class HelidonPluginDescriptorTest {
 
     assertFalse(pluginIds.contains("com.intellij.modules.ultimate"))
     assertFalse(pluginIds.contains("com.intellij.microservices.jvm"))
+    assertFalse(pluginIds.contains("com.intellij.diagram"))
 
     val optionalMicroservices = document.getElementsByTagName("depends").elements()
       .any { element ->
@@ -29,6 +30,15 @@ class HelidonPluginDescriptorTest {
       }
 
     assertTrue(optionalMicroservices)
+
+    val optionalDiagram = document.getElementsByTagName("depends").elements()
+      .any { element ->
+        element.textContent.trim() == "com.intellij.diagram" &&
+          element.getAttribute("optional") == "true" &&
+          element.getAttribute("config-file") == "helidon-langchain4j-diagram.xml"
+      }
+
+    assertTrue(optionalDiagram)
   }
 
   @Test
@@ -87,10 +97,33 @@ class HelidonPluginDescriptorTest {
   }
 
   @Test
-  fun testMicroservicesSubDescriptorDoesNotDeclareDependencies() {
-    val document = parseDescriptor(Path.of("resources/META-INF/helidon-microservices.xml"))
+  fun testOptionalSubDescriptorsDoNotDeclareDependencies() {
+    listOf(
+      Path.of("resources/META-INF/helidon-microservices.xml"),
+      Path.of("resources/META-INF/helidon-langchain4j-diagram.xml"),
+    ).forEach { path ->
+      val document = parseDescriptor(path)
 
-    assertFalse(document.getElementsByTagName("dependencies").elements().isNotEmpty())
+      assertFalse("$path should not declare hard dependencies",
+                  document.getElementsByTagName("dependencies").elements().isNotEmpty())
+    }
+  }
+
+  @Test
+  fun testLangChain4jDiagramDescriptorIsOptional() {
+    val document = parseDescriptor(Path.of("resources/META-INF/helidon-langchain4j-diagram.xml"))
+    val diagramProviders = document.getElementsByTagName("diagram.Provider").elements()
+    val actions = document.getElementsByTagName("action").elements()
+
+    assertTrue(diagramProviders.any { element ->
+      element.getAttribute("implementation") ==
+        "com.intellij.helidon.langchain4j.diagram.HelidonLangChain4jDiagramProvider"
+    })
+    assertTrue(actions.any { element ->
+      element.getAttribute("id") == "Helidon.ShowLangChain4jWorkflowDiagram" &&
+        element.getAttribute("class") ==
+        "com.intellij.helidon.langchain4j.diagram.HelidonLangChain4jShowDiagramAction"
+    })
   }
 
   @Test
@@ -98,6 +131,7 @@ class HelidonPluginDescriptorTest {
     listOf(
       Path.of("resources/META-INF/plugin.xml"),
       Path.of("resources/META-INF/helidon-microservices.xml"),
+      Path.of("resources/META-INF/helidon-langchain4j-diagram.xml"),
     ).forEach { path ->
       val elements = parseDescriptor(path)
         .getElementsByTagName("*")

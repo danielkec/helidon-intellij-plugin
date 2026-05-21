@@ -311,7 +311,7 @@ class HelidonLangChain4jWorkflowGraphTest : HelidonHighlightingTestCase() {
 
   fun testRobotIconIsLimitedToAgentsAndServices() {
     val provider = HelidonLangChain4jDiagramProvider()
-    val elementManager = provider.elementManager
+    val elementManager = provider.getElementManager()
 
     assertSame(HelidonIcons.Helidon, provider.getActionIcon(false))
     assertSame(HelidonIcons.RobotGutter,

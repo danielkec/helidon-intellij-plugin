@@ -80,7 +80,7 @@ internal class HelidonLangChain4jShowDiagramAction : ShowDiagram() {
     }
 
     val provider = getForcedProvider() as DiagramProvider<HelidonLangChain4jDiagramElement>
-    val element = provider.elementManager.findInDataContext(event.dataContext)
+    val element = provider.getElementManager().findInDataContext(event.dataContext)
     event.presentation.isEnabledAndVisible = element != null
   }
 }

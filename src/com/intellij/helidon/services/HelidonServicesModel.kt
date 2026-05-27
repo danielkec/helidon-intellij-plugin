@@ -214,6 +214,9 @@ object HelidonServicesModel {
       module.getModuleWithDependenciesScope()
     }
 
+  fun annotationSearchScope(module: Module, includeTests: Boolean): GlobalSearchScope =
+    module.getModuleWithDependenciesAndLibrariesScope(includeTests)
+
   fun sourceSet(module: Module, element: PsiElement): HelidonServicesSourceSet {
     val virtualFile = element.containingFile?.originalFile?.virtualFile ?: return HelidonServicesSourceSet.MAIN
     val fileIndex = ModuleRootManager.getInstance(module).fileIndex
@@ -247,6 +250,7 @@ object HelidonServicesModel {
     }
 
   private fun accepts(node: HelidonServicesNode, filter: HelidonServicesFilter): Boolean {
+    if (filter.moduleName != null && node.moduleName != filter.moduleName) return false
     if (filter.kind != null && node.kind != filter.kind) return false
     if (!filter.includeTests && node.sourceSet == HelidonServicesSourceSet.TEST) return false
     if (!filter.includeLibraries && node.sourceSet == HelidonServicesSourceSet.LIBRARY) return false
@@ -268,7 +272,8 @@ object HelidonServicesModel {
 
   private fun collectServiceRegistryNodes(module: Module, filter: HelidonServicesFilter): List<HelidonServicesNode> {
     val scope = searchScope(module, filter)
-    val services = collectServiceClasses(module, scope)
+    val annotationScope = annotationSearchScope(module, filter.includeTests)
+    val services = collectServiceClasses(module, annotationScope, scope)
     if (services.isEmpty()) return emptyList()
 
     val serviceInfos = services.map { psiClass ->
@@ -290,7 +295,7 @@ object HelidonServicesModel {
       }
     }
     if (filter.kind == null || filter.kind == HelidonServicesNodeKind.INJECTION_POINT) {
-      nodes.addAll(injectionPointNodes(module, scope, serviceInfos))
+      nodes.addAll(injectionPointNodes(module, annotationScope, scope, serviceInfos))
     }
     if (filter.kind == null || filter.kind == HelidonServicesNodeKind.SERVICE_LOOKUP) {
       nodes.addAll(serviceLookupNodes(module, filter, scope, serviceInfos))
@@ -298,28 +303,33 @@ object HelidonServicesModel {
     return nodes
   }
 
-  private fun collectServiceClasses(module: Module, scope: GlobalSearchScope): List<PsiClass> {
+  private fun collectServiceClasses(module: Module,
+                                    annotationScope: GlobalSearchScope,
+                                    scope: GlobalSearchScope): List<PsiClass> {
     val facade = JavaPsiFacade.getInstance(module.project)
     val services = LinkedHashSet<PsiClass>()
     val visitedAnnotations = HashSet<String>()
     for (annotationName in SERVICE_SCOPE_ANNOTATIONS) {
-      collectServiceClassesAnnotatedWith(facade, scope, annotationName, services, visitedAnnotations)
+      collectServiceClassesAnnotatedWith(facade, annotationScope, scope, annotationName, services, visitedAnnotations)
     }
     return services.toList()
   }
 
   private fun collectServiceClassesAnnotatedWith(facade: JavaPsiFacade,
+                                                 annotationScope: GlobalSearchScope,
                                                  scope: GlobalSearchScope,
                                                  annotationName: String,
                                                  services: MutableSet<PsiClass>,
                                                  visitedAnnotations: MutableSet<String>) {
-    val annotationClass = facade.findClass(annotationName, scope) ?: return
+    val annotationClass = facade.findClass(annotationName, annotationScope) ?: return
     val annotationKey = annotationClass.qualifiedName ?: elementKey(annotationClass)
     if (!visitedAnnotations.add(annotationKey)) return
 
     AnnotatedElementsSearch.searchPsiClasses(annotationClass, scope).forEach { psiClass ->
       if (psiClass.isAnnotationType) {
-        psiClass.qualifiedName?.let { collectServiceClassesAnnotatedWith(facade, scope, it, services, visitedAnnotations) }
+        psiClass.qualifiedName?.let {
+          collectServiceClassesAnnotatedWith(facade, annotationScope, scope, it, services, visitedAnnotations)
+        }
       }
       else if (!isGenerated(psiClass) && HelidonCoreUtils.isHelidonServiceRegistryClass(psiClass)) {
         services.add(psiClass)
@@ -367,9 +377,10 @@ object HelidonServicesModel {
       }
 
   private fun injectionPointNodes(module: Module,
+                                  annotationScope: GlobalSearchScope,
                                   scope: GlobalSearchScope,
                                   services: List<ServiceInfo>): List<HelidonServicesNode> {
-    val injectAnnotation = JavaPsiFacade.getInstance(module.project).findClass(HelidonConstants.SERVICE_INJECT, scope)
+    val injectAnnotation = JavaPsiFacade.getInstance(module.project).findClass(HelidonConstants.SERVICE_INJECT, annotationScope)
                          ?: return emptyList()
     val points = LinkedHashMap<String, InjectionPoint>()
     ReferencesSearch.search(injectAnnotation, scope).forEach(Processor { reference ->
@@ -510,8 +521,9 @@ object HelidonServicesModel {
     if (filter.kind == null || filter.kind == HelidonServicesNodeKind.LANGCHAIN4J_COMPONENT) {
       for (component in HelidonLangChain4jConfigResolver.components(module, filter.includeTests, filter.includeLibraries)) {
         val componentClass = component.componentTargetClass()
+        val componentModule = moduleForElement(module, component.target)
         nodes.add(node(
-          id = "langchain4j-component:${module.name}:${component.kind.name}:${component.key}:${elementKey(component.target)}",
+          id = "langchain4j-component:${componentModule.name}:${component.kind.name}:${component.key}:${elementKey(component.target)}",
           kind = HelidonServicesNodeKind.LANGCHAIN4J_COMPONENT,
           module = module,
           element = component.target,
@@ -523,8 +535,9 @@ object HelidonServicesModel {
     }
     if (filter.kind == null || filter.kind == HelidonServicesNodeKind.LANGCHAIN4J_CONFIG) {
       for (entry in HelidonLangChain4jConfigResolver.configEntries(module, filter.includeTests)) {
+        val entryModule = moduleForElement(module, entry.target)
         nodes.add(node(
-          id = "langchain4j-config:${module.name}:${entry.section}:${entry.key}:${elementKey(entry.target)}",
+          id = "langchain4j-config:${entryModule.name}:${entry.section}:${entry.key}:${elementKey(entry.target)}",
           kind = HelidonServicesNodeKind.LANGCHAIN4J_CONFIG,
           module = module,
           element = entry.target,
@@ -573,6 +586,9 @@ object HelidonServicesModel {
       ownerClassQualifiedName = ownerClass?.qualifiedName,
     )
   }
+
+  private fun moduleForElement(module: Module, element: PsiElement): Module =
+    ModuleUtilCore.findModuleForPsiElement(element) ?: module
 
   private fun serviceNodeId(module: Module, psiClass: PsiClass): String =
     "service:${module.name}:${psiClass.qualifiedName ?: elementKey(psiClass)}"

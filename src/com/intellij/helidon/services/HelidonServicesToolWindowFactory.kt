@@ -3,6 +3,7 @@ package com.intellij.helidon.services
 
 import com.intellij.icons.AllIcons
 import com.intellij.helidon.HelidonIcons
+import com.intellij.helidon.utils.HelidonCoreUtils
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
@@ -37,6 +38,9 @@ import javax.swing.tree.DefaultTreeCellRenderer
 import javax.swing.tree.DefaultTreeModel
 
 class HelidonServicesToolWindowFactory : ToolWindowFactory {
+  override suspend fun isApplicableAsync(project: Project): Boolean =
+    HelidonCoreUtils.hasHelidonLibrary(project)
+
   override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
     val panel = HelidonServicesPanel(project)
     val content = ContentFactory.getInstance().createContent(panel, null, false)

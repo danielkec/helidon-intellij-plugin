@@ -459,12 +459,13 @@ internal object HelidonLangChain4jConfigResolver {
     else {
       module.getModuleWithDependenciesScope()
     }
+    val annotationScope = module.getModuleWithDependenciesAndLibrariesScope(includeTests)
     val result = LinkedHashSet<LangChain4jComponent>()
     val facade = JavaPsiFacade.getInstance(project)
 
     for ((kind, annotationNames) in ANNOTATION_KINDS) {
       for (annotationName in annotationNames) {
-        val annotationClass = facade.findClass(annotationName, scope) ?: continue
+        val annotationClass = facade.findClass(annotationName, annotationScope) ?: continue
         AnnotatedElementsSearch.searchPsiClasses(annotationClass, scope).forEach { psiClass ->
           val annotation = findAnnotation(psiClass, annotationName) ?: return@forEach
           val values = annotationValues(annotation).filter { it.isNotBlank() }

@@ -46,6 +46,10 @@
       name="servicesViewContributor"
       interface="com.intellij.helidon.services.HelidonServicesViewContributor"
       dynamic="true"/>
+    <extensionPoint
+      name="configFileContributor"
+      interface="com.intellij.helidon.config.HelidonConfigFileContributor"
+      dynamic="true"/>
   </extensionPoints>
 
   <extensions defaultExtensionNs="com.intellij">

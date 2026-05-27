@@ -29,6 +29,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class HelidonCoreUtils {
   private static final Key<CachedValue<Map<PsiClass, Set<PsiElement>>>> SERVICE_USAGE_TARGETS_BY_CONTRACT_KEY =
     Key.create("HELIDON_SERVICE_USAGE_TARGETS_BY_CONTRACT_KEY");
+  private static final Key<CachedValue<Map<ServiceUsageScopeKey, Set<PsiElement>>>> SCOPED_SERVICE_USAGE_TARGETS_BY_CONTRACT_KEY =
+    Key.create("SCOPED_HELIDON_SERVICE_USAGE_TARGETS_BY_CONTRACT_KEY");
   private static final Set<String> HELIDON_SERVICE_SCOPE_ANNOTATIONS = Set.of(HelidonConstants.SERVICE_SINGLETON,
                                                                                HelidonConstants.SERVICE_PROVIDER,
                                                                                HelidonConstants.SERVICE_PER_LOOKUP,
@@ -104,9 +106,20 @@ public final class HelidonCoreUtils {
   public static @NotNull Set<PsiElement> getHelidonServiceUsageTargets(@NotNull Module module,
                                                                        @NotNull PsiClass serviceClass,
                                                                        @NotNull SearchScope scope) {
+    Map<ServiceUsageScopeKey, Set<PsiElement>> usageTargetsByContract = CachedValuesManager.getManager(module.getProject())
+      .getCachedValue(module, SCOPED_SERVICE_USAGE_TARGETS_BY_CONTRACT_KEY, () -> {
+        return Result.create(new ConcurrentHashMap<>(),
+                             UastModificationTracker.getInstance(module.getProject()),
+                             JavaLibraryModificationTracker.getInstance(module.getProject()),
+                             ProjectRootModificationTracker.getInstance(module.getProject()));
+      }, false);
+
     Set<PsiElement> targets = new LinkedHashSet<>();
     for (PsiClass contract : getHelidonServiceContracts(serviceClass)) {
-      for (PsiElement target : calculateHelidonServiceUsageTargets(contract, scope)) {
+      ServiceUsageScopeKey key = new ServiceUsageScopeKey(contract, scope);
+      Set<PsiElement> contractTargets = usageTargetsByContract.computeIfAbsent(key, ignored ->
+        Collections.unmodifiableSet(new LinkedHashSet<>(calculateHelidonServiceUsageTargets(contract, scope))));
+      for (PsiElement target : contractTargets) {
         if (!PsiTreeUtil.isAncestor(serviceClass, target, false)) {
           targets.add(target);
         }
@@ -311,5 +324,8 @@ public final class HelidonCoreUtils {
     if (constantValue instanceof String && !((String)constantValue).isBlank()) {
       result.add((String)constantValue);
     }
+  }
+
+  private record ServiceUsageScopeKey(@NotNull PsiClass contract, @NotNull SearchScope scope) {
   }
 }

@@ -5,6 +5,7 @@ import com.intellij.helidon.providers.HelidonRequestMethods
 import com.intellij.helidon.utils.HelidonCommonUtils
 import com.intellij.helidon.utils.HelidonUrlTargetInfo
 import com.intellij.openapi.module.Module
+import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiClass
 import com.intellij.psi.SmartPointerManager
@@ -29,19 +30,20 @@ class HelidonHttpServicesViewContributor : HelidonServicesViewContributor {
 
   private fun endpointNode(module: Module, endpoint: HelidonUrlTargetInfo): HelidonServicesNode? {
     val target = endpoint.resolveToPsiElement() ?: return null
+    val targetModule = ModuleUtilCore.findModuleForPsiElement(target) ?: module
     val path = endpoint.presentationPath.let { if (it.startsWith("/")) it else "/$it" }
     val methods = endpoint.methods.takeIf { it.isNotEmpty() }?.joinToString(", ")
                   ?: endpoint.type.takeIf { it != HelidonRequestMethods.UNKNOWN }?.name
     val container = PsiTreeUtil.getParentOfType(target, PsiClass::class.java)
     val details = methods
     return HelidonServicesNode(
-      id = "http:${module.name}:$path:${elementKey(target)}",
+      id = "http:${targetModule.name}:$path:${elementKey(target)}",
       kind = HelidonServicesNodeKind.HTTP_ENDPOINT,
-      moduleName = module.name,
-      sourceSet = HelidonServicesModel.sourceSet(module, target),
+      moduleName = targetModule.name,
+      sourceSet = HelidonServicesModel.sourceSet(targetModule, target),
       name = path,
       details = details,
-      navigation = SmartPointerManager.getInstance(module.project).createSmartPsiElementPointer(target),
+      navigation = SmartPointerManager.getInstance(targetModule.project).createSmartPsiElementPointer(target),
       navigationFile = target.containingFile?.originalFile?.virtualFile,
       navigationOffset = target.textRange.startOffset,
       packageName = container?.let(::packageName),

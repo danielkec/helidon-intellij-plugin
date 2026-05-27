@@ -1,0 +1,21 @@
+#if (${PACKAGE_NAME} && ${PACKAGE_NAME} != "")package ${PACKAGE_NAME};
+
+#end
+import io.helidon.config.Config;
+
+#parse("File Header.java")
+public class ${NAME} {
+  private final String message;
+
+  private ${NAME}(String message) {
+    this.message = message;
+  }
+
+  public static ${NAME} create(Config config) {
+    return new ${NAME}(config.get("message").asString().orElse("Hello from Helidon"));
+  }
+
+  public String message() {
+    return message;
+  }
+}

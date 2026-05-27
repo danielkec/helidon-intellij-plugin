@@ -65,6 +65,19 @@ behavior exposed indirectly through shared IntelliJ UAST APIs is incidental and
 unsupported. The Kotlin Gradle plugin remains only because the plugin
 implementation and tests are written in Kotlin.
 
+## Helidon Templates and Tests
+
+The plugin contributes Java file templates for Helidon SE services, MP
+resources, Declarative HTTP services, config classes, server tests, and
+LangChain4j service/agent types. These templates are Java-only and follow the
+same Helidon 4 APIs used by the Starter-generated Maven projects.
+
+Helidon test run configurations are Maven-backed. When the caret is in a JUnit
+test class or method under a Helidon Maven module, the Run context can create a
+Maven configuration with `test -Dtest=<class>` or `test -Dtest=<class>#<method>`.
+The project must provide the Helidon and JUnit test dependencies; the plugin
+does not add test dependencies automatically.
+
 ## Distribution Identity
 
 This fork intentionally keeps the inherited plugin id `com.intellij.helidon`

@@ -126,6 +126,22 @@ class HelidonPluginDescriptorTest {
   }
 
   @Test
+  fun testMainDescriptorRegistersHelidonTemplatesAndTestProducer() {
+    val document = parseDescriptor(Path.of("resources/META-INF/plugin.xml"))
+    val fileTemplateGroups = document.getElementsByTagName("fileTemplateGroup").elements()
+    val runConfigurationProducers = document.getElementsByTagName("runConfigurationProducer").elements()
+
+    assertTrue(fileTemplateGroups.any { element ->
+      element.getAttribute("implementation") ==
+        "com.intellij.helidon.templates.HelidonFileTemplateGroupDescriptorFactory"
+    })
+    assertTrue(runConfigurationProducers.any { element ->
+      element.getAttribute("implementation") ==
+        "com.intellij.helidon.testing.HelidonMavenTestRunConfigurationProducer"
+    })
+  }
+
+  @Test
   fun testMicroservicesDescriptorContributesHelidonServicesEndpoints() {
     val document = parseDescriptor(Path.of("resources/META-INF/helidon-microservices.xml"))
     val contributors = document.getElementsByTagName("helidon.servicesViewContributor").elements()
@@ -153,6 +169,21 @@ class HelidonPluginDescriptorTest {
 
       assertFalse("$path should not declare hard dependencies",
                   document.getElementsByTagName("dependencies").elements().isNotEmpty())
+    }
+  }
+
+  @Test
+  fun testOptionalSubDescriptorsDoNotRegisterTemplatesOrTestProducers() {
+    listOf(
+      Path.of("resources/META-INF/helidon-microservices.xml"),
+      Path.of("resources/META-INF/helidon-langchain4j-diagram.xml"),
+    ).forEach { path ->
+      val document = parseDescriptor(path)
+
+      assertFalse("$path should not register base file templates",
+                  document.getElementsByTagName("fileTemplateGroup").elements().isNotEmpty())
+      assertFalse("$path should not register base test run producers",
+                  document.getElementsByTagName("runConfigurationProducer").elements().isNotEmpty())
     }
   }
 

@@ -1,0 +1,14 @@
+#if (${PACKAGE_NAME} && ${PACKAGE_NAME} != "")package ${PACKAGE_NAME};
+
+#end
+import io.helidon.http.Http.GET;
+import io.helidon.http.Http.Path;
+import io.helidon.webserver.http.RestServer;
+
+#parse("File Header.java")
+@RestServer.Endpoint
+@Path("/greet")
+public interface ${NAME} {
+  @GET
+  String greet();
+}

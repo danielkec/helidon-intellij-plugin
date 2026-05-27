@@ -1,0 +1,19 @@
+#if (${PACKAGE_NAME} && ${PACKAGE_NAME} != "")package ${PACKAGE_NAME};
+
+#end
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+
+#parse("File Header.java")
+@Path("/greet")
+@ApplicationScoped
+public class ${NAME} {
+  @GET
+  @Produces(MediaType.TEXT_PLAIN)
+  public String get() {
+    return "Hello from Helidon";
+  }
+}

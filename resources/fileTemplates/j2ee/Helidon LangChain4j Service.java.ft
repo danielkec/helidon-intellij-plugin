@@ -1,0 +1,10 @@
+#if (${PACKAGE_NAME} && ${PACKAGE_NAME} != "")package ${PACKAGE_NAME};
+
+#end
+import io.helidon.integrations.langchain4j.Ai;
+
+#parse("File Header.java")
+@Ai.Service
+public interface ${NAME} {
+  String chat(String message);
+}

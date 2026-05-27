@@ -73,6 +73,7 @@ intellijPlatform {
         <li>Made the base plugin descriptor compatible with IntelliJ IDEA Community by loading Microservices-dependent integrations only when the optional Microservices plugin is available.</li>
         <li>Removed unsupported Kotlin source-language registration for Helidon config references.</li>
         <li>Hid the Google Login authentication provider from the Helidon new project wizard.</li>
+        <li>Added Java Helidon file templates and Maven-backed Helidon test run configuration support.</li>
       </ul>
     """.trimIndent()
   }

@@ -62,6 +62,8 @@ data class HelidonServicesNode(
   val sourceSet: HelidonServicesSourceSet,
   val name: String,
   val details: String? = null,
+  val groupName: String? = null,
+  val groupSortOrder: Int = Int.MAX_VALUE,
   val status: HelidonServicesResolutionStatus = HelidonServicesResolutionStatus.RESOLVED,
   val navigation: SmartPsiElementPointer<PsiElement>? = null,
   val navigationFile: VirtualFile? = null,
@@ -110,6 +112,22 @@ interface HelidonServicesViewContributor {
 object HelidonServicesModel {
   private const val HELIDON_COMMON_GENERATED = "io.helidon.common.Generated"
 
+  private val LANGCHAIN4J_CONFIG_SECTION_ORDER = listOf(
+    "services",
+    "agents",
+    "models",
+    "providers",
+    "embedding-stores",
+    "content-retrievers",
+    "mcp-clients",
+  ).withIndex().associate { (index, section) -> section to index }
+
+  private val LANGCHAIN4J_AI_CONFIG_SECTIONS = setOf("models", "providers")
+
+  private const val LANGCHAIN4J_CONTENT_RETRIEVERS_SECTION = "content-retrievers"
+
+  private const val LANGCHAIN4J_EMBEDDING_STORES_SECTION = "embedding-stores"
+
   private val SERVICE_REGISTRY_KINDS = setOf(
     HelidonServicesNodeKind.SERVICE,
     HelidonServicesNodeKind.CONTRACT,
@@ -142,16 +160,18 @@ object HelidonServicesModel {
   )
 
   fun collect(project: Project, filter: HelidonServicesFilter = HelidonServicesFilter()): HelidonServicesSnapshot {
-    val modules = ModuleManager.getInstance(project).modules
+    val allHelidonModules = ModuleManager.getInstance(project).modules
       .asSequence()
       .filter { !it.isDisposed }
-      .filter { filter.moduleName == null || it.name == filter.moduleName }
       .filter { HelidonCoreUtils.hasHelidonLibrary(it) }
       .sortedBy { it.name }
       .toList()
-    if (modules.isEmpty()) {
+    if (allHelidonModules.isEmpty()) {
       return HelidonServicesSnapshot(emptyList(), emptyList())
     }
+
+    val modules = allHelidonModules
+      .filter { filter.moduleName == null || it.name == filter.moduleName }
 
     val nodes = ArrayList<HelidonServicesNode>()
     for (module in modules) {
@@ -169,7 +189,7 @@ object HelidonServicesModel {
     }
 
     return HelidonServicesSnapshot(
-      modules = modules.map { it.name },
+      modules = allHelidonModules.map { it.name },
       nodes = nodes
         .asSequence()
         .filter { accepts(it, filter) }
@@ -178,6 +198,8 @@ object HelidonServicesModel {
                       .thenBy { it.kind.ordinal }
                       .thenBy { it.packageName.orEmpty() }
                       .thenBy { it.ownerClassQualifiedName.orEmpty() }
+                      .thenBy { it.groupSortOrder }
+                      .thenBy { it.groupName.orEmpty() }
                       .thenBy { it.name.lowercase(Locale.ENGLISH) }
                       .thenBy { it.details.orEmpty() })
         .toList(),
@@ -201,6 +223,17 @@ object HelidonServicesModel {
       else -> HelidonServicesSourceSet.MAIN
     }
   }
+
+  fun icon(node: HelidonServicesNode): Icon =
+    when {
+      node.kind == HelidonServicesNodeKind.LANGCHAIN4J_CONFIG &&
+      node.groupName in LANGCHAIN4J_AI_CONFIG_SECTIONS -> HelidonIcons.AiGutter
+      node.kind == HelidonServicesNodeKind.LANGCHAIN4J_CONFIG &&
+      node.groupName == LANGCHAIN4J_CONTENT_RETRIEVERS_SECTION -> HelidonIcons.GearGutter
+      node.kind == HelidonServicesNodeKind.LANGCHAIN4J_CONFIG &&
+      node.groupName == LANGCHAIN4J_EMBEDDING_STORES_SECTION -> HelidonIcons.DataSourceGutter
+      else -> icon(node.kind)
+    }
 
   fun icon(kind: HelidonServicesNodeKind): Icon =
     when (kind) {
@@ -260,7 +293,7 @@ object HelidonServicesModel {
       nodes.addAll(injectionPointNodes(module, scope, serviceInfos))
     }
     if (filter.kind == null || filter.kind == HelidonServicesNodeKind.SERVICE_LOOKUP) {
-      nodes.addAll(serviceLookupNodes(module, scope, serviceInfos))
+      nodes.addAll(serviceLookupNodes(module, filter, scope, serviceInfos))
     }
     return nodes
   }
@@ -426,10 +459,19 @@ object HelidonServicesModel {
       ownerClass = ownerClass(point.anchor),
     )
 
-  private fun serviceLookupNodes(module: Module, scope: GlobalSearchScope, services: List<ServiceInfo>): List<HelidonServicesNode> {
+  private fun serviceLookupNodes(module: Module,
+                                 filter: HelidonServicesFilter,
+                                 scope: GlobalSearchScope,
+                                 services: List<ServiceInfo>): List<HelidonServicesNode> {
     val lookups = LinkedHashMap<String, PsiElement>()
     for (service in services) {
-      HelidonCoreUtils.getHelidonServiceUsageTargets(module, service.psiClass, scope)
+      val usageTargets = if (filter.includeLibraries) {
+        HelidonCoreUtils.getHelidonServiceUsageTargets(module, service.psiClass, scope)
+      }
+      else {
+        HelidonCoreUtils.getHelidonServiceUsageTargets(module, service.psiClass)
+      }
+      usageTargets
         .filter { PsiTreeUtil.getParentOfType(it, PsiClassObjectAccessExpression::class.java, false) != null ||
                   it is PsiClassObjectAccessExpression }
         .filterNot { isGenerated(it) }
@@ -465,27 +507,33 @@ object HelidonServicesModel {
 
   private fun collectLangChain4jNodes(module: Module, filter: HelidonServicesFilter): List<HelidonServicesNode> {
     val nodes = ArrayList<HelidonServicesNode>()
-    for (component in HelidonLangChain4jConfigResolver.components(module, filter.includeTests, filter.includeLibraries)) {
-      val componentClass = component.componentTargetClass()
-      nodes.add(node(
-        id = "langchain4j-component:${module.name}:${component.kind.name}:${component.key}:${elementKey(component.target)}",
-        kind = HelidonServicesNodeKind.LANGCHAIN4J_COMPONENT,
-        module = module,
-        element = component.target,
-        name = component.kind.presentableName,
-        details = "key: ${component.key}",
-        ownerClass = componentClass,
-      ))
+    if (filter.kind == null || filter.kind == HelidonServicesNodeKind.LANGCHAIN4J_COMPONENT) {
+      for (component in HelidonLangChain4jConfigResolver.components(module, filter.includeTests, filter.includeLibraries)) {
+        val componentClass = component.componentTargetClass()
+        nodes.add(node(
+          id = "langchain4j-component:${module.name}:${component.kind.name}:${component.key}:${elementKey(component.target)}",
+          kind = HelidonServicesNodeKind.LANGCHAIN4J_COMPONENT,
+          module = module,
+          element = component.target,
+          name = component.kind.presentableName,
+          details = "key: ${component.key}",
+          ownerClass = componentClass,
+        ))
+      }
     }
-    for (entry in HelidonLangChain4jConfigResolver.configEntries(module, filter.includeTests)) {
-      nodes.add(node(
-        id = "langchain4j-config:${module.name}:${entry.section}:${entry.key}:${elementKey(entry.target)}",
-        kind = HelidonServicesNodeKind.LANGCHAIN4J_CONFIG,
-        module = module,
-        element = entry.target,
-        name = entry.key,
-        details = "langchain4j.${entry.section}",
-      ))
+    if (filter.kind == null || filter.kind == HelidonServicesNodeKind.LANGCHAIN4J_CONFIG) {
+      for (entry in HelidonLangChain4jConfigResolver.configEntries(module, filter.includeTests)) {
+        nodes.add(node(
+          id = "langchain4j-config:${module.name}:${entry.section}:${entry.key}:${elementKey(entry.target)}",
+          kind = HelidonServicesNodeKind.LANGCHAIN4J_CONFIG,
+          module = module,
+          element = entry.target,
+          name = entry.key,
+          details = "langchain4j.${entry.section}",
+          groupName = entry.section,
+          groupSortOrder = LANGCHAIN4J_CONFIG_SECTION_ORDER[entry.section] ?: Int.MAX_VALUE,
+        ))
+      }
     }
     return nodes
   }
@@ -499,6 +547,8 @@ object HelidonServicesModel {
                    element: PsiElement,
                    name: String,
                    details: String? = null,
+                   groupName: String? = null,
+                   groupSortOrder: Int = Int.MAX_VALUE,
                    status: HelidonServicesResolutionStatus = HelidonServicesResolutionStatus.RESOLVED,
                    parentId: String? = null,
                    packageName: String? = null,
@@ -511,6 +561,8 @@ object HelidonServicesModel {
       sourceSet = sourceSet(nodeModule, element),
       name = name,
       details = details,
+      groupName = groupName,
+      groupSortOrder = groupSortOrder,
       status = status,
       navigation = SmartPointerManager.getInstance(module.project).createSmartPsiElementPointer(element),
       navigationFile = element.containingFile?.originalFile?.virtualFile,

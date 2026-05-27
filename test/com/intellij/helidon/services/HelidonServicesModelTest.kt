@@ -2,10 +2,12 @@
 package com.intellij.helidon.services
 
 import com.intellij.helidon.HelidonHighlightingTestCase
+import com.intellij.helidon.HelidonIcons
 import com.intellij.testFramework.IdeaTestUtil
 import com.intellij.testFramework.LightProjectDescriptor
 import com.intellij.testFramework.fixtures.DefaultLightProjectDescriptor
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase
+import javax.swing.tree.DefaultMutableTreeNode
 
 class HelidonServicesModelTest : HelidonHighlightingTestCase() {
   fun testCollectsServiceContractsInjectionLookupsAndAmbiguousTargets() {
@@ -212,6 +214,7 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
 
     assertTrue(servicesOnly.nodes.isNotEmpty())
     assertTrue(servicesOnly.nodes.all { it.kind == HelidonServicesNodeKind.SERVICE })
+    assertEquals(servicesOnly.modules, wrongModule.modules)
     assertTrue(wrongModule.nodes.isEmpty())
   }
 
@@ -316,8 +319,58 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
     assertTrue(snapshot.nodes.any {
       it.kind == HelidonServicesNodeKind.LANGCHAIN4J_CONFIG &&
         it.name == "assistant" &&
-        it.details == "langchain4j.services"
+        it.details == "langchain4j.services" &&
+        it.groupName == "services" &&
+        it.groupSortOrder == 0
     })
+
+    val componentsOnly = HelidonServicesModel.collect(
+      project,
+      HelidonServicesFilter(kind = HelidonServicesNodeKind.LANGCHAIN4J_COMPONENT),
+    )
+    assertTrue(componentsOnly.nodes.any { it.kind == HelidonServicesNodeKind.LANGCHAIN4J_COMPONENT })
+    assertTrue(componentsOnly.nodes.none { it.kind == HelidonServicesNodeKind.LANGCHAIN4J_CONFIG })
+
+    val configOnly = HelidonServicesModel.collect(
+      project,
+      HelidonServicesFilter(kind = HelidonServicesNodeKind.LANGCHAIN4J_CONFIG),
+    )
+    assertTrue(configOnly.nodes.any { it.kind == HelidonServicesNodeKind.LANGCHAIN4J_CONFIG })
+    assertTrue(configOnly.nodes.none { it.kind == HelidonServicesNodeKind.LANGCHAIN4J_COMPONENT })
+  }
+
+  fun testGroupsLangChain4jConfigBySectionInTreeModel() {
+    val root = DefaultMutableTreeNode("Helidon Services")
+    val nodes = listOf(
+      langChain4jConfigNode("assistant-embedding-model", "models"),
+      langChain4jConfigNode("cheap-model", "models"),
+      langChain4jConfigNode("open-ai", "providers"),
+      langChain4jConfigNode("mp-content-retriever", "content-retrievers"),
+    )
+
+    HelidonServicesTreeModelBuilder.rebuildTree(root, HelidonServicesSnapshot(listOf("app"), nodes))
+
+    val moduleNode = singleChild(root)
+    val configNode = singleChild(moduleNode)
+    assertEquals("app", moduleNode.userObject)
+    assertEquals(HelidonServicesNodeKind.LANGCHAIN4J_CONFIG.presentableName, configNode.userObject)
+
+    val groups = children(configNode).associateBy { (it.userObject as GroupNode).name }
+    assertEquals(listOf("models", "providers", "content-retrievers"), groups.keys.toList())
+    assertEquals(listOf("assistant-embedding-model", "cheap-model"), serviceNodeNames(groups.getValue("models")))
+    assertEquals(listOf("open-ai"), serviceNodeNames(groups.getValue("providers")))
+    assertEquals(listOf("mp-content-retriever"), serviceNodeNames(groups.getValue("content-retrievers")))
+  }
+
+  fun testLangChain4jConfigUsesSectionIcons() {
+    assertSame(HelidonIcons.AiGutter, HelidonServicesModel.icon(langChain4jConfigNode("assistant-model", "models")))
+    assertSame(HelidonIcons.AiGutter, HelidonServicesModel.icon(langChain4jConfigNode("open-ai", "providers")))
+    assertSame(HelidonIcons.GearGutter,
+               HelidonServicesModel.icon(langChain4jConfigNode("mp-content-retriever", "content-retrievers")))
+    assertSame(HelidonIcons.DataSourceGutter,
+               HelidonServicesModel.icon(langChain4jConfigNode("mp-embedding-store", "embedding-stores")))
+    assertSame(HelidonIcons.RobotGutter,
+               HelidonServicesModel.icon(langChain4jConfigNode("mcp", "mcp-clients")))
   }
 
   fun testProvidesPackageAndOwnerClassGroupingMetadata() {
@@ -594,6 +647,47 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
         }
       }
     """.trimIndent())
+  }
+
+  private fun langChain4jConfigNode(name: String, section: String): HelidonServicesNode =
+    HelidonServicesNode(
+      id = "langchain4j-config:app:$section:$name",
+      kind = HelidonServicesNodeKind.LANGCHAIN4J_CONFIG,
+      moduleName = "app",
+      sourceSet = HelidonServicesSourceSet.MAIN,
+      name = name,
+      details = "langchain4j.$section",
+      groupName = section,
+      groupSortOrder = langChain4jConfigSectionOrder(section),
+    )
+
+  private fun langChain4jConfigSectionOrder(section: String): Int =
+    when (section) {
+      "services" -> 0
+      "agents" -> 1
+      "models" -> 2
+      "providers" -> 3
+      "embedding-stores" -> 4
+      "content-retrievers" -> 5
+      "mcp-clients" -> 6
+      else -> Int.MAX_VALUE
+    }
+
+  private fun serviceNodeNames(parent: DefaultMutableTreeNode): List<String> =
+    children(parent).map { (it.userObject as HelidonServicesNode).name }
+
+  private fun singleChild(parent: DefaultMutableTreeNode): DefaultMutableTreeNode {
+    assertEquals(1, parent.childCount)
+    return parent.getChildAt(0) as DefaultMutableTreeNode
+  }
+
+  private fun children(parent: DefaultMutableTreeNode): List<DefaultMutableTreeNode> {
+    val children = ArrayList<DefaultMutableTreeNode>()
+    val enumeration = parent.children()
+    while (enumeration.hasMoreElements()) {
+      children.add(enumeration.nextElement() as DefaultMutableTreeNode)
+    }
+    return children
   }
 }
 

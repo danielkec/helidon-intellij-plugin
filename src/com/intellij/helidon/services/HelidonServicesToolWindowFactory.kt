@@ -186,62 +186,9 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
   }
 
   private fun rebuildTree(snapshot: HelidonServicesSnapshot) {
-    treeRoot.removeAllChildren()
-    if (snapshot.isEmpty) {
-      treeRoot.add(DefaultMutableTreeNode("No Helidon services found"))
-    }
-    else {
-      snapshot.nodes
-        .groupBy { it.moduleName }
-        .toSortedMap()
-        .forEach { (moduleName, moduleNodes) ->
-          val moduleNode = DefaultMutableTreeNode(moduleName)
-          treeRoot.add(moduleNode)
-          appendGroupedNodes(moduleNode, moduleNodes)
-        }
-    }
+    HelidonServicesTreeModelBuilder.rebuildTree(treeRoot, snapshot)
     treeModel.reload()
     expandInitialRows()
-  }
-
-  private fun appendGroupedNodes(parent: DefaultMutableTreeNode, nodes: List<HelidonServicesNode>) {
-    val ownedNodes = nodes.filter { it.ownerClassName != null }
-    val packageNodes = ownedNodes
-      .groupBy { it.packageName ?: DEFAULT_PACKAGE }
-      .toSortedMap()
-    for ((packageName, packageChildren) in packageNodes) {
-      val packageNode = DefaultMutableTreeNode(PackageGroupNode(packageName))
-      parent.add(packageNode)
-      appendPackageChildren(packageNode, packageChildren)
-    }
-
-    nodes
-      .filter { it.ownerClassName == null }
-      .groupBy { it.kind }
-      .toSortedMap(compareBy { it.ordinal })
-      .forEach { (kind, kindNodes) ->
-        val kindNode = DefaultMutableTreeNode(kind.presentableName)
-        parent.add(kindNode)
-        kindNodes
-          .sortedWith(compareBy<HelidonServicesNode> { it.name }.thenBy { it.details.orEmpty() })
-          .forEach { kindNode.add(DefaultMutableTreeNode(it)) }
-      }
-  }
-
-  private fun appendPackageChildren(parent: DefaultMutableTreeNode, nodes: List<HelidonServicesNode>) {
-    val classChildren = nodes
-      .groupBy { it.ownerClassQualifiedName ?: it.ownerClassName.orEmpty() }
-      .toSortedMap()
-    for ((_, children) in classChildren) {
-      val first = children.first()
-      val classNode = DefaultMutableTreeNode(ClassGroupNode(first.ownerClassName ?: first.ownerClassQualifiedName.orEmpty()))
-      parent.add(classNode)
-      children
-        .sortedWith(compareBy<HelidonServicesNode> { it.kind.ordinal }
-                      .thenBy { it.name }
-                      .thenBy { it.details.orEmpty() })
-        .forEach { classNode.add(DefaultMutableTreeNode(it)) }
-    }
   }
 
   private fun expandInitialRows() {
@@ -283,10 +230,10 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
       val userObject = (value as? DefaultMutableTreeNode)?.userObject
       when (userObject) {
         is HelidonServicesNode -> {
-          icon = HelidonServicesModel.icon(userObject.kind)
+          icon = HelidonServicesModel.icon(userObject)
           text = buildString {
             append(nodeDisplayName(userObject))
-            userObject.details?.let { append("  ").append(it) }
+            nodeDisplayDetails(userObject)?.let { append("  ").append(it) }
             if (userObject.status != HelidonServicesResolutionStatus.RESOLVED) {
               append("  [").append(userObject.status.presentableName).append("]")
             }
@@ -307,36 +254,135 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
           icon = AllIcons.Nodes.Class
           text = userObject.name
         }
+        is GroupNode -> {
+          icon = groupIcon(userObject, defaultClosedIcon)
+          text = userObject.name
+        }
       }
       return component
     }
   }
 
-  private data class PackageGroupNode(val name: String)
-
-  private data class ClassGroupNode(val name: String)
-
-  private fun nodeDisplayName(node: HelidonServicesNode): String =
-    if (node.ownerClassName == node.name) {
-      when (node.kind) {
-        HelidonServicesNodeKind.SERVICE -> "Service"
-        HelidonServicesNodeKind.CONTRACT -> "Contract"
-        else -> node.name
-      }
-    }
-    else {
-      node.name
-    }
-
-  private data class KindFilterItem(val kind: HelidonServicesNodeKind?) {
-    override fun toString(): String = kind?.presentableName ?: "All Kinds"
-  }
-
   companion object {
     private const val ALL_MODULES = "All Modules"
-    private const val DEFAULT_PACKAGE = "(default package)"
-    private const val AUTO_EXPAND_PATH_DEPTH = 3
+    private const val AUTO_EXPAND_PATH_DEPTH = 4
     private const val MAX_AUTO_EXPANDED_ROWS = 200
     private val REFRESH_FILE_EXTENSIONS = setOf("java", "properties", "yaml", "yml")
   }
+}
+
+internal object HelidonServicesTreeModelBuilder {
+  private const val DEFAULT_PACKAGE = "(default package)"
+
+  fun rebuildTree(root: DefaultMutableTreeNode, snapshot: HelidonServicesSnapshot) {
+    root.removeAllChildren()
+    if (snapshot.isEmpty) {
+      root.add(DefaultMutableTreeNode("No Helidon services found"))
+    }
+    else {
+      snapshot.nodes
+        .groupBy { it.moduleName }
+        .toSortedMap()
+        .forEach { (moduleName, moduleNodes) ->
+          val moduleNode = DefaultMutableTreeNode(moduleName)
+          root.add(moduleNode)
+          appendGroupedNodes(moduleNode, moduleNodes)
+        }
+    }
+  }
+
+  private fun appendGroupedNodes(parent: DefaultMutableTreeNode, nodes: List<HelidonServicesNode>) {
+    val (ownedNodes, ownerlessNodes) = nodes.partition { it.ownerClassName != null }
+    val packageNodes = ownedNodes
+      .groupBy { it.packageName ?: DEFAULT_PACKAGE }
+      .toSortedMap()
+    for ((packageName, packageChildren) in packageNodes) {
+      val packageNode = DefaultMutableTreeNode(PackageGroupNode(packageName))
+      parent.add(packageNode)
+      appendPackageChildren(packageNode, packageChildren)
+    }
+
+    ownerlessNodes
+      .groupBy { it.kind }
+      .toSortedMap(compareBy { it.ordinal })
+      .forEach { (kind, kindNodes) ->
+        val kindNode = DefaultMutableTreeNode(kind.presentableName)
+        parent.add(kindNode)
+        appendKindChildren(kindNode, kindNodes)
+      }
+  }
+
+  private fun appendKindChildren(parent: DefaultMutableTreeNode, nodes: List<HelidonServicesNode>) {
+    val (groupedCandidates, ungroupedNodes) = nodes.partition { it.groupName != null }
+    val groupedNodes = groupedCandidates
+      .groupBy { GroupKey(it.groupName.orEmpty(), it.groupSortOrder) }
+      .toSortedMap(compareBy<GroupKey> { it.sortOrder }.thenBy { it.name })
+    for ((group, groupChildren) in groupedNodes) {
+      val groupNode = DefaultMutableTreeNode(GroupNode(group.name))
+      parent.add(groupNode)
+      groupChildren
+        .sortedWith(compareBy<HelidonServicesNode> { it.name }.thenBy { it.details.orEmpty() })
+        .forEach { groupNode.add(DefaultMutableTreeNode(it)) }
+    }
+
+    ungroupedNodes
+      .sortedWith(compareBy<HelidonServicesNode> { it.name }.thenBy { it.details.orEmpty() })
+      .forEach { parent.add(DefaultMutableTreeNode(it)) }
+  }
+
+  private fun appendPackageChildren(parent: DefaultMutableTreeNode, nodes: List<HelidonServicesNode>) {
+    val classChildren = nodes
+      .groupBy { it.ownerClassQualifiedName ?: it.ownerClassName.orEmpty() }
+      .toSortedMap()
+    for ((_, children) in classChildren) {
+      val first = children.first()
+      val classNode = DefaultMutableTreeNode(ClassGroupNode(first.ownerClassName ?: first.ownerClassQualifiedName.orEmpty()))
+      parent.add(classNode)
+      children
+        .sortedWith(compareBy<HelidonServicesNode> { it.kind.ordinal }
+                      .thenBy { it.name }
+                      .thenBy { it.details.orEmpty() })
+        .forEach { classNode.add(DefaultMutableTreeNode(it)) }
+    }
+  }
+}
+
+internal data class PackageGroupNode(val name: String)
+
+internal data class ClassGroupNode(val name: String)
+
+internal data class GroupNode(val name: String)
+
+private data class GroupKey(val name: String, val sortOrder: Int)
+
+private fun nodeDisplayName(node: HelidonServicesNode): String =
+  if (node.ownerClassName == node.name) {
+    when (node.kind) {
+      HelidonServicesNodeKind.SERVICE -> "Service"
+      HelidonServicesNodeKind.CONTRACT -> "Contract"
+      else -> node.name
+    }
+  }
+  else {
+    node.name
+  }
+
+private fun nodeDisplayDetails(node: HelidonServicesNode): String? =
+  if (node.kind == HelidonServicesNodeKind.LANGCHAIN4J_CONFIG && node.groupName != null) {
+    null
+  }
+  else {
+    node.details
+  }
+
+private fun groupIcon(node: GroupNode, defaultIcon: javax.swing.Icon): javax.swing.Icon =
+  when (node.name) {
+    "models", "providers" -> HelidonIcons.AiGutter
+    "embedding-stores" -> HelidonIcons.DataSourceGutter
+    "content-retrievers" -> HelidonIcons.GearGutter
+    else -> defaultIcon
+  }
+
+private data class KindFilterItem(val kind: HelidonServicesNodeKind?) {
+  override fun toString(): String = kind?.presentableName ?: "All Kinds"
 }

@@ -58,6 +58,12 @@ internal object HelidonLangChain4jConfigResolver {
   private val TEST_COMPONENTS_KEY: Key<CachedValue<List<LangChain4jComponent>>> =
     Key.create("HELIDON_LANGCHAIN4J_TEST_COMPONENTS")
 
+  private val MAIN_PROJECT_COMPONENTS_KEY: Key<CachedValue<List<LangChain4jComponent>>> =
+    Key.create("HELIDON_LANGCHAIN4J_MAIN_PROJECT_COMPONENTS")
+
+  private val TEST_PROJECT_COMPONENTS_KEY: Key<CachedValue<List<LangChain4jComponent>>> =
+    Key.create("HELIDON_LANGCHAIN4J_TEST_PROJECT_COMPONENTS")
+
   private val MAIN_CONFIG_FILES_KEY: Key<CachedValue<List<ConfigFile>>> =
     Key.create("HELIDON_LANGCHAIN4J_MAIN_CONFIG_FILES")
 
@@ -72,6 +78,16 @@ internal object HelidonLangChain4jConfigResolver {
                     LangChain4jComponentKind.MODERATION_MODEL),
     CONTENT_RETRIEVERS to setOf(LangChain4jComponentKind.CONTENT_RETRIEVER),
     MCP_CLIENTS to setOf(LangChain4jComponentKind.MCP_CLIENTS),
+  )
+
+  private val CONFIG_SECTIONS: Set<String> = setOf(
+    SERVICES,
+    AGENTS,
+    MODELS,
+    PROVIDERS,
+    EMBEDDING_STORES,
+    CONTENT_RETRIEVERS,
+    MCP_CLIENTS,
   )
 
   private val VALUE_CONFIG_TARGETS: Map<String, String> = mapOf(
@@ -225,6 +241,23 @@ internal object HelidonLangChain4jConfigResolver {
       .mapNotNull { it.keyText.takeIf { key -> key.isNotBlank() } }
   }
 
+  fun components(module: Module, includeTests: Boolean): List<LangChain4jComponent> =
+    getComponents(module, includeTests, includeLibraries = true)
+
+  fun components(module: Module, includeTests: Boolean, includeLibraries: Boolean): List<LangChain4jComponent> =
+    getComponents(module, includeTests, includeLibraries)
+
+  fun configEntries(module: Module, includeTests: Boolean): List<LangChain4jConfigEntry> {
+    val entries = LinkedHashSet<LangChain4jConfigEntry>()
+    for (configFile in getConfigFiles(module, includeTests)) {
+      when (val psiFile = configFile.psiFile) {
+        is YAMLFile -> collectYamlConfigEntries(psiFile, entries)
+        is PropertiesFile -> collectPropertiesConfigEntries(psiFile, entries)
+      }
+    }
+    return entries.toList()
+  }
+
   fun markerTargets(element: PsiElement): MarkerTargets? {
     if (element is YAMLKeyValue) {
       val anchor = leafAnchor(element.key ?: element)
@@ -279,7 +312,7 @@ internal object HelidonLangChain4jConfigResolver {
     val parentPath = qualifiedConfigKeyName(parent)
     return CONFIG_SECTION_KINDS.flatMap { (section, kinds) ->
       val key = configSectionComponentKey(yamlKeyValue, section) ?: return@flatMap emptyList()
-      getComponents(module, includeTestSources(yamlKeyValue, module)).filter { component ->
+      getComponents(module, includeTestSources(yamlKeyValue, module), includeLibraries = true).filter { component ->
         component.kind in kinds &&
         component.key == key &&
         parentPath == "$ROOT.$section"
@@ -396,29 +429,43 @@ internal object HelidonLangChain4jConfigResolver {
                                module: Module,
                                kinds: Set<LangChain4jComponentKind>,
                                key: String? = null): List<PsiElement> {
-    return getComponents(module, includeTestSources(context, module))
+    return getComponents(module, includeTestSources(context, module), includeLibraries = true)
       .filter { it.kind in kinds && (key == null || it.key == key) }
       .map { it.target }
   }
 
-  private fun getComponents(module: Module, includeTests: Boolean): List<LangChain4jComponent> {
-    val key = if (includeTests) TEST_COMPONENTS_KEY else MAIN_COMPONENTS_KEY
+  private fun getComponents(module: Module, includeTests: Boolean, includeLibraries: Boolean): List<LangChain4jComponent> {
+    val key = componentCacheKey(includeTests, includeLibraries)
     return CachedValuesManager.getManager(module.project).getCachedValue(module, key, {
-      CachedValueProvider.Result.create(calculateComponents(module, includeTests),
+      CachedValueProvider.Result.create(calculateComponents(module, includeTests, includeLibraries),
                                         PsiModificationTracker.MODIFICATION_COUNT,
                                         JavaLibraryModificationTracker.getInstance(module.project))
     }, false)
   }
 
-  private fun calculateComponents(module: Module, includeTests: Boolean): List<LangChain4jComponent> {
+  private fun componentCacheKey(includeTests: Boolean, includeLibraries: Boolean): Key<CachedValue<List<LangChain4jComponent>>> =
+    when {
+      includeTests && includeLibraries -> TEST_COMPONENTS_KEY
+      includeLibraries -> MAIN_COMPONENTS_KEY
+      includeTests -> TEST_PROJECT_COMPONENTS_KEY
+      else -> MAIN_PROJECT_COMPONENTS_KEY
+    }
+
+  private fun calculateComponents(module: Module, includeTests: Boolean, includeLibraries: Boolean): List<LangChain4jComponent> {
     val project = module.project
-    val scope = module.getModuleWithDependenciesAndLibrariesScope(includeTests)
+    val scope = if (includeLibraries) {
+      module.getModuleWithDependenciesAndLibrariesScope(includeTests)
+    }
+    else {
+      module.getModuleWithDependenciesScope()
+    }
+    val annotationScope = module.getModuleWithDependenciesAndLibrariesScope(includeTests)
     val result = LinkedHashSet<LangChain4jComponent>()
     val facade = JavaPsiFacade.getInstance(project)
 
     for ((kind, annotationNames) in ANNOTATION_KINDS) {
       for (annotationName in annotationNames) {
-        val annotationClass = facade.findClass(annotationName, scope) ?: continue
+        val annotationClass = facade.findClass(annotationName, annotationScope) ?: continue
         AnnotatedElementsSearch.searchPsiClasses(annotationClass, scope).forEach { psiClass ->
           val annotation = findAnnotation(psiClass, annotationName) ?: return@forEach
           val values = annotationValues(annotation).filter { it.isNotBlank() }
@@ -496,6 +543,28 @@ internal object HelidonLangChain4jConfigResolver {
   private fun findYamlSectionEntryKeys(file: YAMLFile, qualifiedSectionName: String): List<YAMLKeyValue> {
     return findYamlKeys(file, qualifiedSectionName)
       .flatMap { section -> (section.value as? YAMLMapping)?.keyValues?.toList() ?: emptyList() }
+  }
+
+  private fun collectYamlConfigEntries(file: YAMLFile, result: MutableSet<LangChain4jConfigEntry>) {
+    for (section in CONFIG_SECTIONS) {
+      for (entry in findYamlSectionEntryKeys(file, "$ROOT.$section")) {
+        val key = entry.keyText.takeIf { it.isNotBlank() } ?: continue
+        result.add(LangChain4jConfigEntry(section, key, entry))
+      }
+    }
+  }
+
+  private fun collectPropertiesConfigEntries(file: PropertiesFile, result: MutableSet<LangChain4jConfigEntry>) {
+    for (property in file.properties) {
+      val propertyImpl = property.psiElement as? PropertyImpl ?: continue
+      val key = property.key ?: continue
+      val parts = key.split('.')
+      if (parts.size < 3 || parts[0] != ROOT) continue
+      val section = parts[1]
+      if (section !in CONFIG_SECTIONS) continue
+      val runtimeKey = parts[2].takeIf { it.isNotBlank() } ?: continue
+      result.add(LangChain4jConfigEntry(section, runtimeKey, propertyImpl))
+    }
   }
 
   private fun findYamlSectionEntryKey(file: YAMLFile?, section: String, key: String): YAMLKeyValue? {
@@ -680,8 +749,14 @@ internal object HelidonLangChain4jConfigResolver {
     return com.intellij.helidon.config.yaml.getQualifiedConfigKeyName(yamlKeyValue)
   }
 
-  private data class LangChain4jComponent(
+  data class LangChain4jComponent(
     val kind: LangChain4jComponentKind,
+    val key: String,
+    val target: PsiElement,
+  )
+
+  data class LangChain4jConfigEntry(
+    val section: String,
     val key: String,
     val target: PsiElement,
   )
@@ -703,16 +778,16 @@ internal object HelidonLangChain4jConfigResolver {
     AI,
   }
 
-  private enum class LangChain4jComponentKind {
-    SERVICE,
-    AGENT,
-    CHAT_MODEL,
-    STREAMING_CHAT_MODEL,
-    CHAT_MEMORY_PROVIDER,
-    MODERATION_MODEL,
-    CONTENT_RETRIEVER,
-    RETRIEVAL_AUGMENTOR,
-    TOOL_PROVIDER,
-    MCP_CLIENTS,
+  enum class LangChain4jComponentKind(val presentableName: String) {
+    SERVICE("@Ai.Service"),
+    AGENT("@Ai.Agent"),
+    CHAT_MODEL("@Ai.ChatModel"),
+    STREAMING_CHAT_MODEL("@Ai.StreamingChatModel"),
+    CHAT_MEMORY_PROVIDER("@Ai.ChatMemoryProvider"),
+    MODERATION_MODEL("@Ai.ModerationModel"),
+    CONTENT_RETRIEVER("@Ai.ContentRetriever"),
+    RETRIEVAL_AUGMENTOR("@Ai.RetrievalAugmentor"),
+    TOOL_PROVIDER("@Ai.ToolProvider"),
+    MCP_CLIENTS("@Ai.McpClients"),
   }
 }

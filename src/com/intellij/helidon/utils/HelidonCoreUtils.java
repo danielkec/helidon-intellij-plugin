@@ -9,6 +9,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ProjectRootModificationTracker;
 import com.intellij.openapi.util.Key;
 import com.intellij.psi.*;
+import com.intellij.psi.search.SearchScope;
 import com.intellij.psi.search.searches.ReferencesSearch;
 import com.intellij.psi.util.CachedValue;
 import com.intellij.psi.util.CachedValueProvider.Result;
@@ -28,6 +29,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class HelidonCoreUtils {
   private static final Key<CachedValue<Map<PsiClass, Set<PsiElement>>>> SERVICE_USAGE_TARGETS_BY_CONTRACT_KEY =
     Key.create("HELIDON_SERVICE_USAGE_TARGETS_BY_CONTRACT_KEY");
+  private static final Key<CachedValue<Map<ServiceUsageScopeKey, Set<PsiElement>>>> SCOPED_SERVICE_USAGE_TARGETS_BY_CONTRACT_KEY =
+    Key.create("SCOPED_HELIDON_SERVICE_USAGE_TARGETS_BY_CONTRACT_KEY");
   private static final Set<String> HELIDON_SERVICE_SCOPE_ANNOTATIONS = Set.of(HelidonConstants.SERVICE_SINGLETON,
                                                                                HelidonConstants.SERVICE_PROVIDER,
                                                                                HelidonConstants.SERVICE_PER_LOOKUP,
@@ -42,8 +45,11 @@ public final class HelidonCoreUtils {
                                                                    "first",
                                                                    "firstNamed",
                                                                    "all",
+                                                                   "allNamed",
                                                                    "supply",
+                                                                   "supplyNamed",
                                                                    "supplyFirst",
+                                                                   "supplyFirstNamed",
                                                                    "supplyAll");
 
   private HelidonCoreUtils() {
@@ -97,9 +103,38 @@ public final class HelidonCoreUtils {
     return targets;
   }
 
-  private static @NotNull Set<PsiElement> calculateHelidonServiceUsageTargets(@NotNull Module module, @NotNull PsiClass contract) {
+  public static @NotNull Set<PsiElement> getHelidonServiceUsageTargets(@NotNull Module module,
+                                                                       @NotNull PsiClass serviceClass,
+                                                                       @NotNull SearchScope scope) {
+    Map<ServiceUsageScopeKey, Set<PsiElement>> usageTargetsByContract = CachedValuesManager.getManager(module.getProject())
+      .getCachedValue(module, SCOPED_SERVICE_USAGE_TARGETS_BY_CONTRACT_KEY, () -> {
+        return Result.create(new ConcurrentHashMap<>(),
+                             UastModificationTracker.getInstance(module.getProject()),
+                             JavaLibraryModificationTracker.getInstance(module.getProject()),
+                             ProjectRootModificationTracker.getInstance(module.getProject()));
+      }, false);
+
     Set<PsiElement> targets = new LinkedHashSet<>();
-    ReferencesSearch.search(contract, module.getModuleWithDependenciesScope()).forEach(reference -> {
+    for (PsiClass contract : getHelidonServiceContracts(serviceClass)) {
+      ServiceUsageScopeKey key = new ServiceUsageScopeKey(contract, scope);
+      Set<PsiElement> contractTargets = usageTargetsByContract.computeIfAbsent(key, ignored ->
+        Collections.unmodifiableSet(new LinkedHashSet<>(calculateHelidonServiceUsageTargets(contract, scope))));
+      for (PsiElement target : contractTargets) {
+        if (!PsiTreeUtil.isAncestor(serviceClass, target, false)) {
+          targets.add(target);
+        }
+      }
+    }
+    return targets;
+  }
+
+  private static @NotNull Set<PsiElement> calculateHelidonServiceUsageTargets(@NotNull Module module, @NotNull PsiClass contract) {
+    return calculateHelidonServiceUsageTargets(contract, module.getModuleWithDependenciesScope());
+  }
+
+  private static @NotNull Set<PsiElement> calculateHelidonServiceUsageTargets(@NotNull PsiClass contract, @NotNull SearchScope scope) {
+    Set<PsiElement> targets = new LinkedHashSet<>();
+    ReferencesSearch.search(contract, scope).forEach(reference -> {
       PsiElement element = reference.getElement();
       PsiElement target = getServiceUsageTarget(element);
       if (target != null) {
@@ -110,7 +145,7 @@ public final class HelidonCoreUtils {
     return targets;
   }
 
-  private static @NotNull Set<PsiClass> getHelidonServiceContracts(@NotNull PsiClass serviceClass) {
+  public static @NotNull Set<PsiClass> getHelidonServiceContracts(@NotNull PsiClass serviceClass) {
     Set<PsiClass> contracts = new LinkedHashSet<>();
     contracts.add(serviceClass);
     collectAllInterfaces(serviceClass, contracts, new HashSet<>());
@@ -121,6 +156,19 @@ public final class HelidonCoreUtils {
     }
     collectExternalContractClasses(serviceClass, contracts);
     return contracts;
+  }
+
+  public static @Nullable String getHelidonServiceScopeAnnotationName(@NotNull PsiClass serviceClass) {
+    return findAnnotationOrMetaAnnotation(serviceClass, HELIDON_SERVICE_SCOPE_ANNOTATIONS, new HashSet<>());
+  }
+
+  public static @NotNull Set<String> getHelidonServiceNames(@NotNull PsiClass serviceClass) {
+    Set<String> names = new LinkedHashSet<>();
+    PsiAnnotation named = findAnnotation(serviceClass, HelidonConstants.SERVICE_NAMED);
+    if (named != null) {
+      collectAnnotationStringValues(named.findDeclaredAttributeValue("value"), names);
+    }
+    return names;
   }
 
   private static void collectAllInterfaces(@NotNull PsiClass psiClass,
@@ -224,6 +272,26 @@ public final class HelidonCoreUtils {
     return false;
   }
 
+  private static @Nullable String findAnnotationOrMetaAnnotation(@NotNull PsiModifierListOwner owner,
+                                                                 @NotNull Set<String> annotations,
+                                                                 @NotNull Set<? super PsiModifierListOwner> visited) {
+    if (!visited.add(owner)) return null;
+    for (PsiAnnotation annotation : getAnnotations(owner)) {
+      String qualifiedName = annotation.getQualifiedName();
+      if (qualifiedName != null && annotations.contains(qualifiedName)) {
+        return qualifiedName;
+      }
+      PsiClass annotationClass = annotation.resolveAnnotationType();
+      if (annotationClass != null) {
+        String metaAnnotation = findAnnotationOrMetaAnnotation(annotationClass, annotations, visited);
+        if (metaAnnotation != null) {
+          return metaAnnotation;
+        }
+      }
+    }
+    return null;
+  }
+
   private static boolean hasAnnotation(@NotNull PsiModifierListOwner owner, @NotNull String annotationName) {
     return findAnnotation(owner, annotationName) != null;
   }
@@ -240,5 +308,24 @@ public final class HelidonCoreUtils {
   private static @NotNull PsiAnnotation[] getAnnotations(@NotNull PsiModifierListOwner owner) {
     PsiModifierList modifierList = owner.getModifierList();
     return modifierList == null ? PsiAnnotation.EMPTY_ARRAY : modifierList.getAnnotations();
+  }
+
+  private static void collectAnnotationStringValues(@Nullable PsiAnnotationMemberValue value, @NotNull Set<? super String> result) {
+    if (value == null) return;
+    if (value instanceof PsiArrayInitializerMemberValue) {
+      for (PsiAnnotationMemberValue initializer : ((PsiArrayInitializerMemberValue)value).getInitializers()) {
+        collectAnnotationStringValues(initializer, result);
+      }
+      return;
+    }
+    Object constantValue = JavaPsiFacade.getInstance(value.getProject())
+      .getConstantEvaluationHelper()
+      .computeConstantExpression(value);
+    if (constantValue instanceof String && !((String)constantValue).isBlank()) {
+      result.add((String)constantValue);
+    }
+  }
+
+  private record ServiceUsageScopeKey(@NotNull PsiClass contract, @NotNull SearchScope scope) {
   }
 }

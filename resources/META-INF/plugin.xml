@@ -10,6 +10,8 @@
     <p>Features:</p>
     <ul>
       <li>Create Helidon Maven projects from the IDE.</li>
+      <li>Inspect Helidon services, contracts, injection points, lookups, endpoints, and LangChain4j components in the
+        Helidon Services tool window.</li>
       <li>Navigate between Helidon services, injection points, and service registry lookups.</li>
       <li>Complete Helidon configuration keys in YAML and properties files.</li>
       <li>Open gutter navigation for Helidon declarative services.</li>
@@ -40,9 +42,22 @@
       name="serviceClassLineMarkerTargetProvider"
       interface="com.intellij.helidon.providers.HelidonServiceClassLineMarkerTargetProvider"
       dynamic="true"/>
+    <extensionPoint
+      name="servicesViewContributor"
+      interface="com.intellij.helidon.services.HelidonServicesViewContributor"
+      dynamic="true"/>
+    <extensionPoint
+      name="configFileContributor"
+      interface="com.intellij.helidon.config.HelidonConfigFileContributor"
+      dynamic="true"/>
   </extensionPoints>
 
   <extensions defaultExtensionNs="com.intellij">
+    <toolWindow id="Helidon Services"
+                anchor="right"
+                icon="/icons/helidonToolWindow.svg"
+                factoryClass="com.intellij.helidon.services.HelidonServicesToolWindowFactory"/>
+
     <codeInsight.lineMarkerProvider language="JAVA" order="last"
                                     implementationClass="com.intellij.helidon.providers.HelidonClassAnnotator"/>
 

@@ -52,6 +52,7 @@ class HelidonPluginDescriptorTest {
 
     listOf(
       "Endpoints tool window",
+      "Helidon Services tool window",
       "URL resolver",
       "declarative HTTP endpoint",
       "Helidon configuration",
@@ -94,6 +95,52 @@ class HelidonPluginDescriptorTest {
     assertTrue(iconProviders.any { element ->
       element.getAttribute("implementation") == "com.intellij.helidon.config.ce.HelidonConfigFileIconProvider"
     })
+  }
+
+  @Test
+  fun testMainDescriptorRegistersHelidonServicesToolWindow() {
+    val document = parseDescriptor(Path.of("resources/META-INF/plugin.xml"))
+    val toolWindows = document.getElementsByTagName("toolWindow").elements()
+    val extensionPoints = document.getElementsByTagName("extensionPoint").elements()
+
+    assertTrue(toolWindows.any { element ->
+      element.getAttribute("id") == "Helidon Services" &&
+        element.getAttribute("factoryClass") == "com.intellij.helidon.services.HelidonServicesToolWindowFactory" &&
+        element.getAttribute("icon") == "/icons/helidonToolWindow.svg"
+    })
+    assertTrue(extensionPoints.any { element ->
+      element.getAttribute("name") == "servicesViewContributor" &&
+        element.getAttribute("interface") == "com.intellij.helidon.services.HelidonServicesViewContributor"
+    })
+  }
+
+  @Test
+  fun testMainDescriptorRegistersConfigFileContributorExtensionPoint() {
+    val document = parseDescriptor(Path.of("resources/META-INF/plugin.xml"))
+    val extensionPoints = document.getElementsByTagName("extensionPoint").elements()
+
+    assertTrue(extensionPoints.any { element ->
+      element.getAttribute("name") == "configFileContributor" &&
+        element.getAttribute("interface") == "com.intellij.helidon.config.HelidonConfigFileContributor"
+    })
+  }
+
+  @Test
+  fun testMicroservicesDescriptorContributesHelidonServicesEndpoints() {
+    val document = parseDescriptor(Path.of("resources/META-INF/helidon-microservices.xml"))
+    val contributors = document.getElementsByTagName("helidon.servicesViewContributor").elements()
+
+    assertTrue(contributors.any { element ->
+      element.getAttribute("implementation") == "com.intellij.helidon.services.HelidonHttpServicesViewContributor"
+    })
+  }
+
+  @Test
+  fun testMicroservicesDescriptorDoesNotDeclareBaseExtensionPoints() {
+    val document = parseDescriptor(Path.of("resources/META-INF/helidon-microservices.xml"))
+    val extensionPoints = document.getElementsByTagName("extensionPoint").elements()
+
+    assertFalse(extensionPoints.any { element -> element.getAttribute("name") == "configFileContributor" })
   }
 
   @Test

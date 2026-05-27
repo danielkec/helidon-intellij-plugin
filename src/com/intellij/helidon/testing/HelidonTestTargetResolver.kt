@@ -10,6 +10,7 @@ import com.intellij.openapi.roots.ModuleRootManager
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiMethod
+import com.intellij.psi.PsiModifier
 import com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.idea.maven.project.MavenProject
 import org.jetbrains.idea.maven.project.MavenProjectsManager
@@ -26,7 +27,10 @@ internal object HelidonTestTargetResolver {
       return null
     }
 
-    val method = testMethod(element)
+    val method = methodAt(element)
+    if (method != null && !isTestMethod(method)) {
+      return null
+    }
     val testClass = method?.containingClass ?: testClass(element) ?: return null
     val qualifiedName = testClass.qualifiedName ?: return null
     val virtualFile = testClass.containingFile?.virtualFile ?: return null
@@ -54,29 +58,33 @@ internal object HelidonTestTargetResolver {
     )
   }
 
-  private fun testMethod(element: PsiElement): PsiMethod? {
-    val method = JUnitUtil.getTestMethod(element, false, true)
+  private fun methodAt(element: PsiElement): PsiMethod? =
+    JUnitUtil.getTestMethod(element, false, true)
       ?: PsiTreeUtil.getParentOfType(element, PsiMethod::class.java, false)
-    return method?.takeIf(::isTestMethod)
-  }
 
   private fun testClass(element: PsiElement): PsiClass? =
     JUnitUtil.getTestClass(element) ?: PsiTreeUtil.getParentOfType(element, PsiClass::class.java, false)
 
   private fun isTestClass(testClass: PsiClass): Boolean =
-    JUnitUtil.isTestClass(testClass) || testClass.methods.any(::isTestMethod)
+    testClass.methods.any(::isTestMethod) ||
+      (JUnitUtil.isTestClass(testClass) && testClass.methods.none(::isJunit4TestMethod))
 
-  private fun isTestMethod(method: PsiMethod): Boolean =
-    JUnitUtil.isTestAnnotated(method) ||
-      method.modifierList.annotations.any { it.qualifiedName in JUNIT_TEST_ANNOTATIONS }
+  private fun isTestMethod(method: PsiMethod): Boolean {
+    if (isJunit4TestMethod(method) &&
+        (!method.hasModifierProperty(PsiModifier.PUBLIC) ||
+          method.containingClass?.hasModifierProperty(PsiModifier.PUBLIC) != true)) {
+      return false
+    }
+    return JUnitUtil.isTestAnnotated(method) ||
+      method.modifierList.annotations.any { it.qualifiedName == JUnitUtil.TEST5_ANNOTATION }
+  }
+
+  private fun isJunit4TestMethod(method: PsiMethod): Boolean =
+    method.modifierList.annotations.any { it.qualifiedName == JUnitUtil.TEST_ANNOTATION }
 
   private fun mavenProject(module: Module): MavenProject? =
     MavenProjectsManager.getInstanceIfCreated(module.project)
       ?.takeIf { it.isMavenizedModule(module) }
       ?.findProject(module)
 
-  private val JUNIT_TEST_ANNOTATIONS = setOf(
-    JUnitUtil.TEST_ANNOTATION,
-    JUnitUtil.TEST5_ANNOTATION,
-  )
 }

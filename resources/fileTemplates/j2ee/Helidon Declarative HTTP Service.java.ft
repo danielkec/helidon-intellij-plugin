@@ -3,12 +3,16 @@
 #end
 import io.helidon.http.Http.GET;
 import io.helidon.http.Http.Path;
+import io.helidon.service.registry.Service;
 import io.helidon.webserver.http.RestServer;
 
 #parse("File Header.java")
 @RestServer.Endpoint
 @Path("/greet")
-public interface ${NAME} {
+@Service.Singleton
+public class ${NAME} {
   @GET
-  String greet();
+  public String greet() {
+    return "Hello from Helidon";
+  }
 }

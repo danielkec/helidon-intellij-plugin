@@ -12,6 +12,7 @@ class HelidonTestTargetResolverTest : HelidonHighlightingTestCase() {
     super.setUp()
     configureMavenLikeSourceRoots()
     addJunit5TestStub()
+    addJunit4TestStub()
   }
 
   fun testResolvesJunitMethodInHelidonTestSource() {
@@ -92,6 +93,83 @@ class HelidonTestTargetResolverTest : HelidonHighlightingTestCase() {
     assertNull(target)
   }
 
+  fun testRejectsInvalidJunit4MethodInHelidonTestSource() {
+    val file = addJavaFile("src/test/java/example/LegacyTest.java", """
+      package example;
+
+      import org.junit.Test;
+
+      public class LegacyTest {
+        @Test
+        void shouldGreet() {
+        }
+      }
+    """.trimIndent())
+
+    val target = HelidonTestTargetResolver.resolve(elementAt(file, "shouldGreet"), module, requireMaven = false)
+
+    assertNull(target)
+  }
+
+  fun testRejectsJunit4MethodInNonPublicClass() {
+    val file = addJavaFile("src/test/java/example/LegacyPackagePrivateTest.java", """
+      package example;
+
+      import org.junit.Test;
+
+      class LegacyPackagePrivateTest {
+        @Test
+        public void shouldGreet() {
+        }
+      }
+    """.trimIndent())
+
+    val target = HelidonTestTargetResolver.resolve(elementAt(file, "shouldGreet"), module, requireMaven = false)
+
+    assertNull(target)
+  }
+
+  fun testResolvesValidJunit4MethodInHelidonTestSource() {
+    val file = addJavaFile("src/test/java/example/LegacyTest.java", """
+      package example;
+
+      import org.junit.Test;
+
+      public class LegacyTest {
+        @Test
+        public void shouldGreet() {
+        }
+      }
+    """.trimIndent())
+
+    val target = HelidonTestTargetResolver.resolve(elementAt(file, "shouldGreet"), module, requireMaven = false)
+
+    assertNotNull(target)
+    assertEquals("example.LegacyTest", target!!.className)
+    assertEquals("shouldGreet", target.methodName)
+  }
+
+  fun testRejectsHelperMethodInsideValidTestClass() {
+    val file = addJavaFile("src/test/java/example/GreetingTest.java", """
+      package example;
+
+      import org.junit.jupiter.api.Test;
+
+      public class GreetingTest {
+        @Test
+        void shouldGreet() {
+        }
+
+        void helperMethod() {
+        }
+      }
+    """.trimIndent())
+
+    val target = HelidonTestTargetResolver.resolve(elementAt(file, "helperMethod"), module, requireMaven = false)
+
+    assertNull(target)
+  }
+
   private fun configureMavenLikeSourceRoots() {
     val mainJava = myFixture.tempDirFixture.findOrCreateDir("src/main/java")
     val testJava = myFixture.tempDirFixture.findOrCreateDir("src/test/java")
@@ -107,6 +185,22 @@ class HelidonTestTargetResolverTest : HelidonHighlightingTestCase() {
   private fun addJunit5TestStub() {
     myFixture.addClass("""
       package org.junit.jupiter.api;
+
+      import java.lang.annotation.ElementType;
+      import java.lang.annotation.Retention;
+      import java.lang.annotation.RetentionPolicy;
+      import java.lang.annotation.Target;
+
+      @Retention(RetentionPolicy.RUNTIME)
+      @Target(ElementType.METHOD)
+      public @interface Test {
+      }
+    """.trimIndent())
+  }
+
+  private fun addJunit4TestStub() {
+    myFixture.addClass("""
+      package org.junit;
 
       import java.lang.annotation.ElementType;
       import java.lang.annotation.Retention;

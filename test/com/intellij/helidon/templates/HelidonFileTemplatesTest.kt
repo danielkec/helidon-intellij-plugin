@@ -52,6 +52,30 @@ class HelidonFileTemplatesTest {
     }
   }
 
+  @Test
+  fun langChain4jAgentTemplateUsesRequiredAgentName() {
+    val text = Files.readString(templatePath(HELIDON_LANGCHAIN4J_AGENT_TEMPLATE, "ft"))
+
+    assertTrue("LangChain4j agent template should provide an agent name",
+               text.contains("@Ai.Agent(\"\${NAME}\")"))
+    assertTrue("LangChain4j agent template should define an agentic method",
+               text.contains("@Agent(value = \"\${NAME}\", outputKey = \"response\")"))
+  }
+
+  @Test
+  fun declarativeHttpTemplateGeneratesConcreteEndpointClass() {
+    val text = Files.readString(templatePath(HELIDON_DECLARATIVE_HTTP_SERVICE_TEMPLATE, "ft"))
+
+    assertTrue("Declarative HTTP template should generate a concrete class",
+               text.contains("public class \${NAME}"))
+    assertTrue("Declarative HTTP template should generate a service bean",
+               text.contains("@Service.Singleton"))
+    assertFalse("Declarative HTTP endpoint interfaces are ignored by Helidon codegen",
+                text.contains("public interface \${NAME}"))
+    assertTrue("Declarative HTTP template should generate a method body",
+               text.contains("return \"Hello from Helidon\";"))
+  }
+
   private fun templatePath(template: String, extension: String): Path =
     Path.of("resources/fileTemplates/j2ee/$template.$extension")
 }

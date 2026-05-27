@@ -130,6 +130,9 @@ class HelidonPluginDescriptorTest {
     val document = parseDescriptor(Path.of("resources/META-INF/plugin.xml"))
     val fileTemplateGroups = document.getElementsByTagName("fileTemplateGroup").elements()
     val runConfigurationProducers = document.getElementsByTagName("runConfigurationProducer").elements()
+    val pluginIds = (document.getElementsByTagName("dependencies").item(0) as Element)
+      .getElementsByTagName("plugin")
+      .attributes("id")
 
     assertTrue(fileTemplateGroups.any { element ->
       element.getAttribute("implementation") ==
@@ -139,6 +142,8 @@ class HelidonPluginDescriptorTest {
       element.getAttribute("implementation") ==
         "com.intellij.helidon.testing.HelidonMavenTestRunConfigurationProducer"
     })
+    assertTrue("JUnit dependency is required by HelidonTestTargetResolver",
+               pluginIds.contains("JUnit"))
   }
 
   @Test

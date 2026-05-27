@@ -29,6 +29,7 @@ dependencies {
     bundledPlugin("com.intellij.properties")
     bundledPlugin("com.intellij.modules.json")
     bundledPlugin("org.jetbrains.idea.maven")
+    bundledPlugin("JUnit")
     bundledPlugin("org.jetbrains.plugins.yaml")
     bundledPlugin("com.intellij.microservices.jvm")
     bundledPlugin("com.intellij.diagram")

@@ -40,6 +40,33 @@
 
   <resource-bundle>messages.HelidonBundle</resource-bundle>
 
+  <actions>
+    <group id="Helidon.New" text="Helidon" popup="true" icon="/icons/helidon.svg">
+      <action id="Helidon.New.SeService"
+              class="com.intellij.helidon.templates.HelidonCreateSeServiceAction"
+              text="SE Service"/>
+      <action id="Helidon.New.MpResource"
+              class="com.intellij.helidon.templates.HelidonCreateMpResourceAction"
+              text="MP Resource"/>
+      <action id="Helidon.New.DeclarativeHttpService"
+              class="com.intellij.helidon.templates.HelidonCreateDeclarativeHttpServiceAction"
+              text="Declarative HTTP Service"/>
+      <action id="Helidon.New.ConfigClass"
+              class="com.intellij.helidon.templates.HelidonCreateConfigClassAction"
+              text="Config Class"/>
+      <action id="Helidon.New.ServerTest"
+              class="com.intellij.helidon.templates.HelidonCreateServerTestAction"
+              text="Server Test"/>
+      <action id="Helidon.New.LangChain4jService"
+              class="com.intellij.helidon.templates.HelidonCreateLangChain4jServiceAction"
+              text="LangChain4j Service"/>
+      <action id="Helidon.New.LangChain4jAgent"
+              class="com.intellij.helidon.templates.HelidonCreateLangChain4jAgentAction"
+              text="LangChain4j Agent"/>
+      <add-to-group group-id="NewGroup" anchor="after" relative-to-action="NewFromTemplate"/>
+    </group>
+  </actions>
+
   <extensionPoints>
     <extensionPoint
       name="serviceClassLineMarkerTargetProvider"

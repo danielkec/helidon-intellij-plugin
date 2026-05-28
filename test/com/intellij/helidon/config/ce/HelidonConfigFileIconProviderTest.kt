@@ -28,11 +28,11 @@ class HelidonConfigFileIconProviderTest : HelidonHighlightingTestCase() {
     }
   }
 
-  fun testOciConfigYamlGetsHelidonIcon() {
+  fun testOciConfigYamlGetsOraIcon() {
     withMicroservicesPluginEnabled(false) {
       val psiFile = myFixture.configureByText(HELIDON_OCI_CONFIG_YAML, "")
 
-      assertSame(HelidonIcons.Helidon, HelidonConfigFileIconProvider().getIcon(psiFile, 0))
+      assertSame(HelidonIcons.Ora, HelidonConfigFileIconProvider().getIcon(psiFile, 0))
     }
   }
 
@@ -82,7 +82,7 @@ class HelidonConfigOnlyFileIconProviderTest : HelidonHighlightingTestCase() {
 
       assertFalse(HelidonCoreUtils.hasHelidonLibrary(module))
       assertTrue(HelidonCoreUtils.hasHelidonConfigLibrary(module))
-      assertSame(HelidonIcons.Helidon, HelidonConfigFileIconProvider().getIcon(psiFile, 0))
+      assertSame(HelidonIcons.Ora, HelidonConfigFileIconProvider().getIcon(psiFile, 0))
     }
   }
 }

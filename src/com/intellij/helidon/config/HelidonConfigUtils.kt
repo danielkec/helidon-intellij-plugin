@@ -86,7 +86,11 @@ internal fun getHelidonConfigFileKind(file: PsiFile): HelidonConfigFileKind? {
 }
 
 fun getHelidonConfigFileIcon(file: PsiFile): Icon? {
-  return if (getHelidonConfigFileKind(file) != null) HelidonIcons.Helidon else null
+  return when (getHelidonConfigFileKind(file)) {
+    HelidonConfigFileKind.APPLICATION -> HelidonIcons.Helidon
+    HelidonConfigFileKind.OCI -> HelidonIcons.Ora
+    null -> null
+  }
 }
 
 private fun getHelidonConfigFileKind(fileName: String): HelidonConfigFileKind? {

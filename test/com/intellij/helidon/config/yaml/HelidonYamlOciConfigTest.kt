@@ -2,6 +2,7 @@
 package com.intellij.helidon.config.yaml
 
 import com.intellij.helidon.HelidonHighlightingTestCase
+import com.intellij.helidon.HelidonIcons
 import com.intellij.helidon.config.HELIDON_OCI_CONFIG_YAML
 import com.intellij.helidon.config.HELIDON_CONFIG_METADATA
 import com.intellij.helidon.config.crossProviderMetadata
@@ -30,6 +31,8 @@ class HelidonYamlOciConfigTest : HelidonHighlightingTestCase() {
     assertTrue(isHelidonOciConfigFile(mainConfig))
     assertTrue(isHelidonConfigFile(testConfig))
     assertTrue(isHelidonOciConfigFile(testConfig))
+    assertSame(HelidonIcons.Ora, HelidonYamlIconProvider().getIcon(mainConfig, 0))
+    assertSame(HelidonIcons.Ora, HelidonYamlIconProvider().getIcon(testConfig, 0))
   }
 
   fun testDoesNotTreatOciConfigPropertiesAsHelidonConfig() {

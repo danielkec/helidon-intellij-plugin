@@ -22,6 +22,11 @@ class HelidonProjectDescriptorBuilder : DefaultLightProjectDescriptor(IdeaTestUt
     return this
   }
 
+  fun withMicroProfileCdi(): HelidonProjectDescriptorBuilder {
+    withRepositoryLibrary(Helidon4MP.HELIDON_MICROPROFILE_CDI, false)
+    return this
+  }
+
   fun build(): LightProjectDescriptor {
     return this
   }

@@ -8,3 +8,9 @@ object Helidon4SE {
   const val HELIDON_SECURITY = "io.helidon.security:helidon-security:${VERSION}"
   const val HELIDON_CONFIG = "io.helidon.config:helidon-config:${VERSION}"
 }
+
+object Helidon4MP {
+  private const val VERSION = "4.3.1"
+
+  const val HELIDON_MICROPROFILE_CDI = "io.helidon.microprofile.cdi:helidon-microprofile-cdi:${VERSION}"
+}

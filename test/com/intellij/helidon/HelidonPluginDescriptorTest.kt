@@ -126,6 +126,50 @@ class HelidonPluginDescriptorTest {
   }
 
   @Test
+  fun testMainDescriptorRegistersHelidonTemplatesAndTestProducer() {
+    val document = parseDescriptor(Path.of("resources/META-INF/plugin.xml"))
+    val fileTemplateGroups = document.getElementsByTagName("fileTemplateGroup").elements()
+    val newMenuGroups = document.getElementsByTagName("group").elements()
+    val runConfigurationProducers = document.getElementsByTagName("runConfigurationProducer").elements()
+    val pluginIds = (document.getElementsByTagName("dependencies").item(0) as Element)
+      .getElementsByTagName("plugin")
+      .attributes("id")
+
+    assertTrue(fileTemplateGroups.any { element ->
+      element.getAttribute("implementation") ==
+        "com.intellij.helidon.templates.HelidonFileTemplateGroupDescriptorFactory"
+    })
+    assertTrue(runConfigurationProducers.any { element ->
+      element.getAttribute("implementation") ==
+        "com.intellij.helidon.testing.HelidonMavenTestRunConfigurationProducer"
+    })
+    assertTrue("JUnit dependency is required by HelidonTestTargetResolver",
+               pluginIds.contains("JUnit"))
+
+    val newMenuGroup = newMenuGroups.single { element -> element.getAttribute("id") == "Helidon.New" }
+    val newMenuActionClasses = newMenuGroup.getElementsByTagName("action")
+      .elements()
+      .map { element -> element.getAttribute("class") }
+    val newMenuRegistration = newMenuGroup.getElementsByTagName("add-to-group").elements().single()
+
+    assertTrue("All Helidon templates should have Project View New menu actions",
+               newMenuActionClasses.size == 7)
+    assertTrue(newMenuActionClasses.containsAll(listOf(
+      "com.intellij.helidon.templates.HelidonCreateSeServiceAction",
+      "com.intellij.helidon.templates.HelidonCreateMpResourceAction",
+      "com.intellij.helidon.templates.HelidonCreateDeclarativeHttpServiceAction",
+      "com.intellij.helidon.templates.HelidonCreateConfigClassAction",
+      "com.intellij.helidon.templates.HelidonCreateServerTestAction",
+      "com.intellij.helidon.templates.HelidonCreateLangChain4jServiceAction",
+      "com.intellij.helidon.templates.HelidonCreateLangChain4jAgentAction",
+    )))
+    assertTrue("Helidon templates must be visible from the Project View New menu",
+               newMenuRegistration.getAttribute("group-id") == "NewGroup")
+    assertTrue("Helidon templates should appear near the standard template actions",
+               newMenuRegistration.getAttribute("relative-to-action") == "NewFromTemplate")
+  }
+
+  @Test
   fun testMicroservicesDescriptorContributesHelidonServicesEndpoints() {
     val document = parseDescriptor(Path.of("resources/META-INF/helidon-microservices.xml"))
     val contributors = document.getElementsByTagName("helidon.servicesViewContributor").elements()
@@ -153,6 +197,21 @@ class HelidonPluginDescriptorTest {
 
       assertFalse("$path should not declare hard dependencies",
                   document.getElementsByTagName("dependencies").elements().isNotEmpty())
+    }
+  }
+
+  @Test
+  fun testOptionalSubDescriptorsDoNotRegisterTemplatesOrTestProducers() {
+    listOf(
+      Path.of("resources/META-INF/helidon-microservices.xml"),
+      Path.of("resources/META-INF/helidon-langchain4j-diagram.xml"),
+    ).forEach { path ->
+      val document = parseDescriptor(path)
+
+      assertFalse("$path should not register base file templates",
+                  document.getElementsByTagName("fileTemplateGroup").elements().isNotEmpty())
+      assertFalse("$path should not register base test run producers",
+                  document.getElementsByTagName("runConfigurationProducer").elements().isNotEmpty())
     }
   }
 

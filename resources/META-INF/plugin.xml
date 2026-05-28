@@ -10,6 +10,8 @@
     <p>Features:</p>
     <ul>
       <li>Create Helidon Maven projects from the IDE.</li>
+      <li>Create Java Helidon services, resources, configuration classes, server tests, and LangChain4j components from
+        Helidon file templates.</li>
       <li>Inspect Helidon services, contracts, injection points, lookups, endpoints, and LangChain4j components in the
         Helidon Services tool window.</li>
       <li>Navigate between Helidon services, injection points, and service registry lookups.</li>
@@ -25,6 +27,7 @@
     <plugin id="com.intellij.java"/>
     <plugin id="com.intellij.properties"/>
     <plugin id="org.jetbrains.idea.maven"/>
+    <plugin id="JUnit"/>
     <module name="intellij.spellchecker"/>
     <module name="intellij.properties.backend"/>
     <module name="intellij.properties.backend.psi"/>
@@ -36,6 +39,33 @@
   <depends optional="true" config-file="helidon-langchain4j-diagram.xml">com.intellij.diagram</depends>
 
   <resource-bundle>messages.HelidonBundle</resource-bundle>
+
+  <actions>
+    <group id="Helidon.New" text="Helidon" popup="true" icon="/icons/helidon.svg">
+      <action id="Helidon.New.SeService"
+              class="com.intellij.helidon.templates.HelidonCreateSeServiceAction"
+              text="SE Service"/>
+      <action id="Helidon.New.MpResource"
+              class="com.intellij.helidon.templates.HelidonCreateMpResourceAction"
+              text="MP Resource"/>
+      <action id="Helidon.New.DeclarativeHttpService"
+              class="com.intellij.helidon.templates.HelidonCreateDeclarativeHttpServiceAction"
+              text="Declarative HTTP Service"/>
+      <action id="Helidon.New.ConfigClass"
+              class="com.intellij.helidon.templates.HelidonCreateConfigClassAction"
+              text="Config Class"/>
+      <action id="Helidon.New.ServerTest"
+              class="com.intellij.helidon.templates.HelidonCreateServerTestAction"
+              text="Server Test"/>
+      <action id="Helidon.New.LangChain4jService"
+              class="com.intellij.helidon.templates.HelidonCreateLangChain4jServiceAction"
+              text="LangChain4j Service"/>
+      <action id="Helidon.New.LangChain4jAgent"
+              class="com.intellij.helidon.templates.HelidonCreateLangChain4jAgentAction"
+              text="LangChain4j Agent"/>
+      <add-to-group group-id="NewGroup" anchor="after" relative-to-action="NewFromTemplate"/>
+    </group>
+  </actions>
 
   <extensionPoints>
     <extensionPoint
@@ -64,6 +94,10 @@
     <moduleBuilder builderClass="com.intellij.helidon.newproject.HelidonModuleBuilder"/>
 
     <externalProjectDataService implementation="com.intellij.helidon.newproject.HelidonExternalSystemDataService"/>
+
+    <fileTemplateGroup implementation="com.intellij.helidon.templates.HelidonFileTemplateGroupDescriptorFactory"/>
+
+    <runConfigurationProducer implementation="com.intellij.helidon.testing.HelidonMavenTestRunConfigurationProducer"/>
 
     <dependencySupport coordinate="io.helidon.config:helidon-config" kind="java" displayName="Helidon"/>
 

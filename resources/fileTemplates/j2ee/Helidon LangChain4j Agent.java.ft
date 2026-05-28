@@ -1,0 +1,16 @@
+#if (${PACKAGE_NAME} && ${PACKAGE_NAME} != "")package ${PACKAGE_NAME};
+
+#end
+import io.helidon.integrations.langchain4j.Ai;
+
+import dev.langchain4j.agentic.Agent;
+import dev.langchain4j.service.UserMessage;
+import dev.langchain4j.service.V;
+
+#parse("File Header.java")
+@Ai.Agent("${NAME}")
+public interface ${NAME} {
+  @UserMessage("Respond to the request: {{message}}")
+  @Agent(value = "${NAME}", outputKey = "response")
+  String invoke(@V("message") String message);
+}

@@ -83,7 +83,7 @@ class HelidonMetaConfigKeyManager : MetaConfigKeyManager() {
         emptyList()
       }
       else {
-        HelidonConfigMetadataBuilder(providerModuleMetadataByFile.values.filterNotNull(), module.project).collectKeys(module, forcedRoots)
+        HelidonConfigMetadataBuilder(allModulesMetadata, module.project).collectKeys(module, forcedRoots)
       }
 
       val keys = LinkedHashMap<String, MetaConfigKey>()

@@ -89,7 +89,7 @@ internal class HelidonConfigKeyService {
         emptyList()
       }
       else {
-        HelidonConfigKeyBuilder(providerModuleMetadataByFile.values.filterNotNull()).collectKeys(forcedRoots)
+        HelidonConfigKeyBuilder(allModulesMetadata).collectKeys(forcedRoots)
       }
 
       val keys = LinkedHashMap<String, HelidonConfigKey>()

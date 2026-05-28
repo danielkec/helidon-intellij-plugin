@@ -4,10 +4,12 @@ package com.intellij.helidon.config.yaml
 import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.config.HELIDON_OCI_CONFIG_YAML
 import com.intellij.helidon.config.HELIDON_CONFIG_METADATA
+import com.intellij.helidon.config.crossProviderMetadata
 import com.intellij.helidon.config.envConfigMetadata
 import com.intellij.helidon.config.isHelidonConfigFile
 import com.intellij.helidon.config.isHelidonOciConfigFile
 import com.intellij.helidon.config.secretServiceMetadata
+import com.intellij.helidon.config.sharedClientMetadata
 import com.intellij.microservices.jvm.config.MetaConfigKeyReference
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.psi.util.PsiTreeUtil
@@ -92,6 +94,19 @@ class HelidonYamlOciConfigTest : HelidonHighlightingTestCase() {
     assertContainsElements(myFixture.lookupElementStrings!!, "max-retries")
   }
 
+  fun testCompletesProviderMetadataNestedTypeFromSeparateMetadataFile() {
+    addCrossMetadataAndProvider()
+    myFixture.configureByText(HELIDON_OCI_CONFIG_YAML, """
+      helidon:
+        oci-cross:
+          shared-client:
+            <caret>
+    """.trimIndent())
+    myFixture.completeBasic()
+
+    assertContainsElements(myFixture.lookupElementStrings!!, "endpoint")
+  }
+
   fun testDocumentsProviderMetadataInOciConfigYaml() {
     addOciMetadataAndProviders()
     myFixture.configureByText(HELIDON_OCI_CONFIG_YAML, """
@@ -150,6 +165,16 @@ class HelidonYamlOciConfigTest : HelidonHighlightingTestCase() {
       "com.oracle.helidon.oci.secret.config.SecretServiceConfigSourceProvider",
       secretServiceMetadata(),
       metadataPath = "META-INF/$HELIDON_CONFIG_METADATA",
+    )
+  }
+
+  private fun addCrossMetadataAndProvider() {
+    addCrossConfigStubs()
+    addLibrary("oci-shared-metadata", sharedClientMetadata())
+    addProviderLibrary(
+      "oci-cross-provider",
+      "com.oracle.helidon.oci.cross.CrossConfigSourceProvider",
+      crossProviderMetadata(),
     )
   }
 
@@ -230,6 +255,26 @@ class HelidonYamlOciConfigTest : HelidonHighlightingTestCase() {
           return SUPPORTED_TYPES;
         }
       }
+    """.trimIndent())
+  }
+
+  private fun addCrossConfigStubs() {
+    myFixture.addClass("""
+      package com.oracle.helidon.oci.cross;
+
+      public final class CrossConfig {}
+    """.trimIndent())
+    myFixture.addClass("""
+      package com.oracle.helidon.oci.cross;
+
+      public final class CrossConfigSourceProvider {
+        static final String TYPE = "oci-cross";
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package com.oracle.helidon.oci.shared;
+
+      public final class SharedClientConfig {}
     """.trimIndent())
   }
 

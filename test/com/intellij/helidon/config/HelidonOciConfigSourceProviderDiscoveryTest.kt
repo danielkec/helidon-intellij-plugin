@@ -194,3 +194,34 @@ internal fun secretServiceMetadata(): String {
     }]
   """.trimIndent()
 }
+
+internal fun crossProviderMetadata(): String {
+  return """
+    [{
+      "module": "helidon-oci-cross-provider",
+      "types": [{
+        "type": "com.oracle.helidon.oci.cross.CrossConfig",
+        "options": [{
+          "key": "shared-client",
+          "type": "com.oracle.helidon.oci.shared.SharedClientConfig",
+          "description": "Shared client settings"
+        }]
+      }]
+    }]
+  """.trimIndent()
+}
+
+internal fun sharedClientMetadata(): String {
+  return """
+    [{
+      "module": "helidon-oci-shared-config",
+      "types": [{
+        "type": "com.oracle.helidon.oci.shared.SharedClientConfig",
+        "options": [{
+          "key": "endpoint",
+          "description": "Shared client endpoint"
+        }]
+      }]
+    }]
+  """.trimIndent()
+}

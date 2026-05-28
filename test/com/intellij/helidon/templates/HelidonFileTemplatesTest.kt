@@ -2,6 +2,8 @@
 package com.intellij.helidon.templates
 
 import com.intellij.helidon.HelidonIcons
+import com.intellij.ide.fileTemplates.actions.AttributesDefaults
+import com.intellij.openapi.actionSystem.DataContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
@@ -89,6 +91,24 @@ class HelidonFileTemplatesTest {
     assertTrue(text.contains("authentication-method: \"auto\""))
   }
 
+  @Test
+  fun ociConfigActionUsesFixedFileName() {
+    val defaults = templateAttributesDefaults(HelidonCreateOciConfigAction())
+      ?: error("OCI config action should provide fixed filename defaults")
+
+    assertTrue(defaults.isFixedName)
+    assertEquals(HELIDON_OCI_CONFIG_FILE_STEM, defaults.defaultFileName)
+  }
+
   private fun templatePath(template: String, extension: String): Path =
     Path.of("resources/fileTemplates/j2ee/$template.$extension")
+
+  private fun templateAttributesDefaults(action: HelidonCreateFileFromTemplateAction): AttributesDefaults? {
+    val method = HelidonCreateFileFromTemplateAction::class.java.getDeclaredMethod(
+      "getAttributesDefaults",
+      DataContext::class.java,
+    )
+    method.isAccessible = true
+    return method.invoke(action, DataContext { null }) as AttributesDefaults?
+  }
 }

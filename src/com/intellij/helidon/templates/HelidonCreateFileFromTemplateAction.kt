@@ -5,9 +5,11 @@ import com.intellij.helidon.HelidonIcons
 import com.intellij.ide.fileTemplates.FileTemplate
 import com.intellij.ide.fileTemplates.FileTemplateManager
 import com.intellij.ide.fileTemplates.FileTemplateUtil
+import com.intellij.ide.fileTemplates.actions.AttributesDefaults
 import com.intellij.ide.fileTemplates.actions.CreateFromTemplateActionBase
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.actionSystem.LangDataKeys
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
@@ -18,6 +20,7 @@ abstract class HelidonCreateFileFromTemplateAction(
   private val templateName: String,
   presentableName: String,
   icon: Icon = HelidonIcons.Helidon,
+  private val fixedFileName: String? = null,
 ) : CreateFromTemplateActionBase(
   presentableName,
   "Create $presentableName from Helidon template",
@@ -38,6 +41,10 @@ abstract class HelidonCreateFileFromTemplateAction(
   }
 
   override fun getTemplate(project: Project, dir: PsiDirectory): FileTemplate = template(project)
+
+  override fun getAttributesDefaults(dataContext: DataContext): AttributesDefaults? {
+    return fixedFileName?.let { AttributesDefaults(it).withFixedName(true) }
+  }
 
   private fun template(project: Project): FileTemplate {
     return FileTemplateManager.getInstance(project).getJ2eeTemplate(templateName)
@@ -83,4 +90,5 @@ class HelidonCreateOciConfigAction : HelidonCreateFileFromTemplateAction(
   HELIDON_OCI_CONFIG_TEMPLATE,
   "OCI Config",
   HelidonIcons.Ora,
+  fixedFileName = HELIDON_OCI_CONFIG_FILE_STEM,
 )

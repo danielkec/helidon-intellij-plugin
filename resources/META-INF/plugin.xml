@@ -106,6 +106,12 @@
     <completion.contributor language="yaml"
                             implementationClass="com.intellij.helidon.config.ce.HelidonYamlKeyCompletionContributor"/>
 
+    <helidon.configFileContributor id="propertiesConfigFileContributor"
+                                   implementation="com.intellij.helidon.config.properties.HelidonPropertiesConfigFileContributor"/>
+    <helidon.configFileContributor
+            order="after propertiesConfigFileContributor"
+            implementation="com.intellij.helidon.config.yaml.HelidonYamlConfigFileContributor"/>
+
     <iconProvider implementation="com.intellij.helidon.config.ce.HelidonConfigFileIconProvider"/>
   </extensions>
 

@@ -33,9 +33,6 @@
     <completion.contributor language="Properties"
                             implementationClass="com.intellij.helidon.config.properties.HelidonPropertiesCompletionContributor"/>
 
-    <helidon.configFileContributor id="propertiesConfigFileContributor"
-                                   implementation="com.intellij.helidon.config.properties.HelidonPropertiesConfigFileContributor"/>
-
     <iconProvider implementation="com.intellij.helidon.config.HelidonIconProvider"/>
 
     <lang.documentationProvider language="Properties"
@@ -84,10 +81,6 @@
             language="yaml"
             order="last, before javaClassName"
             implementationClass="com.intellij.helidon.config.yaml.HelidonYamlClassNameCompletionSuppressor"/>
-
-    <helidon.configFileContributor
-            order="after propertiesConfigFileContributor"
-            implementation="com.intellij.helidon.config.yaml.HelidonYamlConfigFileContributor"/>
 
     <iconProvider implementation="com.intellij.helidon.config.yaml.HelidonYamlIconProvider"/>
 

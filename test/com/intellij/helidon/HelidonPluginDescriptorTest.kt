@@ -98,6 +98,21 @@ class HelidonPluginDescriptorTest {
   }
 
   @Test
+  fun testMainDescriptorRegistersConfigFileContributors() {
+    val document = parseDescriptor(Path.of("resources/META-INF/plugin.xml"))
+    val contributors = document.getElementsByTagName("helidon.configFileContributor").elements()
+
+    assertTrue(contributors.any { element ->
+      element.getAttribute("id") == "propertiesConfigFileContributor" &&
+        element.getAttribute("implementation") == "com.intellij.helidon.config.properties.HelidonPropertiesConfigFileContributor"
+    })
+    assertTrue(contributors.any { element ->
+      element.getAttribute("order") == "after propertiesConfigFileContributor" &&
+        element.getAttribute("implementation") == "com.intellij.helidon.config.yaml.HelidonYamlConfigFileContributor"
+    })
+  }
+
+  @Test
   fun testMainDescriptorRegistersHelidonServicesToolWindow() {
     val document = parseDescriptor(Path.of("resources/META-INF/plugin.xml"))
     val toolWindows = document.getElementsByTagName("toolWindow").elements()
@@ -185,6 +200,19 @@ class HelidonPluginDescriptorTest {
     val extensionPoints = document.getElementsByTagName("extensionPoint").elements()
 
     assertFalse(extensionPoints.any { element -> element.getAttribute("name") == "configFileContributor" })
+  }
+
+  @Test
+  fun testMicroservicesDescriptorDoesNotRegisterBaseConfigFileContributors() {
+    val document = parseDescriptor(Path.of("resources/META-INF/helidon-microservices.xml"))
+    val contributors = document.getElementsByTagName("helidon.configFileContributor").elements()
+
+    assertFalse(contributors.any { element ->
+      element.getAttribute("implementation") == "com.intellij.helidon.config.properties.HelidonPropertiesConfigFileContributor"
+    })
+    assertFalse(contributors.any { element ->
+      element.getAttribute("implementation") == "com.intellij.helidon.config.yaml.HelidonYamlConfigFileContributor"
+    })
   }
 
   @Test

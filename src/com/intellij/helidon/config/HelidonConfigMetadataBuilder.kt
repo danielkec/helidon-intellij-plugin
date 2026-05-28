@@ -53,7 +53,10 @@ internal class HelidonConfigMetadataBuilder(modulesMetadata: List<ModuleMetadata
     val metaKeys = mutableListOf<MetaConfigKey>()
     val processor = Processors.cancelableCollectProcessor(metaKeys)
     for (forcedRoot in forcedRoots) {
-      for (configType in getRootConfigTypes(forcedRoot.moduleMetadata)) {
+      val configTypes = forcedRoot.rootType
+        ?.let { myConfigTypes[it]?.let(::listOf) ?: emptyList() }
+        ?: getRootConfigTypes(forcedRoot.moduleMetadata)
+      for (configType in configTypes) {
         processConfigType(configType, forcedRoot.prefix, processor, module, mutableSetOf())
       }
     }

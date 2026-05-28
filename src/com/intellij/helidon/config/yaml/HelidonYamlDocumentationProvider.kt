@@ -75,7 +75,7 @@ internal class HelidonYamlDocumentationProvider : ConfigKeyDocumentationProvider
     val description = key.descriptionText.fullText
     if (description.isNotEmpty()) {
       builder.append("<div class='content'>")
-        .append(description)
+        .append(StringUtil.escapeXmlEntities(description))
         .append("</div>")
     }
 

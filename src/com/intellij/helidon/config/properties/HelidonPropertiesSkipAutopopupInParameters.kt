@@ -4,7 +4,7 @@ package com.intellij.helidon.config.properties
 import com.intellij.codeInsight.completion.CompletionConfidence
 import com.intellij.helidon.config.HelidonParametrizedConfigKey
 import com.intellij.helidon.config.isHelidonConfigFile
-import com.intellij.helidon.utils.HelidonCommonUtils.hasHelidonLibrary
+import com.intellij.helidon.utils.HelidonCommonUtils.hasHelidonConfigLibrary
 import com.intellij.lang.properties.psi.impl.PropertyKeyImpl
 import com.intellij.microservices.jvm.config.MetaConfigKeyReference
 import com.intellij.psi.PsiElement
@@ -14,7 +14,7 @@ import com.intellij.util.ThreeState
 internal class HelidonPropertiesSkipAutopopupInParameters : CompletionConfidence() {
   override fun shouldSkipAutopopup(contextElement: PsiElement, psiFile: PsiFile, offset: Int): ThreeState {
     if (contextElement !is PropertyKeyImpl ||
-        !hasHelidonLibrary(contextElement.project) ||
+        !hasHelidonConfigLibrary(contextElement.project) ||
         !isHelidonConfigFile(psiFile)) {
       return ThreeState.UNSURE
     }

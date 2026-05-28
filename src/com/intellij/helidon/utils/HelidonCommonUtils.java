@@ -84,6 +84,14 @@ public final class HelidonCommonUtils {
     return HelidonCoreUtils.hasHelidonLibrary(module);
   }
 
+  public static boolean hasHelidonConfigLibrary(Project project) {
+    return HelidonCoreUtils.hasHelidonConfigLibrary(project);
+  }
+
+  public static boolean hasHelidonConfigLibrary(@Nullable Module module) {
+    return HelidonCoreUtils.hasHelidonConfigLibrary(module);
+  }
+
   public static boolean hasHelidonMPLibrary(@Nullable Module module) {
     return HelidonCoreUtils.hasHelidonMPLibrary(module);
   }

@@ -104,7 +104,7 @@ class HelidonYamlOciConfigTest : HelidonHighlightingTestCase() {
     val keyValue = PsiTreeUtil.getParentOfType(myFixture.file.findElementAt(myFixture.caretOffset), YAMLKeyValue::class.java)
     val doc = HelidonYamlDocumentationProvider().generateDoc(keyValue!!, keyValue.key)
 
-    assertTrue(doc!!.contains("SSv2 endpoint template"))
+    assertTrue(doc!!.contains("SSv2 &lt;endpoint&gt; template &amp; default"))
     assertTrue(doc.contains("https://secret-service-ce.${'$'}{oci.env.iaas-domain-name}/v1"))
   }
 

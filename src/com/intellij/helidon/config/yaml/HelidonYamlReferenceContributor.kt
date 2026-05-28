@@ -10,7 +10,8 @@ import com.intellij.util.ProcessingContext
 import org.jetbrains.yaml.psi.YAMLKeyValue
 import org.jetbrains.yaml.psi.YAMLScalar
 
-internal val APPLICATION_YAML_CONDITION: PatternCondition<PsiElement> = object : PatternCondition<PsiElement>("isApplicationPropertiesAndHelidon") {
+internal val HELIDON_YAML_CONFIG_CONDITION: PatternCondition<PsiElement> =
+  object : PatternCondition<PsiElement>("isHelidonYamlConfigAndHelidon") {
   override fun accepts(element: PsiElement, context: ProcessingContext): Boolean {
     return isInsideHelidonYamlConfigFile(element)
   }
@@ -19,10 +20,10 @@ internal val APPLICATION_YAML_CONDITION: PatternCondition<PsiElement> = object :
 internal class HelidonYamlReferenceContributor : PsiReferenceContributor() {
   override fun registerReferenceProviders(registrar: PsiReferenceRegistrar) {
     registrar.registerReferenceProvider(
-      psiElement(YAMLKeyValue::class.java).with(APPLICATION_YAML_CONDITION),
+      psiElement(YAMLKeyValue::class.java).with(HELIDON_YAML_CONFIG_CONDITION),
       HelidonYamlKeyReferenceProvider())
     registrar.registerReferenceProvider(
-      psiElement(YAMLScalar::class.java).with(APPLICATION_YAML_CONDITION),
+      psiElement(YAMLScalar::class.java).with(HELIDON_YAML_CONFIG_CONDITION),
       HelidonYamlValueReferenceProvider())
   }
 }

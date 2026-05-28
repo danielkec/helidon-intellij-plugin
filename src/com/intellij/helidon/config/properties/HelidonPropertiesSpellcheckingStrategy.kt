@@ -2,7 +2,7 @@
 package com.intellij.helidon.config.properties
 
 import com.intellij.helidon.config.isHelidonConfigFile
-import com.intellij.helidon.utils.HelidonCommonUtils.hasHelidonLibrary
+import com.intellij.helidon.utils.HelidonCommonUtils.hasHelidonConfigLibrary
 import com.intellij.lang.properties.psi.PropertiesFile
 import com.intellij.lang.properties.psi.impl.PropertyKeyImpl
 import com.intellij.openapi.project.DumbAware
@@ -19,7 +19,7 @@ internal class HelidonPropertiesSpellcheckingStrategy : SpellcheckingStrategy(),
   override fun isMyContext(element: PsiElement): Boolean {
     if (element !is PropertyKeyImpl) return false
 
-    if (!hasHelidonLibrary(element.project)) return false
+    if (!hasHelidonConfigLibrary(element.project)) return false
 
     val file = element.getContainingFile()
     return file is PropertiesFile && isHelidonConfigFile(file)

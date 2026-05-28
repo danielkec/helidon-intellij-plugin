@@ -8,7 +8,7 @@ import com.intellij.codeInsight.completion.PrefixMatcher
 import com.intellij.codeInsight.lookup.LookupElement
 import com.intellij.helidon.config.HelidonParametrizedConfigKey
 import com.intellij.helidon.config.isHelidonConfigFile
-import com.intellij.helidon.utils.HelidonCommonUtils.hasHelidonLibrary
+import com.intellij.helidon.utils.HelidonCommonUtils.hasHelidonConfigLibrary
 import com.intellij.lang.properties.psi.PropertiesFile
 
 internal class HelidonPropertiesCompletionContributor : CompletionContributor() {
@@ -16,7 +16,7 @@ internal class HelidonPropertiesCompletionContributor : CompletionContributor() 
   override fun fillCompletionVariants(parameters: CompletionParameters, result: CompletionResultSet) {
     val psiFile = parameters.originalFile
     if (psiFile !is PropertiesFile ||
-        !hasHelidonLibrary((psiFile as PropertiesFile).project) ||
+        !hasHelidonConfigLibrary((psiFile as PropertiesFile).project) ||
         !isHelidonConfigFile(psiFile)) {
       return
     }

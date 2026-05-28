@@ -165,7 +165,7 @@ internal fun secretServiceMetadata(): String {
         "type": "com.oracle.helidon.oci.secret.config.Ssv2ClientConfig",
         "options": [{
           "key": "endpoint",
-          "description": "SSv2 endpoint template",
+          "description": "SSv2 <endpoint> template & default",
           "defaultValue": "https://secret-service-ce.${'$'}{oci.env.iaas-domain-name}/v1"
         }, {
           "key": "retry-config",

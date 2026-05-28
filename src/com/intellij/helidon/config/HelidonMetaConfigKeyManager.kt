@@ -26,13 +26,13 @@ class HelidonMetaConfigKeyManager : MetaConfigKeyManager() {
   }
 
   override fun getAllMetaConfigKeys(module: Module?): List<MetaConfigKey> {
-    if (module == null || !HelidonCommonUtils.hasHelidonLibrary(module)) return emptyList()
+    if (module == null || !HelidonCommonUtils.hasHelidonConfigLibrary(module)) return emptyList()
 
     return getMetaConfigKeysFromLibs(module)
   }
 
   internal fun getMetaConfigKeys(module: Module?, configFile: PsiFile?): List<MetaConfigKey> {
-    if (module == null || !HelidonCommonUtils.hasHelidonLibrary(module)) return emptyList()
+    if (module == null || !HelidonCommonUtils.hasHelidonConfigLibrary(module)) return emptyList()
     if (configFile != null && isHelidonOciConfigFile(configFile)) {
       return getOciMetaConfigKeysFromLibs(module)
     }
@@ -55,21 +55,35 @@ class HelidonMetaConfigKeyManager : MetaConfigKeyManager() {
   private fun getOciMetaConfigKeysFromLibs(module: Module): List<MetaConfigKey> {
     return CachedValuesManager.getManager(module.project).getCachedValue(module, OCI_META_CONFIG_KEYS_KEY, {
       val allMetadataFiles = findConfigMetadataFiles(module)
-      val allKeys = getMetaConfigKeysFromLibs(module)
-      val publicOciKeys = allKeys.filter { it.name == PUBLIC_OCI_CONFIG_ROOT || it.name.startsWith("$PUBLIC_OCI_CONFIG_ROOT.") }
+      val moduleMetadataByFile = allMetadataFiles.associateWith { getModuleMetadataForFile(it) }
+      val allModulesMetadata = moduleMetadataByFile.values.filterNotNull()
+      val publicOciRoots = allModulesMetadata.flatMap { moduleMetadata ->
+        moduleMetadata.moduleConfigs
+          .flatMap { it.types }
+          .filter { it.standalone && it.prefix == PUBLIC_OCI_CONFIG_ROOT }
+          .map { ForcedConfigRoot(moduleMetadata, it.prefix, it.type) }
+      }
+      val publicOciKeys = if (publicOciRoots.isEmpty()) {
+        emptyList()
+      }
+      else {
+        HelidonConfigMetadataBuilder(allModulesMetadata, module.project).collectKeys(module, publicOciRoots)
+      }
 
       val providerMetadata = HelidonOciConfigSourceProviderDiscovery.getProviderMetadata(module)
       val providerMetadataFiles = providerMetadata.flatMap { it.metadataFiles }.distinctBy { it.virtualFile.path }
-      val moduleMetadataByFile = providerMetadataFiles.associateWith { getModuleMetadataForFile(it) }
+      val providerModuleMetadataByFile = providerMetadataFiles.associateWith { metadataFile ->
+        moduleMetadataByFile[metadataFile] ?: getModuleMetadataForFile(metadataFile)
+      }
       val forcedRoots = providerMetadata.flatMap { provider ->
-        provider.metadataFiles.mapNotNull { moduleMetadataByFile[it] }
+        provider.metadataFiles.mapNotNull { providerModuleMetadataByFile[it] }
           .map { ForcedConfigRoot(it, "helidon.${provider.type}") }
       }
       val providerKeys = if (forcedRoots.isEmpty()) {
         emptyList()
       }
       else {
-        HelidonConfigMetadataBuilder(moduleMetadataByFile.values.filterNotNull(), module.project).collectKeys(module, forcedRoots)
+        HelidonConfigMetadataBuilder(providerModuleMetadataByFile.values.filterNotNull(), module.project).collectKeys(module, forcedRoots)
       }
 
       val keys = LinkedHashMap<String, MetaConfigKey>()

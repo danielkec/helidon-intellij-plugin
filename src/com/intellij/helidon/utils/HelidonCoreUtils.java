@@ -56,9 +56,7 @@ public final class HelidonCoreUtils {
   }
 
   public static boolean hasHelidonLibrary(@NotNull Project project) {
-    return JavaLibraryUtil.hasLibraryClass(project, HelidonConstants.CONFIG) ||
-           JavaLibraryUtil.hasLibraryClass(project, HelidonConstants.CONFIG_SOURCE_PROVIDER) ||
-           JavaLibraryUtil.hasLibraryClass(project, HelidonConstants.HTTP_ROUTING) ||
+    return JavaLibraryUtil.hasLibraryClass(project, HelidonConstants.HTTP_ROUTING) ||
            JavaLibraryUtil.hasLibraryClass(project, HelidonConstants.ROUTING) ||
            JavaLibraryUtil.hasLibraryClass(project, HelidonConstants.REST_SERVER_ENDPOINT) ||
            JavaLibraryUtil.hasLibraryClass(project, HelidonConstants.SERVICE_REGISTRY_SERVICE) ||
@@ -67,14 +65,24 @@ public final class HelidonCoreUtils {
   }
 
   public static boolean hasHelidonLibrary(@Nullable Module module) {
-    return JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.CONFIG) ||
-           JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.CONFIG_SOURCE_PROVIDER) ||
-           JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.HTTP_ROUTING) ||
+    return JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.HTTP_ROUTING) ||
            JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.ROUTING) ||
            JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.REST_SERVER_ENDPOINT) ||
            JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.SERVICE_REGISTRY_SERVICE) ||
            JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI) ||
            JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI);
+  }
+
+  public static boolean hasHelidonConfigLibrary(@NotNull Project project) {
+    return hasHelidonLibrary(project) ||
+           JavaLibraryUtil.hasLibraryClass(project, HelidonConstants.CONFIG) ||
+           JavaLibraryUtil.hasLibraryClass(project, HelidonConstants.CONFIG_SOURCE_PROVIDER);
+  }
+
+  public static boolean hasHelidonConfigLibrary(@Nullable Module module) {
+    return hasHelidonLibrary(module) ||
+           JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.CONFIG) ||
+           JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.CONFIG_SOURCE_PROVIDER);
   }
 
   public static boolean hasHelidonMPLibrary(@Nullable Module module) {

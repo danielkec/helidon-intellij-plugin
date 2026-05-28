@@ -4,7 +4,7 @@ package com.intellij.helidon.config.yaml
 import com.intellij.codeInspection.*
 import com.intellij.helidon.config.HelidonParametrizedConfigKey
 import com.intellij.helidon.config.isHelidonConfigFile
-import com.intellij.helidon.utils.HelidonCommonUtils.hasHelidonLibrary
+import com.intellij.helidon.utils.HelidonCommonUtils.hasHelidonConfigLibrary
 import com.intellij.microservices.jvm.config.MetaConfigKey
 import com.intellij.microservices.jvm.config.MetaConfigKeyReference
 import com.intellij.microservices.jvm.config.MicroservicesConfigBundle
@@ -20,7 +20,7 @@ import org.jetbrains.yaml.psi.*
 internal class HelidonYamlConfigInspection : LocalInspectionTool() {
 
   override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean, session: LocalInspectionToolSession): PsiElementVisitor {
-    if (!hasHelidonLibrary(holder.project) ||
+    if (!hasHelidonConfigLibrary(holder.project) ||
         !isHelidonConfigFile(holder.file)) {
       return PsiElementVisitor.EMPTY_VISITOR
     }

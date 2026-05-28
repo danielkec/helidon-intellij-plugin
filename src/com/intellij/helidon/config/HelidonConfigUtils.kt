@@ -2,7 +2,7 @@
 package com.intellij.helidon.config
 
 import com.intellij.helidon.HelidonIcons
-import com.intellij.helidon.utils.HelidonCommonUtils.hasHelidonLibrary
+import com.intellij.helidon.utils.HelidonCommonUtils.hasHelidonConfigLibrary
 import com.intellij.java.library.JavaLibraryModificationTracker
 import com.intellij.microservices.jvm.config.ConfigPlaceholderReference
 import com.intellij.openapi.module.ModuleUtilCore
@@ -56,7 +56,7 @@ internal fun getHelidonConfigFileKind(file: PsiFile): HelidonConfigFileKind? {
   if (file.virtualFile == null) return null
 
   val fileModule = ModuleUtilCore.findModuleForPsiElement(file)
-  if (fileModule == null || !hasHelidonLibrary(fileModule)) return null
+  if (fileModule == null || !hasHelidonConfigLibrary(fileModule)) return null
 
   return CachedValuesManager.getCachedValue(file) {
     val module = ModuleUtilCore.findModuleForPsiElement(file)

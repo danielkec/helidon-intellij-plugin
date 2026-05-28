@@ -4,7 +4,7 @@ package com.intellij.helidon.config.properties
 import com.intellij.helidon.config.HelidonConfigFileAnnotator
 import com.intellij.helidon.config.HelidonParametrizedConfigKey
 import com.intellij.helidon.config.isHelidonConfigFile
-import com.intellij.helidon.utils.HelidonCommonUtils.hasHelidonLibrary
+import com.intellij.helidon.utils.HelidonCommonUtils.hasHelidonConfigLibrary
 import com.intellij.lang.annotation.AnnotationHolder
 import com.intellij.lang.properties.PropertiesHighlighter
 import com.intellij.lang.properties.psi.PropertiesFile
@@ -31,7 +31,7 @@ internal class HelidonPropertiesAnnotator : HelidonConfigFileAnnotator() {
     val file = holder.currentAnnotationSession.file
     if (file !is PropertiesFile) return
 
-    if (!hasHelidonLibrary((file as PropertiesFile).project) ||
+    if (!hasHelidonConfigLibrary((file as PropertiesFile).project) ||
         !isHelidonConfigFile(file)) {
       return
     }

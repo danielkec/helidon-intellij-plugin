@@ -73,7 +73,7 @@ internal class HelidonYamlKeyMetaConfigKeyReference(yamlKeyValue: YAMLKeyValue) 
     val module = ModuleUtilCore.findModuleForPsiElement(element) ?: return null
     val manager = HelidonMetaConfigKeyManager.getInstance()
     val binder = manager.getConfigKeyNameBinder(module)
-    return manager.getMetaConfigKeys(module, element.containingFile)
+    return manager.getMetaConfigKeys(module, element.containingFile.originalFile)
       .firstOrNull { it.name == keyText || binder.bindsTo(it, keyText) }
   }
 

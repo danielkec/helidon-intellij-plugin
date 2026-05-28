@@ -7,6 +7,7 @@ import com.intellij.java.library.JavaLibraryModificationTracker
 import com.intellij.microservices.jvm.config.ConfigPlaceholderReference
 import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.openapi.roots.ModuleRootManager
+import com.intellij.openapi.roots.ProjectRootModificationTracker
 import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.psi.ElementManipulators
@@ -71,12 +72,16 @@ internal fun getHelidonConfigFileKind(file: PsiFile): HelidonConfigFileKind? {
           if (kind != null) {
             return@getCachedValue Result.create(
               kind, file,
-              JavaLibraryModificationTracker.getInstance(file.project))
+              JavaLibraryModificationTracker.getInstance(file.project),
+              ProjectRootModificationTracker.getInstance(file.project))
           }
         }
       }
     }
-    return@getCachedValue Result.create<HelidonConfigFileKind?>(null, file, JavaLibraryModificationTracker.getInstance(file.project))
+    return@getCachedValue Result.create<HelidonConfigFileKind?>(null,
+                                                                file,
+                                                                JavaLibraryModificationTracker.getInstance(file.project),
+                                                                ProjectRootModificationTracker.getInstance(file.project))
   }
 }
 

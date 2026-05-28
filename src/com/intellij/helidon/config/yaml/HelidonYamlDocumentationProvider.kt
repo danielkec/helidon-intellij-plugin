@@ -80,9 +80,9 @@ internal class HelidonYamlDocumentationProvider : ConfigKeyDocumentationProvider
     }
 
     key.defaultValue?.let {
-      builder.append("<table class='sections'><tr><td valign='top' class='section'><p>Default:</td><td valign='top'><pre>")
+      builder.append("<table class='sections'><tr><td valign='top' class='section'><p>Default:</p></td><td valign='top'><pre>")
         .append(StringUtil.escapeXmlEntities(it))
-        .append("</pre></td></table>")
+        .append("</pre></td></tr></table>")
     }
     return builder.toString()
   }

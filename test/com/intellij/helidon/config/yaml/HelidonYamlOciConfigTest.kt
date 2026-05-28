@@ -121,6 +121,7 @@ class HelidonYamlOciConfigTest : HelidonHighlightingTestCase() {
 
     assertTrue(doc!!.contains("SSv2 &lt;endpoint&gt; template &amp; default"))
     assertTrue(doc.contains("https://secret-service-ce.${'$'}{oci.env.iaas-domain-name}/v1"))
+    assertTrue(doc.contains("<p>Default:</p></td><td valign='top'><pre>https://secret-service-ce.${'$'}{oci.env.iaas-domain-name}/v1</pre></td></tr></table>"))
   }
 
   fun testUnknownApplicationRootDoesNotResolveInOciConfigYaml() {

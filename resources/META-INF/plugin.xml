@@ -10,8 +10,8 @@
     <p>Features:</p>
     <ul>
       <li>Create Helidon Maven projects from the IDE.</li>
-      <li>Create Java Helidon services, resources, configuration classes, server tests, and LangChain4j components from
-        Helidon file templates.</li>
+      <li>Create Java Helidon services, resources, configuration classes, server tests, LangChain4j components, and OCI
+        configuration from Helidon file templates.</li>
       <li>Inspect Helidon services, contracts, injection points, lookups, endpoints, and LangChain4j components in the
         Helidon Services tool window.</li>
       <li>Navigate between Helidon services, injection points, and service registry lookups.</li>
@@ -63,6 +63,10 @@
       <action id="Helidon.New.LangChain4jAgent"
               class="com.intellij.helidon.templates.HelidonCreateLangChain4jAgentAction"
               text="LangChain4j Agent"/>
+      <action id="Helidon.New.OciConfig"
+              class="com.intellij.helidon.templates.HelidonCreateOciConfigAction"
+              text="OCI Config"
+              icon="/icons/ora.svg"/>
       <add-to-group group-id="NewGroup" anchor="after" relative-to-action="NewFromTemplate"/>
     </group>
   </actions>

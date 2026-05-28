@@ -1,0 +1,3 @@
+helidon:
+  oci:
+    authentication-method: "auto"

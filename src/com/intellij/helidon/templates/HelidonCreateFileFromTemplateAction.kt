@@ -12,14 +12,16 @@ import com.intellij.openapi.actionSystem.LangDataKeys
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiDirectory
+import javax.swing.Icon
 
 abstract class HelidonCreateFileFromTemplateAction(
   private val templateName: String,
   presentableName: String,
+  icon: Icon = HelidonIcons.Helidon,
 ) : CreateFromTemplateActionBase(
   presentableName,
   "Create $presentableName from Helidon template",
-  HelidonIcons.Helidon,
+  icon,
 ), DumbAware {
 
   override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -75,4 +77,10 @@ class HelidonCreateLangChain4jServiceAction : HelidonCreateFileFromTemplateActio
 class HelidonCreateLangChain4jAgentAction : HelidonCreateFileFromTemplateAction(
   HELIDON_LANGCHAIN4J_AGENT_TEMPLATE,
   "LangChain4j Agent",
+)
+
+class HelidonCreateOciConfigAction : HelidonCreateFileFromTemplateAction(
+  HELIDON_OCI_CONFIG_TEMPLATE,
+  "OCI Config",
+  HelidonIcons.Ora,
 )

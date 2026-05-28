@@ -1,8 +1,10 @@
 // Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.helidon.templates
 
+import com.intellij.helidon.HelidonIcons
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
@@ -10,17 +12,19 @@ import java.nio.file.Path
 
 class HelidonFileTemplatesTest {
   @Test
-  fun templateGroupRegistersAllHelidonJavaTemplates() {
+  fun templateGroupRegistersAllHelidonTemplates() {
     val descriptor = HelidonFileTemplateGroupDescriptorFactory().fileTemplatesDescriptor
     val templates = descriptor.templates.map { it.fileName }
+    val ociTemplate = descriptor.templates.single { it.fileName == HELIDON_OCI_CONFIG_TEMPLATE }
 
     assertEquals("Helidon", descriptor.title)
-    assertEquals(HELIDON_JAVA_FILE_TEMPLATES, templates)
+    assertEquals(HELIDON_FILE_TEMPLATES, templates)
+    assertSame(HelidonIcons.Ora, ociTemplate.icon)
   }
 
   @Test
   fun templateResourcesExistWithDescriptions() {
-    for (template in HELIDON_JAVA_FILE_TEMPLATES) {
+    for (template in HELIDON_FILE_TEMPLATES) {
       assertTrue("$template template should exist", Files.exists(templatePath(template, "ft")))
       assertTrue("$template description should exist", Files.exists(templatePath(template, "html")))
     }
@@ -74,6 +78,15 @@ class HelidonFileTemplatesTest {
                 text.contains("public interface \${NAME}"))
     assertTrue("Declarative HTTP template should generate a method body",
                text.contains("return \"Hello from Helidon\";"))
+  }
+
+  @Test
+  fun ociConfigTemplateCreatesBootstrapConfigSkeleton() {
+    val text = Files.readString(templatePath(HELIDON_OCI_CONFIG_TEMPLATE, "ft"))
+
+    assertTrue(text.contains("helidon:"))
+    assertTrue(text.contains("oci:"))
+    assertTrue(text.contains("authentication-method: \"auto\""))
   }
 
   private fun templatePath(template: String, extension: String): Path =

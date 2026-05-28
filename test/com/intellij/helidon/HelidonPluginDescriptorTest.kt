@@ -168,7 +168,7 @@ class HelidonPluginDescriptorTest {
     val newMenuRegistration = newMenuGroup.getElementsByTagName("add-to-group").elements().single()
 
     assertTrue("All Helidon templates should have Project View New menu actions",
-               newMenuActionClasses.size == 7)
+               newMenuActionClasses.size == 8)
     assertTrue(newMenuActionClasses.containsAll(listOf(
       "com.intellij.helidon.templates.HelidonCreateSeServiceAction",
       "com.intellij.helidon.templates.HelidonCreateMpResourceAction",
@@ -177,7 +177,12 @@ class HelidonPluginDescriptorTest {
       "com.intellij.helidon.templates.HelidonCreateServerTestAction",
       "com.intellij.helidon.templates.HelidonCreateLangChain4jServiceAction",
       "com.intellij.helidon.templates.HelidonCreateLangChain4jAgentAction",
+      "com.intellij.helidon.templates.HelidonCreateOciConfigAction",
     )))
+    val ociConfigAction = newMenuGroup.getElementsByTagName("action")
+      .elements()
+      .single { element -> element.getAttribute("id") == "Helidon.New.OciConfig" }
+    assertTrue(ociConfigAction.getAttribute("icon") == "/icons/ora.svg")
     assertTrue("Helidon templates must be visible from the Project View New menu",
                newMenuRegistration.getAttribute("group-id") == "NewGroup")
     assertTrue("Helidon templates should appear near the standard template actions",

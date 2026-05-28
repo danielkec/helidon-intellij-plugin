@@ -3,6 +3,7 @@ package com.intellij.helidon.langchain4j.diagram
 
 import com.intellij.helidon.constants.HelidonConstants
 import com.intellij.helidon.config.HelidonConfigFileContributor
+import com.intellij.helidon.config.isHelidonApplicationConfigFileName
 import com.intellij.helidon.config.yaml.HelidonConfigYamlAccessor
 import com.intellij.helidon.config.yaml.getQualifiedConfigKeyName
 import com.intellij.helidon.config.yaml.isInsideApplicationYamlFile
@@ -1004,6 +1005,7 @@ internal object HelidonLangChain4jWorkflowGraphBuilder {
     val psiManager = PsiManager.getInstance(module.project)
     return HelidonConfigFileContributor.findConfigFiles(module, includeTests)
       .map { it.first }
+      .filter { isHelidonApplicationConfigFileName(it.nameWithoutExtension) }
       .mapNotNull { psiManager.findFile(it) as? YAMLFile }
       .distinct()
   }

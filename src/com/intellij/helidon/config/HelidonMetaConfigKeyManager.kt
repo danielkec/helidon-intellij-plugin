@@ -13,7 +13,9 @@ import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.roots.ProjectRootModificationTracker
+import com.intellij.openapi.util.Key
 import com.intellij.psi.PsiFile
+import com.intellij.psi.util.CachedValue
 import com.intellij.psi.util.CachedValueProvider
 import com.intellij.psi.util.CachedValuesManager
 
@@ -29,17 +31,58 @@ class HelidonMetaConfigKeyManager : MetaConfigKeyManager() {
     return getMetaConfigKeysFromLibs(module)
   }
 
+  internal fun getMetaConfigKeys(module: Module?, configFile: PsiFile?): List<MetaConfigKey> {
+    if (module == null || !HelidonCommonUtils.hasHelidonLibrary(module)) return emptyList()
+    if (configFile != null && isHelidonOciConfigFile(configFile)) {
+      return getOciMetaConfigKeysFromLibs(module)
+    }
+    return getMetaConfigKeysFromLibs(module)
+  }
+
   override fun getConfigKeyNameBinder(module: Module): ConfigKeyNameBinder = HelidonConfigKeyNameBinder
 
   private fun getMetaConfigKeysFromLibs(module: Module): List<MetaConfigKey> {
     return CachedValuesManager.getManager(module.project).getCachedValue(module) {
-      val metadataFiles = findConfigFilesInMetaInf<PsiFile>(module, HELIDON_CONFIG_METADATA, true)
+      val metadataFiles = findConfigMetadataFiles(module)
       val modulesMetadata = metadataFiles.mapNotNull { metadataFile ->
         getModuleMetadataForFile(metadataFile)
       }
       val allKeys = HelidonConfigMetadataBuilder(modulesMetadata, module.project).collectKeys(module)
       CachedValueProvider.Result.create(allKeys, *metadataCacheDependencies(module, metadataFiles))
     }
+  }
+
+  private fun getOciMetaConfigKeysFromLibs(module: Module): List<MetaConfigKey> {
+    return CachedValuesManager.getManager(module.project).getCachedValue(module, OCI_META_CONFIG_KEYS_KEY, {
+      val allMetadataFiles = findConfigMetadataFiles(module)
+      val allKeys = getMetaConfigKeysFromLibs(module)
+      val publicOciKeys = allKeys.filter { it.name == PUBLIC_OCI_CONFIG_ROOT || it.name.startsWith("$PUBLIC_OCI_CONFIG_ROOT.") }
+
+      val providerMetadata = HelidonOciConfigSourceProviderDiscovery.getProviderMetadata(module)
+      val providerMetadataFiles = providerMetadata.flatMap { it.metadataFiles }.distinctBy { it.virtualFile.path }
+      val moduleMetadataByFile = providerMetadataFiles.associateWith { getModuleMetadataForFile(it) }
+      val forcedRoots = providerMetadata.flatMap { provider ->
+        provider.metadataFiles.mapNotNull { moduleMetadataByFile[it] }
+          .map { ForcedConfigRoot(it, "helidon.${provider.type}") }
+      }
+      val providerKeys = if (forcedRoots.isEmpty()) {
+        emptyList()
+      }
+      else {
+        HelidonConfigMetadataBuilder(moduleMetadataByFile.values.filterNotNull(), module.project).collectKeys(module, forcedRoots)
+      }
+
+      val keys = LinkedHashMap<String, MetaConfigKey>()
+      for (key in publicOciKeys + providerKeys) {
+        keys.putIfAbsent(key.name, key)
+      }
+      val dependencyFiles = (allMetadataFiles + providerMetadata.flatMap { it.dependencyFiles }).distinctBy { it.virtualFile.path }
+      CachedValueProvider.Result.create(keys.values.toList(), *metadataCacheDependencies(module, dependencyFiles))
+    }, false)
+  }
+
+  private fun findConfigMetadataFiles(module: Module): List<PsiFile> {
+    return findConfigFilesInMetaInf(module, HELIDON_CONFIG_METADATA, true)
   }
 
   private fun metadataCacheDependencies(module: Module, metadataFiles: List<PsiFile>): Array<Any> {
@@ -61,3 +104,6 @@ class HelidonMetaConfigKeyManager : MetaConfigKeyManager() {
     return null
   }
 }
+
+private const val PUBLIC_OCI_CONFIG_ROOT = "helidon.oci"
+private val OCI_META_CONFIG_KEYS_KEY = Key.create<CachedValue<List<MetaConfigKey>>>("HELIDON_OCI_META_CONFIG_KEYS")

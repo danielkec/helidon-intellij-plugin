@@ -3,6 +3,7 @@ package com.intellij.helidon.langchain4j
 
 import com.intellij.helidon.constants.HelidonConstants
 import com.intellij.helidon.config.HelidonConfigFileContributor
+import com.intellij.helidon.config.isHelidonApplicationConfigFileName
 import com.intellij.helidon.config.properties.HelidonPropertiesUtils
 import com.intellij.helidon.config.yaml.HelidonConfigYamlAccessor
 import com.intellij.java.library.JavaLibraryModificationTracker
@@ -659,7 +660,9 @@ internal object HelidonLangChain4jConfigResolver {
       val psiManager = PsiManager.getInstance(module.project)
       val files = HelidonConfigFileContributor.findConfigFiles(module, includeTests)
         .mapNotNull { (configFile, contributor) ->
-          psiManager.findFile(configFile)?.let { ConfigFile(it, contributor) }
+          psiManager.findFile(configFile)
+            ?.takeIf { isHelidonApplicationConfigFileName(configFile.nameWithoutExtension) }
+            ?.let { ConfigFile(it, contributor) }
         }
 
       val dependencies = ArrayList<Any>(files.size + 2)

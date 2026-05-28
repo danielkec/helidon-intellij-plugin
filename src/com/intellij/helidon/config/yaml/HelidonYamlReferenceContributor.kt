@@ -12,7 +12,7 @@ import org.jetbrains.yaml.psi.YAMLScalar
 
 internal val APPLICATION_YAML_CONDITION: PatternCondition<PsiElement> = object : PatternCondition<PsiElement>("isApplicationPropertiesAndHelidon") {
   override fun accepts(element: PsiElement, context: ProcessingContext): Boolean {
-    return isInsideApplicationYamlFile(element)
+    return isInsideHelidonYamlConfigFile(element)
   }
 }
 

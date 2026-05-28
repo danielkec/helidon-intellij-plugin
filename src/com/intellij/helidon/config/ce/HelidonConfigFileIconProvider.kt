@@ -2,6 +2,7 @@
 package com.intellij.helidon.config.ce
 
 import com.intellij.helidon.HelidonIcons
+import com.intellij.helidon.config.isHelidonConfigFile
 import com.intellij.ide.IconProvider
 import com.intellij.lang.properties.psi.PropertiesFile
 import com.intellij.openapi.util.Iconable
@@ -13,6 +14,6 @@ internal class HelidonConfigFileIconProvider : IconProvider() {
   override fun getIcon(element: PsiElement, @Iconable.IconFlags flags: Int): Icon? {
     if (isMicroservicesPluginEnabled()) return null
     if (element !is YAMLFile && element !is PropertiesFile) return null
-    return if (isHelidonApplicationConfigFile(element.containingFile)) HelidonIcons.Helidon else null
+    return if (isHelidonConfigFile(element.containingFile)) HelidonIcons.Helidon else null
   }
 }

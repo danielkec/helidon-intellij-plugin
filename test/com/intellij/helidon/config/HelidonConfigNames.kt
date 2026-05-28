@@ -4,3 +4,4 @@ package com.intellij.helidon.config
 const val HELIDON_APPLICATION_PROPERTIES = "$HELIDON_APPLICATION_PREFIX.properties"
 const val HELIDON_APPLICATION_YAML = "$HELIDON_APPLICATION_PREFIX.yaml"
 const val HELIDON_MP_CONFIG_PROPERTIES = "microprofile-config.properties"
+const val HELIDON_OCI_CONFIG_YAML = "$HELIDON_OCI_CONFIG_PREFIX.yaml"

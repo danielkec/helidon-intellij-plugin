@@ -20,3 +20,13 @@ internal const val HELIDON_METADATA_OPTION_KIND: String = "kind"
 internal const val HELIDON_METADATA_OPTION_METHOD: String = "method"
 internal const val HELIDON_METADATA_OPTION_DEPRECATED: String = "deprecated"
 internal const val HELIDON_METADATA_OPTION_DEFAULT_VALUE: String = "defaultValue"
+
+internal data class ForcedConfigRoot(val moduleMetadata: ModuleMetadata, val prefix: String)
+
+internal fun getRootConfigTypes(moduleMetadata: ModuleMetadata): List<ConfigType> {
+  val types = moduleMetadata.moduleConfigs.flatMap { it.types }
+  val referencedTypes = types.flatMapTo(HashSet()) { configType ->
+    configType.inherits + configType.options.map { it.type }
+  }
+  return types.filter { it.type !in referencedTypes }
+}

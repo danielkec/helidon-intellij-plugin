@@ -13,7 +13,12 @@ internal class HelidonYamlKeyReferenceProvider : PsiReferenceProvider() {
     val yamlKeyValue = element as YAMLKeyValue
     if (yamlKeyValue.key == null) return PsiReference.EMPTY_ARRAY
 
-    return arrayOf(*HelidonLangChain4jConfigResolver.keyReferences(yamlKeyValue),
-                   HelidonYamlKeyMetaConfigKeyReference(yamlKeyValue))
+    val langChain4jReferences = if (isInsideApplicationYamlFile(yamlKeyValue)) {
+      HelidonLangChain4jConfigResolver.keyReferences(yamlKeyValue)
+    }
+    else {
+      PsiReference.EMPTY_ARRAY
+    }
+    return arrayOf(*langChain4jReferences, HelidonYamlKeyMetaConfigKeyReference(yamlKeyValue))
   }
 }

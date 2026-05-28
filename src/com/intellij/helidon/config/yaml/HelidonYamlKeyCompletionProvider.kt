@@ -228,7 +228,7 @@ internal class HelidonYamlKeyCompletionProvider : CompletionProvider<CompletionP
       }
     }
     if (configKeys == null) {
-      configKeys = HelidonMetaConfigKeyManager.getInstance().getAllMetaConfigKeys(module)
+      configKeys = HelidonMetaConfigKeyManager.getInstance().getMetaConfigKeys(module, yamlFile)
     }
 
     val rootQualifiedName = if (root is YAMLKeyValue) getQualifiedConfigKeyName(root) else null

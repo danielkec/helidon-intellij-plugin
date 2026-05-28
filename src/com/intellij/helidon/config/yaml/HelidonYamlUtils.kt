@@ -8,6 +8,7 @@ import com.intellij.codeInsight.lookup.LookupElementBuilder
 import com.intellij.codeInsight.lookup.LookupElementPresentation
 import com.intellij.codeInsight.lookup.LookupElementRenderer
 import com.intellij.helidon.config.YAML_KEY_INSERT_HANDLER
+import com.intellij.helidon.config.isHelidonApplicationConfigFile
 import com.intellij.helidon.config.isHelidonConfigFile
 import com.intellij.microservices.jvm.config.MetaConfigKey
 import com.intellij.microservices.jvm.config.MetaConfigKeyManager.ConfigKeyNameBinder
@@ -33,6 +34,12 @@ import java.util.function.Function
 import java.util.function.Supplier
 
 fun isInsideApplicationYamlFile(psiElement: PsiElement): Boolean {
+  val containingFile = psiElement.containingFile ?: return false
+  val originalFile = containingFile.originalFile
+  return originalFile is YAMLFile && isHelidonApplicationConfigFile(originalFile)
+}
+
+fun isInsideHelidonYamlConfigFile(psiElement: PsiElement): Boolean {
   val containingFile = psiElement.containingFile ?: return false
   val originalFile = containingFile.originalFile
   return originalFile is YAMLFile && isHelidonConfigFile(originalFile)

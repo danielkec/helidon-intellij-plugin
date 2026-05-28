@@ -5,6 +5,7 @@ import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.HelidonIcons
 import com.intellij.helidon.config.HELIDON_APPLICATION_PROPERTIES
 import com.intellij.helidon.config.HELIDON_APPLICATION_YAML
+import com.intellij.helidon.config.HELIDON_OCI_CONFIG_YAML
 
 class HelidonConfigFileIconProviderTest : HelidonHighlightingTestCase() {
 
@@ -21,6 +22,22 @@ class HelidonConfigFileIconProviderTest : HelidonHighlightingTestCase() {
       val psiFile = myFixture.configureByText(HELIDON_APPLICATION_PROPERTIES, "")
 
       assertSame(HelidonIcons.Helidon, HelidonConfigFileIconProvider().getIcon(psiFile, 0))
+    }
+  }
+
+  fun testOciConfigYamlGetsHelidonIcon() {
+    withMicroservicesPluginEnabled(false) {
+      val psiFile = myFixture.configureByText(HELIDON_OCI_CONFIG_YAML, "")
+
+      assertSame(HelidonIcons.Helidon, HelidonConfigFileIconProvider().getIcon(psiFile, 0))
+    }
+  }
+
+  fun testOciConfigPropertiesDoesNotGetHelidonIcon() {
+    withMicroservicesPluginEnabled(false) {
+      val psiFile = myFixture.configureByText("oci-config.properties", "")
+
+      assertNull(HelidonConfigFileIconProvider().getIcon(psiFile, 0))
     }
   }
 

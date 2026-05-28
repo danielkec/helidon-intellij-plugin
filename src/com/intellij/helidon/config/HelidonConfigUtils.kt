@@ -23,16 +23,36 @@ internal const val HELIDON_CONFIG_GET_METHOD = "get"
 internal const val HELIDON_APPLICATION_PREFIX = "application"
 internal const val HELIDON_APPLICATION_ENV_SPECIFIC_PREFIX = "$HELIDON_APPLICATION_PREFIX-"
 internal const val HELIDON_MP_CONFIG_FILE_NAME = "microprofile-config"
+internal const val HELIDON_OCI_CONFIG_PREFIX = "oci-config"
+
+internal enum class HelidonConfigFileKind {
+  APPLICATION,
+  OCI,
+}
 
 fun isHelidonConfigFileName(fileName: String): Boolean {
-  return fileName == HELIDON_APPLICATION_PREFIX
-         || fileName == HELIDON_MP_CONFIG_FILE_NAME
-         || fileName.startsWith(HELIDON_APPLICATION_ENV_SPECIFIC_PREFIX)
+  return isHelidonApplicationConfigFileName(fileName) || isHelidonOciConfigFileName(fileName)
 }
+
+internal fun isHelidonApplicationConfigFileName(fileName: String): Boolean {
+  return fileName == HELIDON_APPLICATION_PREFIX ||
+         fileName == HELIDON_MP_CONFIG_FILE_NAME ||
+         fileName.startsWith(HELIDON_APPLICATION_ENV_SPECIFIC_PREFIX)
+}
+
+internal fun isHelidonOciConfigFileName(fileName: String): Boolean = fileName == HELIDON_OCI_CONFIG_PREFIX
 
 fun isHelidonConfigFile(file: PsiFile): Boolean = getHelidonConfigFileIcon(file) != null
 
-fun getHelidonConfigFileIcon(file: PsiFile): Icon? {
+internal fun isHelidonApplicationConfigFile(file: PsiFile): Boolean {
+  return getHelidonConfigFileKind(file) == HelidonConfigFileKind.APPLICATION
+}
+
+internal fun isHelidonOciConfigFile(file: PsiFile): Boolean {
+  return getHelidonConfigFileKind(file) == HelidonConfigFileKind.OCI
+}
+
+internal fun getHelidonConfigFileKind(file: PsiFile): HelidonConfigFileKind? {
   if (file.virtualFile == null) return null
 
   val fileModule = ModuleUtilCore.findModuleForPsiElement(file)
@@ -44,16 +64,31 @@ fun getHelidonConfigFileIcon(file: PsiFile): Icon? {
       val virtualFile = file.virtualFile
       val sourceRoots = ModuleRootManager.getInstance(module).sourceRoots
       for (contributor in HelidonConfigFileContributor.EP_NAME.extensions) {
-        if (contributor.fileType == file.fileType) {
-          if (isHelidonConfigFileName(virtualFile.nameWithoutExtension) && VfsUtilCore.isUnder(virtualFile, sourceRoots.toSet())) {
-            return@getCachedValue Result.create<Icon?>(
-              HelidonIcons.Helidon, file,
+        if (contributor.fileType == file.fileType &&
+            contributor.isConfigFile(virtualFile) &&
+            VfsUtilCore.isUnder(virtualFile, sourceRoots.toSet())) {
+          val kind = getHelidonConfigFileKind(virtualFile.nameWithoutExtension)
+          if (kind != null) {
+            return@getCachedValue Result.create(
+              kind, file,
               JavaLibraryModificationTracker.getInstance(file.project))
           }
         }
       }
     }
-    return@getCachedValue Result.create<Icon?>(null, file, JavaLibraryModificationTracker.getInstance(file.project))
+    return@getCachedValue Result.create<HelidonConfigFileKind?>(null, file, JavaLibraryModificationTracker.getInstance(file.project))
+  }
+}
+
+fun getHelidonConfigFileIcon(file: PsiFile): Icon? {
+  return if (getHelidonConfigFileKind(file) != null) HelidonIcons.Helidon else null
+}
+
+private fun getHelidonConfigFileKind(fileName: String): HelidonConfigFileKind? {
+  return when {
+    isHelidonApplicationConfigFileName(fileName) -> HelidonConfigFileKind.APPLICATION
+    isHelidonOciConfigFileName(fileName) -> HelidonConfigFileKind.OCI
+    else -> null
   }
 }
 

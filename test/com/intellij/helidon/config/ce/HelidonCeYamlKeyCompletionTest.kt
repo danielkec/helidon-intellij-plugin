@@ -4,6 +4,13 @@ package com.intellij.helidon.config.ce
 import com.intellij.codeInsight.lookup.Lookup
 import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.config.HELIDON_APPLICATION_YAML
+import com.intellij.helidon.config.HELIDON_CONFIG_METADATA
+import com.intellij.helidon.config.HELIDON_OCI_CONFIG_YAML
+import com.intellij.helidon.config.envConfigMetadata
+import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.testFramework.PsiTestUtil
+import com.intellij.testFramework.VfsTestUtil
+import java.nio.file.Files
 
 class HelidonCeYamlKeyCompletionTest : HelidonHighlightingTestCase() {
 
@@ -168,5 +175,59 @@ class HelidonCeYamlKeyCompletionTest : HelidonHighlightingTestCase() {
       val lookupElementStrings = myFixture.lookupElementStrings ?: emptyList()
       assertDoesntContain(lookupElementStrings, "host", "port", "sockets")
     }
+  }
+
+  fun testCompletesOciConfigYamlProviderRootFromMetadata() {
+    withMicroservicesPluginEnabled(false) {
+      addOciEnvProviderLibrary()
+      myFixture.configureByText(HELIDON_OCI_CONFIG_YAML, """
+        helidon:
+          oci-env:
+            <caret>
+      """.trimIndent())
+      myFixture.completeBasic()
+
+      val lookupElementStrings = myFixture.lookupElementStrings
+      assertNotNull(lookupElementStrings)
+      assertContainsElements(lookupElementStrings!!, "prefix", "use-physical-availability-domain")
+      assertDoesntContain(lookupElementStrings, "server")
+    }
+  }
+
+  private fun addOciEnvProviderLibrary() {
+    myFixture.addClass("""
+      package com.oracle.helidon.oci.envconfig;
+
+      public final class OciEnvConfig {}
+    """.trimIndent())
+    myFixture.addClass("""
+      package com.oracle.helidon.oci.envconfig;
+
+      public final class OciEnvLocationOverride {}
+    """.trimIndent())
+    myFixture.addClass("""
+      package com.oracle.helidon.oci.envconfig;
+
+      public final class OciEnvDynamicCoreRegions {}
+    """.trimIndent())
+    myFixture.addClass("""
+      package com.oracle.helidon.oci.envconfig;
+
+      public final class OciEnvConfigSourceProvider {
+        static final String TYPE = "oci-env";
+      }
+    """.trimIndent())
+
+    val libraryRootPath = Files.createTempDirectory("ce-oci-env-provider")
+    val libraryRoot = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(libraryRootPath)!!
+    VfsTestUtil.createFile(libraryRoot,
+                           "META-INF/services/io.helidon.config.spi.ConfigSourceProvider",
+                           "com.oracle.helidon.oci.envconfig.OciEnvConfigSourceProvider")
+    VfsTestUtil.createFile(libraryRoot, "META-INF/helidon/$HELIDON_CONFIG_METADATA", envConfigMetadata())
+    PsiTestUtil.addLibrary(myFixture.testRootDisposable,
+                           module,
+                           "ce-oci-env-provider",
+                           libraryRootPath.parent.toString(),
+                           libraryRootPath.fileName.toString())
   }
 }

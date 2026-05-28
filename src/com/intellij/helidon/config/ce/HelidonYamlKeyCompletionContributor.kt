@@ -9,6 +9,7 @@ import com.intellij.codeInsight.completion.CompletionType
 import com.intellij.codeInsight.completion.CompletionUtil
 import com.intellij.codeInsight.lookup.LookupElementBuilder
 import com.intellij.helidon.config.YAML_KEY_INSERT_HANDLER
+import com.intellij.helidon.config.isHelidonConfigFile
 import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.patterns.PlatformPatterns
 import com.intellij.patterns.PsiElementPattern
@@ -58,7 +59,7 @@ internal class HelidonYamlKeyCompletionContributor : CompletionContributor() {
       if (isMicroservicesPluginEnabled()) return
 
       val yamlFile = parameters.originalFile as? YAMLFile ?: return
-      if (!isHelidonApplicationConfigFile(yamlFile)) return
+      if (!isHelidonConfigFile(yamlFile)) return
 
       val module = ModuleUtilCore.findModuleForPsiElement(yamlFile) ?: return
       val element = CompletionUtil.getOriginalElement(parameters.position) ?: parameters.position
@@ -69,7 +70,7 @@ internal class HelidonYamlKeyCompletionContributor : CompletionContributor() {
       val existingKeys = getExistingChildKeys(parentKeyValue, parentSequenceItem, yamlFile)
       val lookupNames = LinkedHashSet<String>()
 
-      for (key in HelidonConfigKeyService.getInstance().getAllKeys(module)) {
+      for (key in HelidonConfigKeyService.getInstance().getAllKeys(module, yamlFile)) {
         val lookupName = HelidonConfigKeyMatcher.childLookupName(key.name, parentQualifiedName) ?: continue
         if (lookupName == "*" || lookupName in existingKeys) continue
         if (!resultWithMatcher.prefixMatcher.prefixMatches(lookupName)) continue
@@ -182,7 +183,7 @@ internal class HelidonYamlKeyCompletionContributor : CompletionContributor() {
       override fun accepts(element: PsiElement, context: ProcessingContext?): Boolean {
         if (isMicroservicesPluginEnabled()) return false
         val originalFile = element.containingFile?.originalFile ?: return false
-        return originalFile is YAMLFile && isHelidonApplicationConfigFile(originalFile)
+        return originalFile is YAMLFile && isHelidonConfigFile(originalFile)
       }
     }
   }

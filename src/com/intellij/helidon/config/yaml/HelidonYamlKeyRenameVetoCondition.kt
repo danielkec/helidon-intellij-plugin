@@ -17,7 +17,7 @@ private fun findKeyValue(psiElement: PsiElement): YAMLKeyValue? {
 internal class HelidonYamlKeyRenameVetoCondition : Condition<PsiElement> {
   override fun value(psiElement: PsiElement): Boolean {
     val keyValue = findKeyValue(psiElement) ?: return false
-    if (!isInsideApplicationYamlFile(keyValue)) return false
+    if (!isInsideHelidonYamlConfigFile(keyValue)) return false
 
     return keyValue.references.any { it is HelidonYamlKeyMetaConfigKeyReference && it.resolvedKey != null }
   }

@@ -23,7 +23,7 @@ internal object HelidonTestTargetResolver {
   }
 
   fun resolve(element: PsiElement, module: Module?, requireMaven: Boolean): HelidonMavenTestTarget? {
-    if (module == null || !HelidonCoreUtils.hasHelidonLibrary(module)) {
+    if (module == null || !hasHelidonTestLibrary(module)) {
       return null
     }
 
@@ -64,6 +64,9 @@ internal object HelidonTestTargetResolver {
 
   private fun testClass(element: PsiElement): PsiClass? =
     JUnitUtil.getTestClass(element) ?: PsiTreeUtil.getParentOfType(element, PsiClass::class.java, false)
+
+  private fun hasHelidonTestLibrary(module: Module): Boolean =
+    HelidonCoreUtils.hasHelidonLibrary(module) || HelidonCoreUtils.hasHelidonMPLibrary(module)
 
   private fun isTestClass(testClass: PsiClass): Boolean =
     testClass.methods.any(::isTestMethod) ||

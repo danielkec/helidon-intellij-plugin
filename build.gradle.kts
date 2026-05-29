@@ -66,15 +66,10 @@ intellijPlatform {
 
     changeNotes = """
       <ul>
-        <li>Added Helidon LangChain4j navigation between <code>@Ai.*</code> annotations and <code>langchain4j.*</code> configuration, including service, agent, model, content retriever, provider, embedding store, and MCP client references.</li>
-        <li>Added IntelliJ HTTP Mappings gutter navigation for Helidon Declarative <code>@RestServer.Endpoint</code> HTTP method annotations, including inherited/interface declarations and custom <code>@Http.HttpMethod</code> annotations.</li>
-        <li>Improved Declarative HTTP mapping navigation with <code>http-method:</code> Endpoints filters, multi-endpoint handling, endpoint-module-aware navigation, and cached target lookup.</li>
-        <li>Expanded Helidon WebServer endpoint discovery for route builder/helper overloads, <code>anyOf</code>, <code>HttpRoute</code> objects, wildcard route types, registered service parent paths, and path matcher factories.</li>
-        <li>Improved URL resolver, inlay, and path-parameter reference support for route overloads and path matcher semantics.</li>
-        <li>Made the base plugin descriptor compatible with IntelliJ IDEA Community by loading Microservices-dependent integrations only when the optional Microservices plugin is available.</li>
-        <li>Removed unsupported Kotlin source-language registration for Helidon config references.</li>
-        <li>Hid the Google Login authentication provider from the Helidon new project wizard.</li>
-        <li>Added Java Helidon file templates and Maven-backed Helidon test run configuration support.</li>
+        <li>Added the Helidon Services tool window for browsing services, contracts, injection points, service registry lookups, endpoints, and LangChain4j components.</li>
+        <li>Added Helidon file templates to the IDE New menu for Declarative HTTP services, server tests, LangChain4j services and agents, and OCI configuration files.</li>
+        <li>Added Maven-backed Run actions for JUnit test classes and methods in Helidon Maven modules.</li>
+        <li>Added <code>oci-config.yaml</code> support with OCI config source provider key completion, option documentation, file icons, and OCI region value completion.</li>
       </ul>
     """.trimIndent()
   }

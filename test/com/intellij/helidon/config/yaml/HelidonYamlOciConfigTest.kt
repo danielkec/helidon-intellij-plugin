@@ -6,6 +6,7 @@ import com.intellij.helidon.HelidonIcons
 import com.intellij.helidon.HelidonProjectDescriptorBuilder
 import com.intellij.helidon.config.HELIDON_OCI_CONFIG_YAML
 import com.intellij.helidon.config.HELIDON_CONFIG_METADATA
+import com.intellij.helidon.config.HelidonOciRegions
 import com.intellij.helidon.config.crossProviderMetadata
 import com.intellij.helidon.config.envConfigMetadata
 import com.intellij.helidon.config.isHelidonConfigFile
@@ -220,6 +221,31 @@ class HelidonYamlOciConfigTest : HelidonHighlightingTestCase() {
 
     val lookupStrings = myFixture.lookupElementStrings!!
     assertContainsElements(lookupStrings, "us-ashburn-1", "eu-frankfurt-1", "sol-mars-1")
+  }
+
+  fun testOciRegionCacheRefreshesWhenUserRegionsConfigChanges() {
+    val home = Files.createTempDirectory("oci-regions-cache-home")
+    val regionsConfig = home.resolve(".oci/regions-config.json")
+    Files.createDirectories(regionsConfig.parent)
+    Files.writeString(regionsConfig, """
+      [{
+        "regionIdentifier": "custom-cache-before-1"
+      }]
+    """.trimIndent())
+
+    withUserHome(home) {
+      assertContainsElements(HelidonOciRegions.regionIdentifiers(), "custom-cache-before-1")
+
+      Files.writeString(regionsConfig, """
+        [{
+          "regionIdentifier": "custom-cache-after-region-1"
+        }]
+      """.trimIndent())
+
+      val regionIdentifiers = HelidonOciRegions.regionIdentifiers()
+      assertContainsElements(regionIdentifiers, "custom-cache-after-region-1")
+      assertDoesntContain(regionIdentifiers, "custom-cache-before-1")
+    }
   }
 
   fun testCompletesOciEnvLocationOverrideRegion() {

@@ -18,7 +18,6 @@ import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.util.PlatformIcons
 import com.intellij.util.ProcessingContext
 import org.jetbrains.yaml.psi.YAMLFile
-import org.jetbrains.yaml.psi.YAMLKeyValue
 
 internal class HelidonYamlValueCompletionContributor : CompletionContributor() {
   init {

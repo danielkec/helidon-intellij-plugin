@@ -11,6 +11,7 @@ import com.intellij.codeInsight.lookup.LookupElementBuilder
 import com.intellij.helidon.config.HelidonOciConfigOptions
 import com.intellij.helidon.config.YAML_KEY_INSERT_HANDLER
 import com.intellij.helidon.config.YAML_SCALAR_KEY_INSERT_HANDLER
+import com.intellij.helidon.config.getPreviousYamlMappingKeyValue
 import com.intellij.helidon.config.isHelidonConfigFile
 import com.intellij.helidon.config.isHelidonOciConfigFile
 import com.intellij.helidon.config.isOciRegionKeyName
@@ -82,7 +83,7 @@ internal class HelidonYamlKeyCompletionContributor : CompletionContributor() {
         lookupNames.add(lookupName)
       }
       if (isHelidonOciConfigFile(yamlFile)) {
-        val previousParentQualifiedName = getPreviousMappingKeyValue(element, parameters.offset)
+        val previousParentQualifiedName = getPreviousYamlMappingKeyValue(element, parameters.offset)
           ?.let { getQualifiedConfigKeyName(it, parentSequenceItem) }
         val ociParentQualifiedName = when {
           previousParentQualifiedName == "helidon.oci" ||
@@ -141,40 +142,12 @@ internal class HelidonYamlKeyCompletionContributor : CompletionContributor() {
       val mapping = PsiTreeUtil.getParentOfType(element, YAMLMapping::class.java)
       return mapping?.let { PsiTreeUtil.getParentOfType(it, YAMLKeyValue::class.java) }
              ?: keyValue
-             ?: getPreviousMappingKeyValue(element, offset)
+             ?: getPreviousYamlMappingKeyValue(element, offset)
     }
 
     private fun getSequenceOwnerKeyValue(parentSequenceItem: YAMLSequenceItem): YAMLKeyValue? {
       val parentSequence = PsiTreeUtil.getParentOfType(parentSequenceItem, YAMLSequence::class.java)
       return PsiTreeUtil.getParentOfType(parentSequence, YAMLKeyValue::class.java)
-    }
-
-    private fun getPreviousMappingKeyValue(element: PsiElement, offset: Int): YAMLKeyValue? {
-      val file = element.containingFile.originalFile
-      val text = file.text
-      if (text.isEmpty()) return null
-
-      val safeOffset = offset.coerceIn(0, text.length)
-      val currentLineStart = text.lastIndexOf('\n', (safeOffset - 1).coerceAtLeast(0)) + 1
-      var previousLineEnd = currentLineStart - 1
-      while (previousLineEnd > 0) {
-        val previousLineStart = text.lastIndexOf('\n', previousLineEnd - 1) + 1
-        val lineText = text.substring(previousLineStart, previousLineEnd).trimEnd('\r')
-        val firstNonWhitespace = lineText.indexOfFirst { it != ' ' && it != '\t' }
-        if (firstNonWhitespace >= 0) {
-          if (lineText.substring(firstNonWhitespace).startsWith("#")) {
-            previousLineEnd = previousLineStart - 1
-            continue
-          }
-
-          val previousLineElement = file.findElementAt(previousLineStart + firstNonWhitespace) ?: return null
-          val previousKeyValue = PsiTreeUtil.getParentOfType(previousLineElement, YAMLKeyValue::class.java) ?: return null
-          val previousValue = previousKeyValue.value
-          return if (previousValue == null || previousValue is YAMLMapping || previousValue is YAMLSequence) previousKeyValue else null
-        }
-        previousLineEnd = previousLineStart - 1
-      }
-      return null
     }
 
     private fun getQualifiedConfigKeyName(yamlKeyValue: YAMLKeyValue?, parentSequenceItem: YAMLSequenceItem?): String {

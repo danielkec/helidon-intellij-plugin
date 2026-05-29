@@ -4,24 +4,49 @@ package com.intellij.helidon.config
 import com.google.gson.JsonElement
 import com.google.gson.JsonParser
 import com.intellij.openapi.diagnostic.thisLogger
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.BasicFileAttributes
 
 internal object HelidonOciRegions {
   private const val OCI_CONFIG_DIR = ".oci"
   private const val REGIONS_CONFIG = "regions-config.json"
   private const val REGION_IDENTIFIER = "regionIdentifier"
+  private const val MISSING_FILE_SIZE = -1L
+  private const val MISSING_FILE_MODIFICATION_TIME = -1L
+
+  private val builtInRegionIdentifiers = BuiltInOciRegion.entries.map { it.regionIdentifier }
+  private val cacheLock = Any()
+
+  @Volatile
+  private var configuredRegionsCache: ConfiguredRegionsCache? = null
 
   fun regionIdentifiers(): List<String> {
     val configuredRegions = configuredRegionIdentifiers()
-    return configuredRegions.ifEmpty { BuiltInOciRegion.entries.map { it.regionIdentifier } }
+    return configuredRegions.ifEmpty { builtInRegionIdentifiers }
   }
 
   private fun configuredRegionIdentifiers(): List<String> {
     val home = System.getProperty("user.home")?.takeIf { it.isNotBlank() } ?: return emptyList()
     val path = Path.of(home, OCI_CONFIG_DIR, REGIONS_CONFIG)
-    if (!Files.isRegularFile(path)) return emptyList()
+    val fileState = regionsConfigFileState(path)
 
+    configuredRegionsCache?.takeIf { it.fileState == fileState }?.let { return it.regionIdentifiers }
+    return synchronized(cacheLock) {
+      configuredRegionsCache?.takeIf { it.fileState == fileState }?.let { return@synchronized it.regionIdentifiers }
+      val regionIdentifiers = if (fileState.isRegularFile) {
+        readConfiguredRegionIdentifiers(path)
+      }
+      else {
+        emptyList()
+      }
+      configuredRegionsCache = ConfiguredRegionsCache(fileState, regionIdentifiers)
+      regionIdentifiers
+    }
+  }
+
+  private fun readConfiguredRegionIdentifiers(path: Path): List<String> {
     try {
       Files.newBufferedReader(path).use { reader ->
         return JsonParser.parseReader(reader)
@@ -38,6 +63,29 @@ internal object HelidonOciRegions {
     }
   }
 
+  private fun regionsConfigFileState(path: Path): RegionsConfigFileState {
+    val normalizedPath = path.toAbsolutePath().normalize()
+    try {
+      val attributes = Files.readAttributes(path, BasicFileAttributes::class.java)
+      return RegionsConfigFileState(normalizedPath,
+                                    attributes.isRegularFile,
+                                    attributes.lastModifiedTime().toMillis(),
+                                    attributes.size())
+    }
+    catch (_: IOException) {
+      return RegionsConfigFileState(normalizedPath,
+                                    false,
+                                    MISSING_FILE_MODIFICATION_TIME,
+                                    MISSING_FILE_SIZE)
+    }
+    catch (_: SecurityException) {
+      return RegionsConfigFileState(normalizedPath,
+                                    false,
+                                    MISSING_FILE_MODIFICATION_TIME,
+                                    MISSING_FILE_SIZE)
+    }
+  }
+
   private fun JsonElement.regionIdentifier(): String? {
     val regionIdentifier = takeIf { it.isJsonObject }
       ?.asJsonObject
@@ -47,6 +95,14 @@ internal object HelidonOciRegions {
       ?.trim()
     return regionIdentifier?.takeIf { it.isNotEmpty() }
   }
+
+  private data class ConfiguredRegionsCache(val fileState: RegionsConfigFileState,
+                                            val regionIdentifiers: List<String>)
+
+  private data class RegionsConfigFileState(val path: Path,
+                                            val isRegularFile: Boolean,
+                                            val lastModifiedTime: Long,
+                                            val size: Long)
 }
 
 internal fun isOciRegionKeyName(keyName: String): Boolean {

@@ -103,6 +103,8 @@ class HelidonFileTemplatesTest {
     assertTrue(text.contains("authentication-method: \"auto\""))
     assertTrue(text.contains("# OCI config options:"))
     assertTrue(text.contains("# allowed-authentication-methods:"))
+    assertTrue(text.contains("oke-workload-identity"))
+    assertFalse(text.contains("\"workload\""))
     assertTrue(text.contains("#   session-token:"))
     assertFalse(text.contains("oci-env:"))
     assertFalse(text.contains("oci-secret-service:"))

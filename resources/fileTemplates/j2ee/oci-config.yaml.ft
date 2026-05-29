@@ -4,7 +4,7 @@ helidon:
 
     # OCI config options:
     # region: "us-ashburn-1"
-    # allowed-authentication-methods: ["config", "config-file", "session-token", "resource-principal", "instance-principal", "workload"]
+    # allowed-authentication-methods: ["config", "config-file", "session-token", "resource-principal", "instance-principal", "oke-workload-identity"]
     # imds-base-uri: "http://localhost:8000/opc/v2/"
     # imds-timeout: "PT1S"
     # imds-detect-retries: 1

@@ -61,6 +61,7 @@ class HelidonOciConfigSourceProviderDiscoveryTest : HelidonHighlightingTestCase(
     val providers = HelidonOciConfigSourceProviderDiscovery.getProviderMetadata(module)
 
     assertContainsElements(providers.map { it.type }, "oci-secret-service")
+    assertDoesntContain(providers.map { it.type }, "oci-env")
   }
 
   fun testDiscoversProviderTypeFromCompiledProviderWithoutWalkingCompiledPsi() {
@@ -144,7 +145,7 @@ class HelidonOciConfigSourceProviderDiscoveryTest : HelidonHighlightingTestCase(
       output.writeInt(0xCAFEBABE.toInt())
       output.writeShort(0)
       output.writeShort(52)
-      output.writeShort(13)
+      output.writeShort(32)
       output.writeUtf8(internalName)
       output.writeByte(7)
       output.writeShort(1)
@@ -162,17 +163,51 @@ class HelidonOciConfigSourceProviderDiscoveryTest : HelidonHighlightingTestCase(
       output.writeShort(6)
       output.writeUtf8("supported")
       output.writeUtf8("()Ljava/util/Set;")
+      output.writeUtf8("SUPPORTED_TYPES")
+      output.writeUtf8("Ljava/util/Set;")
+      output.writeByte(12)
+      output.writeShort(12)
+      output.writeShort(13)
+      output.writeByte(9)
+      output.writeShort(2)
+      output.writeShort(14)
+      output.writeUtf8("<clinit>")
+      output.writeUtf8("java/util/Set")
+      output.writeByte(7)
+      output.writeShort(17)
+      output.writeUtf8("of")
+      output.writeUtf8("(Ljava/lang/Object;)Ljava/util/Set;")
+      output.writeByte(12)
+      output.writeShort(19)
+      output.writeShort(20)
+      output.writeByte(11)
+      output.writeShort(18)
+      output.writeShort(21)
       output.writeUtf8(providerType)
+      output.writeByte(8)
+      output.writeShort(23)
+      output.writeUtf8("oci-env")
+      output.writeByte(8)
+      output.writeShort(25)
+      output.writeUtf8("helper")
+      output.writeUtf8("()Ljava/lang/String;")
+      output.writeUtf8("ConstantValue")
+      output.writeUtf8("OCI_ENV_CONFIG_SOURCE")
+      output.writeUtf8("Ljava/lang/String;")
 
       output.writeShort(0x0031)
       output.writeShort(2)
       output.writeShort(4)
       output.writeShort(0)
-      output.writeShort(0)
-
       output.writeShort(2)
+      output.writeField(0x001a, 12, 13)
+      output.writeField(0x001a, 30, 31, 26)
+
+      output.writeShort(4)
       output.writeMethod(0x0001, 5, 6, byteArrayOf(0x2a, 0xb7.toByte(), 0x00, 0x08, 0xb1.toByte()))
-      output.writeMethod(0x0001, 10, 11, byteArrayOf(0x01, 0xb0.toByte()))
+      output.writeMethod(0x0001, 10, 11, byteArrayOf(0xb2.toByte(), 0x00, 0x0f, 0xb0.toByte()))
+      output.writeMethod(0x0008, 16, 6, byteArrayOf(0x12, 0x18, 0xb8.toByte(), 0x00, 0x16, 0xb3.toByte(), 0x00, 0x0f, 0xb1.toByte()))
+      output.writeMethod(0x0008, 27, 28, byteArrayOf(0x12, 0x1a, 0xb0.toByte()))
 
       output.writeShort(0)
     }
@@ -182,6 +217,24 @@ class HelidonOciConfigSourceProviderDiscoveryTest : HelidonHighlightingTestCase(
   private fun DataOutputStream.writeUtf8(value: String) {
     writeByte(1)
     writeUTF(value)
+  }
+
+  private fun DataOutputStream.writeField(accessFlags: Int,
+                                          nameIndex: Int,
+                                          descriptorIndex: Int,
+                                          constantValueIndex: Int? = null) {
+    writeShort(accessFlags)
+    writeShort(nameIndex)
+    writeShort(descriptorIndex)
+    if (constantValueIndex == null) {
+      writeShort(0)
+    }
+    else {
+      writeShort(1)
+      writeShort(29)
+      writeInt(2)
+      writeShort(constantValueIndex)
+    }
   }
 
   private fun DataOutputStream.writeMethod(accessFlags: Int, nameIndex: Int, descriptorIndex: Int, code: ByteArray) {

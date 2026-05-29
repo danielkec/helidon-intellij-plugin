@@ -55,7 +55,7 @@ internal class HelidonYamlKeyCompletionContributor : CompletionContributor() {
   }
 
   private fun extendAt(place: PsiElementPattern.Capture<out PsiElement>) {
-    extend(CompletionType.BASIC, place.with(CE_APPLICATION_YAML_CONDITION), provider)
+    extend(CompletionType.BASIC, place.with(CE_HELIDON_YAML_CONFIG_CONDITION), provider)
   }
 
   private class HelidonYamlKeyCompletionProvider : CompletionProvider<CompletionParameters>() {
@@ -215,7 +215,7 @@ internal class HelidonYamlKeyCompletionContributor : CompletionContributor() {
   }
 
   private companion object {
-    private val CE_APPLICATION_YAML_CONDITION = object : PatternCondition<PsiElement>("isCeApplicationYamlAndHelidon") {
+    private val CE_HELIDON_YAML_CONFIG_CONDITION = object : PatternCondition<PsiElement>("isCeHelidonYamlConfig") {
       override fun accepts(element: PsiElement, context: ProcessingContext?): Boolean {
         if (isMicroservicesPluginEnabled()) return false
         val originalFile = element.containingFile?.originalFile ?: return false

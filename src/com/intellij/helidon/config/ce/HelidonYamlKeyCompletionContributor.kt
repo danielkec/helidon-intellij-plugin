@@ -10,8 +10,10 @@ import com.intellij.codeInsight.completion.CompletionUtil
 import com.intellij.codeInsight.lookup.LookupElementBuilder
 import com.intellij.helidon.config.HelidonOciConfigOptions
 import com.intellij.helidon.config.YAML_KEY_INSERT_HANDLER
+import com.intellij.helidon.config.YAML_SCALAR_KEY_INSERT_HANDLER
 import com.intellij.helidon.config.isHelidonConfigFile
 import com.intellij.helidon.config.isHelidonOciConfigFile
+import com.intellij.helidon.config.isOciRegionKeyName
 import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.patterns.PlatformPatterns
 import com.intellij.patterns.PsiElementPattern
@@ -71,6 +73,7 @@ internal class HelidonYamlKeyCompletionContributor : CompletionContributor() {
       val parentQualifiedName = getQualifiedConfigKeyName(parentKeyValue, parentSequenceItem)
       val existingKeys = getExistingChildKeys(parentKeyValue, parentSequenceItem, yamlFile)
       val lookupNames = LinkedHashSet<String>()
+      val scalarKeyLookupNames = HashSet<String>()
 
       for (key in HelidonConfigKeyService.getInstance().getAllKeys(module, yamlFile)) {
         val lookupName = HelidonConfigKeyMatcher.childLookupName(key.name, parentQualifiedName) ?: continue
@@ -92,14 +95,25 @@ internal class HelidonYamlKeyCompletionContributor : CompletionContributor() {
             if (lookupName in existingKeys) continue
             if (!resultWithMatcher.prefixMatcher.prefixMatches(lookupName)) continue
             lookupNames.add(lookupName)
+            if (isOciRegionKeyName("$ociParentQualifiedName.$lookupName")) {
+              scalarKeyLookupNames.add(lookupName)
+            }
           }
         }
       }
 
       for (lookupName in lookupNames) {
+        val qualifiedLookupName = if (parentQualifiedName.isBlank()) lookupName else "$parentQualifiedName.$lookupName"
+        val insertHandler = if (isHelidonOciConfigFile(yamlFile) &&
+                                (lookupName in scalarKeyLookupNames || isOciRegionKeyName(qualifiedLookupName))) {
+          YAML_SCALAR_KEY_INSERT_HANDLER
+        }
+        else {
+          YAML_KEY_INSERT_HANDLER
+        }
         resultWithMatcher.addElement(LookupElementBuilder.create(lookupName)
                                       .withIcon(PlatformIcons.PROPERTY_ICON)
-                                      .withInsertHandler(YAML_KEY_INSERT_HANDLER))
+                                      .withInsertHandler(insertHandler))
       }
       if (lookupNames.isNotEmpty()) {
         result.stopHere()

@@ -342,4 +342,21 @@ class HelidonCeYamlOciConfigNoHelidonLibraryKeyCompletionTest : HelidonHighlight
       assertDoesntContain(lookupStrings, "server")
     }
   }
+
+  fun testSelectingBuiltInOciRegionKeyKeepsCaretAtValueWithoutHelidonLibraries() {
+    withMicroservicesPluginEnabled(false) {
+      myFixture.configureByText(HELIDON_OCI_CONFIG_YAML, """
+        helidon:
+          oci:
+            reg<caret>
+      """.trimIndent())
+      myFixture.completeBasic()
+
+      myFixture.checkResult("""
+        helidon:
+          oci:
+            region: <caret>
+      """.trimIndent())
+    }
+  }
 }

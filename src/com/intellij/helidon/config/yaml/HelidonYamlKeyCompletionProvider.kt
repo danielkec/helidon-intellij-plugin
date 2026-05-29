@@ -9,7 +9,9 @@ import com.intellij.codeInsight.lookup.LookupElementDecorator
 import com.intellij.helidon.config.HelidonMetaConfigKeyManager
 import com.intellij.helidon.config.HelidonOciConfigOptions
 import com.intellij.helidon.config.YAML_KEY_INSERT_HANDLER
+import com.intellij.helidon.config.YAML_SCALAR_KEY_INSERT_HANDLER
 import com.intellij.helidon.config.isHelidonOciConfigFile
+import com.intellij.helidon.config.isOciRegionKeyName
 import com.intellij.microservices.jvm.config.ConfigKeyPathReference
 import com.intellij.microservices.jvm.config.MetaConfigKey
 import com.intellij.microservices.jvm.config.MetaConfigKeyManager.ConfigKeyNameBinder
@@ -307,10 +309,17 @@ internal class HelidonYamlKeyCompletionProvider : CompletionProvider<CompletionP
         for (lookupName in HelidonOciConfigOptions.childLookupNames(ociParentQualifiedName)) {
           val existingKey = accessor?.findExistingKey(lookupName)
           if (existingKey != null && !isSameKeyValue(existingKey, currentYamlKeyValue)) continue
+          val qualifiedLookupName = "$ociParentQualifiedName.$lookupName"
+          val insertHandler = if (isOciRegionKeyName(qualifiedLookupName)) {
+            YAML_SCALAR_KEY_INSERT_HANDLER
+          }
+          else {
+            YAML_KEY_INSERT_HANDLER
+          }
           keyLookupElements.putIfAbsent(lookupName,
                                         LookupElementBuilder.create(lookupName)
                                           .withIcon(PlatformIcons.PROPERTY_ICON)
-                                          .withInsertHandler(YAML_KEY_INSERT_HANDLER))
+                                          .withInsertHandler(insertHandler))
         }
       }
     }

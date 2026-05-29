@@ -556,6 +556,34 @@ class HelidonYamlOciConfigNoHelidonLibraryTest : HelidonHighlightingTestCase() {
     assertContainsElements(myFixture.lookupElementStrings!!, "custom-no-helidon-1")
   }
 
+  fun testSelectingBuiltInOciRegionKeyKeepsCaretAtValueWithoutHelidonLibraries() {
+    val home = Files.createTempDirectory("oci-region-key-no-helidon-home")
+    Files.createDirectories(home.resolve(".oci"))
+    Files.writeString(home.resolve(".oci/regions-config.json"), """
+      [{
+        "regionIdentifier": "custom-region-key-1"
+      }]
+    """.trimIndent())
+
+    withUserHome(home) {
+      myFixture.configureByText(HELIDON_OCI_CONFIG_YAML, """
+        helidon:
+          oci:
+            reg<caret>
+      """.trimIndent())
+      myFixture.completeBasic()
+      myFixture.checkResult("""
+        helidon:
+          oci:
+            region: <caret>
+      """.trimIndent())
+
+      myFixture.completeBasic()
+    }
+
+    assertContainsElements(myFixture.lookupElementStrings!!, "custom-region-key-1")
+  }
+
   private fun <T> withUserHome(home: Path, action: () -> T): T {
     val oldValue = System.getProperty("user.home")
     System.setProperty("user.home", home.toString())

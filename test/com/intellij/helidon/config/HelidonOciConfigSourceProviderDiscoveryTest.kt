@@ -5,6 +5,8 @@ import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.testFramework.PsiTestUtil
 import com.intellij.testFramework.VfsTestUtil
+import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
 import java.nio.file.Files
 
 class HelidonOciConfigSourceProviderDiscoveryTest : HelidonHighlightingTestCase() {
@@ -61,6 +63,20 @@ class HelidonOciConfigSourceProviderDiscoveryTest : HelidonHighlightingTestCase(
     assertContainsElements(providers.map { it.type }, "oci-secret-service")
   }
 
+  fun testDiscoversProviderTypeFromCompiledProviderWithoutWalkingCompiledPsi() {
+    addCompiledProviderLibrary(
+      "compiled-oci-secret-service-provider",
+      "com.oracle.helidon.oci.secret.config.SecretServiceConfigSourceProvider",
+      "oci-secret-service",
+      secretServiceMetadata(),
+      metadataPath = "META-INF/config-metadata.json",
+    )
+
+    val providers = HelidonOciConfigSourceProviderDiscovery.getProviderMetadata(module)
+
+    assertContainsElements(providers.map { it.type }, "oci-secret-service")
+  }
+
   fun testIgnoresNonOciProviderPackage() {
     myFixture.addClass("""
       package example;
@@ -95,6 +111,92 @@ class HelidonOciConfigSourceProviderDiscoveryTest : HelidonHighlightingTestCase(
                            rootName,
                            libraryRootPath.parent.toString(),
                            libraryRootPath.fileName.toString())
+  }
+
+  private fun addCompiledProviderLibrary(rootName: String,
+                                         providerClass: String,
+                                         providerType: String,
+                                         metadata: String,
+                                         metadataPath: String = "META-INF/helidon/config-metadata.json") {
+    val libraryRootPath = Files.createTempDirectory(rootName)
+    val classFile = libraryRootPath.resolve(providerClass.replace('.', '/') + ".class")
+    Files.createDirectories(classFile.parent)
+    Files.write(classFile, compiledProviderClassBytes(providerClass.replace('.', '/'), providerType))
+
+    val serviceFile = libraryRootPath.resolve("META-INF/services/io.helidon.config.spi.ConfigSourceProvider")
+    Files.createDirectories(serviceFile.parent)
+    Files.writeString(serviceFile, providerClass)
+    val metadataFile = libraryRootPath.resolve(metadataPath)
+    Files.createDirectories(metadataFile.parent)
+    Files.writeString(metadataFile, metadata)
+
+    LocalFileSystem.getInstance().refreshAndFindFileByNioFile(libraryRootPath)!!
+    PsiTestUtil.addLibrary(myFixture.testRootDisposable,
+                           module,
+                           rootName,
+                           libraryRootPath.parent.toString(),
+                           libraryRootPath.fileName.toString())
+  }
+
+  private fun compiledProviderClassBytes(internalName: String, providerType: String): ByteArray {
+    val bytes = ByteArrayOutputStream()
+    DataOutputStream(bytes).use { output ->
+      output.writeInt(0xCAFEBABE.toInt())
+      output.writeShort(0)
+      output.writeShort(52)
+      output.writeShort(13)
+      output.writeUtf8(internalName)
+      output.writeByte(7)
+      output.writeShort(1)
+      output.writeUtf8("java/lang/Object")
+      output.writeByte(7)
+      output.writeShort(3)
+      output.writeUtf8("<init>")
+      output.writeUtf8("()V")
+      output.writeUtf8("Code")
+      output.writeByte(10)
+      output.writeShort(4)
+      output.writeShort(9)
+      output.writeByte(12)
+      output.writeShort(5)
+      output.writeShort(6)
+      output.writeUtf8("supported")
+      output.writeUtf8("()Ljava/util/Set;")
+      output.writeUtf8(providerType)
+
+      output.writeShort(0x0031)
+      output.writeShort(2)
+      output.writeShort(4)
+      output.writeShort(0)
+      output.writeShort(0)
+
+      output.writeShort(2)
+      output.writeMethod(0x0001, 5, 6, byteArrayOf(0x2a, 0xb7.toByte(), 0x00, 0x08, 0xb1.toByte()))
+      output.writeMethod(0x0001, 10, 11, byteArrayOf(0x01, 0xb0.toByte()))
+
+      output.writeShort(0)
+    }
+    return bytes.toByteArray()
+  }
+
+  private fun DataOutputStream.writeUtf8(value: String) {
+    writeByte(1)
+    writeUTF(value)
+  }
+
+  private fun DataOutputStream.writeMethod(accessFlags: Int, nameIndex: Int, descriptorIndex: Int, code: ByteArray) {
+    writeShort(accessFlags)
+    writeShort(nameIndex)
+    writeShort(descriptorIndex)
+    writeShort(1)
+    writeShort(7)
+    writeInt(2 + 2 + 4 + code.size + 2 + 2)
+    writeShort(1)
+    writeShort(1)
+    writeInt(code.size)
+    write(code)
+    writeShort(0)
+    writeShort(0)
   }
 }
 

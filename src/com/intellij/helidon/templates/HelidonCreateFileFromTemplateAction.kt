@@ -51,24 +51,10 @@ abstract class HelidonCreateFileFromTemplateAction(
   }
 }
 
-class HelidonCreateSeServiceAction : HelidonCreateFileFromTemplateAction(
-  HELIDON_SE_SERVICE_TEMPLATE,
-  "SE Service",
-)
-
-class HelidonCreateMpResourceAction : HelidonCreateFileFromTemplateAction(
-  HELIDON_MP_RESOURCE_TEMPLATE,
-  "MP Resource",
-)
-
 class HelidonCreateDeclarativeHttpServiceAction : HelidonCreateFileFromTemplateAction(
   HELIDON_DECLARATIVE_HTTP_SERVICE_TEMPLATE,
   "Declarative HTTP Service",
-)
-
-class HelidonCreateConfigClassAction : HelidonCreateFileFromTemplateAction(
-  HELIDON_CONFIG_CLASS_TEMPLATE,
-  "Config Class",
+  HelidonIcons.HelidonGutter,
 )
 
 class HelidonCreateServerTestAction : HelidonCreateFileFromTemplateAction(
@@ -79,11 +65,13 @@ class HelidonCreateServerTestAction : HelidonCreateFileFromTemplateAction(
 class HelidonCreateLangChain4jServiceAction : HelidonCreateFileFromTemplateAction(
   HELIDON_LANGCHAIN4J_SERVICE_TEMPLATE,
   "LangChain4j Service",
+  HelidonIcons.AiGutter,
 )
 
 class HelidonCreateLangChain4jAgentAction : HelidonCreateFileFromTemplateAction(
   HELIDON_LANGCHAIN4J_AGENT_TEMPLATE,
   "LangChain4j Agent",
+  HelidonIcons.AiGutter,
 )
 
 class HelidonCreateOciConfigAction : HelidonCreateFileFromTemplateAction(

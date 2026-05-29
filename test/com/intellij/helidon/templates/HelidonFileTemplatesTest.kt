@@ -17,10 +17,22 @@ class HelidonFileTemplatesTest {
   fun templateGroupRegistersAllHelidonTemplates() {
     val descriptor = HelidonFileTemplateGroupDescriptorFactory().fileTemplatesDescriptor
     val templates = descriptor.templates.map { it.fileName }
+    val declarativeHttpTemplate = descriptor.templates.single {
+      it.fileName == HELIDON_DECLARATIVE_HTTP_SERVICE_TEMPLATE
+    }
+    val langChain4jServiceTemplate = descriptor.templates.single {
+      it.fileName == HELIDON_LANGCHAIN4J_SERVICE_TEMPLATE
+    }
+    val langChain4jAgentTemplate = descriptor.templates.single {
+      it.fileName == HELIDON_LANGCHAIN4J_AGENT_TEMPLATE
+    }
     val ociTemplate = descriptor.templates.single { it.fileName == HELIDON_OCI_CONFIG_TEMPLATE }
 
     assertEquals("Helidon", descriptor.title)
     assertEquals(HELIDON_FILE_TEMPLATES, templates)
+    assertSame(HelidonIcons.HelidonGutter, declarativeHttpTemplate.icon)
+    assertSame(HelidonIcons.AiGutter, langChain4jServiceTemplate.icon)
+    assertSame(HelidonIcons.AiGutter, langChain4jAgentTemplate.icon)
     assertSame(HelidonIcons.Ora, ociTemplate.icon)
   }
 
@@ -89,6 +101,11 @@ class HelidonFileTemplatesTest {
     assertTrue(text.contains("helidon:"))
     assertTrue(text.contains("oci:"))
     assertTrue(text.contains("authentication-method: \"auto\""))
+    assertTrue(text.contains("# OCI config options:"))
+    assertTrue(text.contains("# allowed-authentication-methods:"))
+    assertTrue(text.contains("#   session-token:"))
+    assertFalse(text.contains("oci-env:"))
+    assertFalse(text.contains("oci-secret-service:"))
   }
 
   @Test

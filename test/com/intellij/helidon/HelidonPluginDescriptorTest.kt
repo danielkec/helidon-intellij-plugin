@@ -85,6 +85,10 @@ class HelidonPluginDescriptorTest {
       element.getAttribute("language") == "yaml" &&
         element.getAttribute("implementationClass") == "com.intellij.helidon.config.ce.HelidonYamlKeyCompletionContributor"
     })
+    assertTrue(completionContributors.any { element ->
+      element.getAttribute("language") == "yaml" &&
+        element.getAttribute("implementationClass") == "com.intellij.helidon.config.ce.HelidonYamlOciRegionValueCompletionContributor"
+    })
   }
 
   @Test
@@ -109,6 +113,16 @@ class HelidonPluginDescriptorTest {
     assertTrue(contributors.any { element ->
       element.getAttribute("order") == "after propertiesConfigFileContributor" &&
         element.getAttribute("implementation") == "com.intellij.helidon.config.yaml.HelidonYamlConfigFileContributor"
+    })
+  }
+
+  @Test
+  fun testMainDescriptorRegistersInternalOciConfigTemplate() {
+    val document = parseDescriptor(Path.of("resources/META-INF/plugin.xml"))
+    val internalFileTemplates = document.getElementsByTagName("internalFileTemplate").elements()
+
+    assertTrue(internalFileTemplates.any { element ->
+      element.getAttribute("name") == "oci-config"
     })
   }
 
@@ -168,12 +182,9 @@ class HelidonPluginDescriptorTest {
     val newMenuRegistration = newMenuGroup.getElementsByTagName("add-to-group").elements().single()
 
     assertTrue("All Helidon templates should have Project View New menu actions",
-               newMenuActionClasses.size == 8)
+               newMenuActionClasses.size == 5)
     assertTrue(newMenuActionClasses.containsAll(listOf(
-      "com.intellij.helidon.templates.HelidonCreateSeServiceAction",
-      "com.intellij.helidon.templates.HelidonCreateMpResourceAction",
       "com.intellij.helidon.templates.HelidonCreateDeclarativeHttpServiceAction",
-      "com.intellij.helidon.templates.HelidonCreateConfigClassAction",
       "com.intellij.helidon.templates.HelidonCreateServerTestAction",
       "com.intellij.helidon.templates.HelidonCreateLangChain4jServiceAction",
       "com.intellij.helidon.templates.HelidonCreateLangChain4jAgentAction",
@@ -182,6 +193,18 @@ class HelidonPluginDescriptorTest {
     val ociConfigAction = newMenuGroup.getElementsByTagName("action")
       .elements()
       .single { element -> element.getAttribute("id") == "Helidon.New.OciConfig" }
+    val declarativeHttpAction = newMenuGroup.getElementsByTagName("action")
+      .elements()
+      .single { element -> element.getAttribute("id") == "Helidon.New.DeclarativeHttpService" }
+    val langChain4jServiceAction = newMenuGroup.getElementsByTagName("action")
+      .elements()
+      .single { element -> element.getAttribute("id") == "Helidon.New.LangChain4jService" }
+    val langChain4jAgentAction = newMenuGroup.getElementsByTagName("action")
+      .elements()
+      .single { element -> element.getAttribute("id") == "Helidon.New.LangChain4jAgent" }
+    assertTrue(declarativeHttpAction.getAttribute("icon") == "/icons/helidonGutter.svg")
+    assertTrue(langChain4jServiceAction.getAttribute("icon") == "/icons/aiGutter.svg")
+    assertTrue(langChain4jAgentAction.getAttribute("icon") == "/icons/aiGutter.svg")
     assertTrue(ociConfigAction.getAttribute("icon") == "/icons/ora.svg")
     assertTrue("Helidon templates must be visible from the Project View New menu",
                newMenuRegistration.getAttribute("group-id") == "NewGroup")

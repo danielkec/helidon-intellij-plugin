@@ -8,8 +8,10 @@ import com.intellij.codeInsight.completion.CompletionResultSet
 import com.intellij.codeInsight.completion.CompletionType
 import com.intellij.codeInsight.completion.CompletionUtil
 import com.intellij.codeInsight.lookup.LookupElementBuilder
+import com.intellij.helidon.config.HelidonOciConfigOptions
 import com.intellij.helidon.config.YAML_KEY_INSERT_HANDLER
 import com.intellij.helidon.config.isHelidonConfigFile
+import com.intellij.helidon.config.isHelidonOciConfigFile
 import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.patterns.PlatformPatterns
 import com.intellij.patterns.PsiElementPattern
@@ -76,6 +78,23 @@ internal class HelidonYamlKeyCompletionContributor : CompletionContributor() {
         if (!resultWithMatcher.prefixMatcher.prefixMatches(lookupName)) continue
         lookupNames.add(lookupName)
       }
+      if (isHelidonOciConfigFile(yamlFile)) {
+        val previousParentQualifiedName = getPreviousMappingKeyValue(element, parameters.offset)
+          ?.let { getQualifiedConfigKeyName(it, parentSequenceItem) }
+        val ociParentQualifiedName = when {
+          previousParentQualifiedName == "helidon.oci" ||
+          previousParentQualifiedName?.startsWith("helidon.oci.") == true -> previousParentQualifiedName
+          previousParentQualifiedName?.startsWith("helidon.oci-") == true -> null
+          else -> parentQualifiedName
+        }
+        if (ociParentQualifiedName != null) {
+          for (lookupName in HelidonOciConfigOptions.childLookupNames(ociParentQualifiedName)) {
+            if (lookupName in existingKeys) continue
+            if (!resultWithMatcher.prefixMatcher.prefixMatches(lookupName)) continue
+            lookupNames.add(lookupName)
+          }
+        }
+      }
 
       for (lookupName in lookupNames) {
         resultWithMatcher.addElement(LookupElementBuilder.create(lookupName)
@@ -129,7 +148,10 @@ internal class HelidonYamlKeyCompletionContributor : CompletionContributor() {
         val lineText = text.substring(previousLineStart, previousLineEnd).trimEnd('\r')
         val firstNonWhitespace = lineText.indexOfFirst { it != ' ' && it != '\t' }
         if (firstNonWhitespace >= 0) {
-          if (lineText.substring(firstNonWhitespace).startsWith("#")) return null
+          if (lineText.substring(firstNonWhitespace).startsWith("#")) {
+            previousLineEnd = previousLineStart - 1
+            continue
+          }
 
           val previousLineElement = file.findElementAt(previousLineStart + firstNonWhitespace) ?: return null
           val previousKeyValue = PsiTreeUtil.getParentOfType(previousLineElement, YAMLKeyValue::class.java) ?: return null

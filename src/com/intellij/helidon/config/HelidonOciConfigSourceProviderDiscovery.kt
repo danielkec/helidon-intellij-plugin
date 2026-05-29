@@ -8,7 +8,7 @@ import com.intellij.openapi.roots.ProjectRootModificationTracker
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.psi.JavaPsiFacade
-import com.intellij.psi.JavaRecursiveElementWalkingVisitor
+import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiField
 import com.intellij.psi.PsiFile
@@ -18,6 +18,8 @@ import com.intellij.psi.PsiReferenceExpression
 import com.intellij.psi.util.CachedValue
 import com.intellij.psi.util.CachedValueProvider
 import com.intellij.psi.util.CachedValuesManager
+import java.io.DataInputStream
+import java.io.IOException
 
 private const val OCI_PACKAGE_PREFIX = "com.oracle.helidon.oci"
 private const val CONFIG_SOURCE_PROVIDER_SERVICE = "META-INF/services/io.helidon.config.spi.ConfigSourceProvider"
@@ -84,6 +86,11 @@ internal object HelidonOciConfigSourceProviderDiscovery {
       ?.takeIf(::isOciProviderType)
       ?.let { return setOf(it) }
 
+    val compiledProviderTypes = collectCompiledClassStringConstants(providerClass)
+    if (compiledProviderTypes != null) {
+      return compiledProviderTypes
+    }
+
     val result = LinkedHashSet<String>()
     val visitedFields = HashSet<PsiField>()
     for (method in providerClass.methods) {
@@ -95,22 +102,22 @@ internal object HelidonOciConfigSourceProviderDiscovery {
   }
 
   private fun collectStringConstants(element: PsiElement, result: MutableSet<String>, visitedFields: MutableSet<PsiField>) {
-    element.accept(object : JavaRecursiveElementWalkingVisitor() {
-      override fun visitLiteralExpression(expression: PsiLiteralExpression) {
-        (expression.value as? String)
+    when (element) {
+      is PsiLiteralExpression -> {
+        (element.value as? String)
           ?.takeIf(::isOciProviderType)
           ?.let(result::add)
-        super.visitLiteralExpression(expression)
       }
-
-      override fun visitReferenceExpression(expression: PsiReferenceExpression) {
-        val field = expression.resolve() as? PsiField
+      is PsiReferenceExpression -> {
+        val field = element.resolve() as? PsiField
         if (field != null) {
           collectStringConstants(field, result, visitedFields)
         }
-        super.visitReferenceExpression(expression)
       }
-    })
+    }
+    for (child in element.children) {
+      collectStringConstants(child, result, visitedFields)
+    }
   }
 
   private fun collectStringConstants(field: PsiField, result: MutableSet<String>, visitedFields: MutableSet<PsiField>) {
@@ -126,6 +133,47 @@ internal object HelidonOciConfigSourceProviderDiscovery {
   }
 
   private fun PsiField.stringConstantValue(): String? = computeConstantValue() as? String
+
+  private fun collectCompiledClassStringConstants(providerClass: PsiClass): Set<String>? {
+    val classFile = providerClass.containingFile?.virtualFile?.takeIf { it.extension == "class" } ?: return null
+    return try {
+      classFile.inputStream.use { input ->
+        collectClassFileStringConstants(DataInputStream(input))
+      }
+    }
+    catch (_: IOException) {
+      emptySet()
+    }
+  }
+
+  private fun collectClassFileStringConstants(input: DataInputStream): Set<String> {
+    if (input.readInt() != 0xCAFEBABE.toInt()) return emptySet()
+    input.skipBytes(4) // minor_version, major_version
+
+    val result = LinkedHashSet<String>()
+    val constantPoolCount = input.readUnsignedShort()
+    var index = 1
+    while (index < constantPoolCount) {
+      when (input.readUnsignedByte()) {
+        1 -> {
+          val value = input.readUTF()
+          if (isOciProviderType(value)) {
+            result.add(value)
+          }
+        }
+        3, 4, 9, 10, 11, 12, 17, 18 -> input.skipBytes(4)
+        5, 6 -> {
+          input.skipBytes(8)
+          index++
+        }
+        7, 8, 16, 19, 20 -> input.skipBytes(2)
+        15 -> input.skipBytes(3)
+        else -> return emptySet()
+      }
+      index++
+    }
+    return result
+  }
 
   private fun isOciProviderType(value: String): Boolean {
     return value.startsWith("oci-") && value.length > "oci-".length

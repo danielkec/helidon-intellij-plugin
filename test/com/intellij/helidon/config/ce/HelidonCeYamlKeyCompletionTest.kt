@@ -3,6 +3,7 @@ package com.intellij.helidon.config.ce
 
 import com.intellij.codeInsight.lookup.Lookup
 import com.intellij.helidon.HelidonHighlightingTestCase
+import com.intellij.helidon.HelidonProjectDescriptorBuilder
 import com.intellij.helidon.config.HELIDON_APPLICATION_YAML
 import com.intellij.helidon.config.HELIDON_CONFIG_METADATA
 import com.intellij.helidon.config.HELIDON_OCI_CONFIG_YAML
@@ -10,6 +11,7 @@ import com.intellij.helidon.config.crossProviderMetadata
 import com.intellij.helidon.config.envConfigMetadata
 import com.intellij.helidon.config.sharedClientMetadata
 import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.testFramework.LightProjectDescriptor
 import com.intellij.testFramework.PsiTestUtil
 import com.intellij.testFramework.VfsTestUtil
 import java.nio.file.Files
@@ -196,6 +198,25 @@ class HelidonCeYamlKeyCompletionTest : HelidonHighlightingTestCase() {
     }
   }
 
+  fun testCompletesOciConfigYamlProviderRootAfterComment() {
+    withMicroservicesPluginEnabled(false) {
+      addOciEnvProviderLibrary()
+      myFixture.configureByText(HELIDON_OCI_CONFIG_YAML, """
+        helidon:
+          oci-env:
+            # provider options:
+            # prefix: "oci"
+            <caret>
+      """.trimIndent())
+      myFixture.completeBasic()
+
+      val lookupElementStrings = myFixture.lookupElementStrings
+      assertNotNull(lookupElementStrings)
+      assertContainsElements(lookupElementStrings!!, "prefix", "use-physical-availability-domain")
+      assertDoesntContain(lookupElementStrings, "server")
+    }
+  }
+
   fun testCompletesOciConfigYamlProviderNestedTypeFromSeparateMetadataFile() {
     withMicroservicesPluginEnabled(false) {
       addOciCrossProviderLibrary()
@@ -299,5 +320,26 @@ class HelidonCeYamlKeyCompletionTest : HelidonHighlightingTestCase() {
                            rootName,
                            libraryRootPath.parent.toString(),
                            libraryRootPath.fileName.toString())
+  }
+}
+
+class HelidonCeYamlOciConfigNoHelidonLibraryKeyCompletionTest : HelidonHighlightingTestCase() {
+  override fun getProjectDescriptor(): LightProjectDescriptor {
+    return HelidonProjectDescriptorBuilder().build()
+  }
+
+  fun testCompletesBuiltInOciKeysWithoutHelidonLibraries() {
+    withMicroservicesPluginEnabled(false) {
+      myFixture.configureByText(HELIDON_OCI_CONFIG_YAML, """
+        helidon:
+          oci:
+            <caret>
+      """.trimIndent())
+      myFixture.completeBasic()
+
+      val lookupStrings = myFixture.lookupElementStrings!!
+      assertContainsElements(lookupStrings, "authentication", "region", "tenant-id")
+      assertDoesntContain(lookupStrings, "server")
+    }
   }
 }

@@ -1,3 +1,48 @@
 helidon:
   oci:
     authentication-method: "auto"
+
+    # OCI config options:
+    # region: "us-ashburn-1"
+    # allowed-authentication-methods: ["config", "config-file", "session-token", "resource-principal", "instance-principal", "workload"]
+    # imds-base-uri: "http://localhost:8000/opc/v2/"
+    # imds-timeout: "PT1S"
+    # imds-detect-retries: 1
+    # authentication-timeout: "PT10S"
+    # federation-endpoint: "https://auth.us-ashburn-1.oraclecloud.com"
+    # tenant-id: "ocid1.tenancy.oc1..example"
+    # authentication:
+    #   config-file:
+    #     profile: "DEFAULT"
+    #     path: "/home/user/.oci/config"
+    #   config:
+    #     region: "us-ashburn-1"
+    #     fingerprint: "00:00:00:00"
+    #     tenant-id: "ocid1.tenancy.oc1..example"
+    #     user-id: "ocid1.user.oc1..example"
+    #     passphrase: "changeit"
+    #     private-key:
+    #       resource-path: "private-key.pem"
+    #       # path: "/home/user/.oci/oci_api_key.pem"
+    #       # uri: "https://example.com/private-key.pem"
+    #       # content-plain: |
+    #       #   -----BEGIN PRIVATE KEY-----
+    #       #   ...
+    #       #   -----END PRIVATE KEY-----
+    #       # content: "base64-encoded-key"
+    #       # proxy-host: "proxy.example.com"
+    #       # proxy-port: 80
+    #       # use-proxy: true
+    #       # description: "OCI private key"
+    #   session-token:
+    #     region: "us-ashburn-1"
+    #     fingerprint: "00:00:00:00"
+    #     tenant-id: "ocid1.tenancy.oc1..example"
+    #     user-id: "ocid1.user.oc1..example"
+    #     passphrase: "changeit"
+    #     private-key-path: "/home/user/.oci/sessions/DEFAULT/oci_api_key.pem"
+    #     session-token-path: "/home/user/.oci/sessions/DEFAULT/token"
+    #     session-token: "token"
+    #     initial-refresh-delay: "PT0S"
+    #     refresh-period: "PT55M"
+    #     session-lifetime-hours: 24

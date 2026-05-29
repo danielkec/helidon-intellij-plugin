@@ -7,7 +7,9 @@ import com.intellij.codeInsight.lookup.LookupElement
 import com.intellij.codeInsight.lookup.LookupElementBuilder
 import com.intellij.codeInsight.lookup.LookupElementDecorator
 import com.intellij.helidon.config.HelidonMetaConfigKeyManager
+import com.intellij.helidon.config.HelidonOciConfigOptions
 import com.intellij.helidon.config.YAML_KEY_INSERT_HANDLER
+import com.intellij.helidon.config.isHelidonOciConfigFile
 import com.intellij.microservices.jvm.config.ConfigKeyPathReference
 import com.intellij.microservices.jvm.config.MetaConfigKey
 import com.intellij.microservices.jvm.config.MetaConfigKeyManager.ConfigKeyNameBinder
@@ -290,6 +292,28 @@ internal class HelidonYamlKeyCompletionProvider : CompletionProvider<CompletionP
       val lookupElement = configKey.presentation.tuneLookupElement(insertHandler)
       keyLookupElements[lookupKeyName] = lookupElement
     }
+    if (isHelidonOciConfigFile(yamlFile)) {
+      val previousParentQualifiedName = getPreviousMappingKeyValue(ObjectUtils.chooseNotNull(originalElement, element), parameters.offset)
+        ?.let(::getQualifiedConfigKeyName)
+      val ociParentQualifiedName = when {
+        previousParentQualifiedName == "helidon.oci" ||
+        previousParentQualifiedName?.startsWith("helidon.oci.") == true -> previousParentQualifiedName
+        previousParentQualifiedName?.startsWith("helidon.oci-") == true -> null
+        else -> parentQualifiedName.ifBlank {
+          parentYamlKeyValue?.let(::getQualifiedConfigKeyName).orEmpty()
+        }
+      }
+      if (ociParentQualifiedName != null) {
+        for (lookupName in HelidonOciConfigOptions.childLookupNames(ociParentQualifiedName)) {
+          val existingKey = accessor?.findExistingKey(lookupName)
+          if (existingKey != null && !isSameKeyValue(existingKey, currentYamlKeyValue)) continue
+          keyLookupElements.putIfAbsent(lookupName,
+                                        LookupElementBuilder.create(lookupName)
+                                          .withIcon(PlatformIcons.PROPERTY_ICON)
+                                          .withInsertHandler(YAML_KEY_INSERT_HANDLER))
+        }
+      }
+    }
     if (keyLookupElements.isNotEmpty()) {
       result.addAllElements(keyLookupElements.values)
       hasAddedElements = true
@@ -380,7 +404,10 @@ internal class HelidonYamlKeyCompletionProvider : CompletionProvider<CompletionP
       val lineText = text.substring(previousLineStart, previousLineEnd).trimEnd('\r')
       val firstNonWhitespace = lineText.indexOfFirst { it != ' ' && it != '\t' }
       if (firstNonWhitespace >= 0) {
-        if (lineText.substring(firstNonWhitespace).startsWith("#")) return null
+        if (lineText.substring(firstNonWhitespace).startsWith("#")) {
+          previousLineEnd = previousLineStart - 1
+          continue
+        }
 
         val previousLineElement = file.findElementAt(previousLineStart + firstNonWhitespace) ?: return null
         val previousKeyValue = PsiTreeUtil.getParentOfType(previousLineElement, YAMLKeyValue::class.java) ?: return null

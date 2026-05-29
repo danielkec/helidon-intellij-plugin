@@ -3,13 +3,26 @@ package com.intellij.helidon.services
 
 import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.HelidonIcons
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.testFramework.IdeaTestUtil
 import com.intellij.testFramework.LightProjectDescriptor
 import com.intellij.testFramework.fixtures.DefaultLightProjectDescriptor
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase
+import kotlinx.coroutines.runBlocking
 import javax.swing.tree.DefaultMutableTreeNode
+import java.util.concurrent.TimeUnit
 
 class HelidonServicesModelTest : HelidonHighlightingTestCase() {
+  fun testToolWindowApplicabilityCanRunOnBackgroundThread() {
+    val future = ApplicationManager.getApplication().executeOnPooledThread<Boolean> {
+      runBlocking {
+        HelidonServicesToolWindowFactory().isApplicableAsync(project)
+      }
+    }
+
+    assertTrue(future.get(10, TimeUnit.SECONDS))
+  }
+
   fun testCollectsServiceContractsInjectionLookupsAndAmbiguousTargets() {
     addServiceRegistryStubs()
     myFixture.configureByText("Main.java", """

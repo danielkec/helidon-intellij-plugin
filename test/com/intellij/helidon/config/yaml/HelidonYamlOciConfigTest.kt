@@ -3,6 +3,7 @@ package com.intellij.helidon.config.yaml
 
 import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.HelidonIcons
+import com.intellij.helidon.HelidonProjectDescriptorBuilder
 import com.intellij.helidon.config.HELIDON_OCI_CONFIG_YAML
 import com.intellij.helidon.config.HELIDON_CONFIG_METADATA
 import com.intellij.helidon.config.crossProviderMetadata
@@ -14,10 +15,12 @@ import com.intellij.helidon.config.sharedClientMetadata
 import com.intellij.microservices.jvm.config.MetaConfigKeyReference
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.psi.util.PsiTreeUtil
+import com.intellij.testFramework.LightProjectDescriptor
 import com.intellij.testFramework.PsiTestUtil
 import com.intellij.testFramework.VfsTestUtil
 import org.jetbrains.yaml.psi.YAMLKeyValue
 import java.nio.file.Files
+import java.nio.file.Path
 
 class HelidonYamlOciConfigTest : HelidonHighlightingTestCase() {
 
@@ -68,6 +71,24 @@ class HelidonYamlOciConfigTest : HelidonHighlightingTestCase() {
     myFixture.completeBasic()
 
     assertContainsElements(myFixture.lookupElementStrings!!, "profile")
+  }
+
+  fun testCompletesOciKeysAfterTemplateCommentBlock() {
+    addOciMetadataAndProviders()
+    myFixture.configureByText(HELIDON_OCI_CONFIG_YAML, """
+      helidon:
+        oci:
+          authentication-method: "auto"
+          # OCI config options:
+          # region: "us-ashburn-1"
+          # tenant-id: "ocid1.tenancy.oc1..exampleuniqueid"
+          <caret>
+    """.trimIndent())
+    myFixture.completeBasic()
+
+    val lookupStrings = myFixture.lookupElementStrings!!
+    assertContainsElements(lookupStrings, "authentication", "region", "tenant-id")
+    assertDoesntContain(lookupStrings, "server")
   }
 
   fun testCompletesProviderMetadataUnderForcedRoot() {
@@ -156,6 +177,97 @@ class HelidonYamlOciConfigTest : HelidonHighlightingTestCase() {
     assertEquals("iaas-domain-name", keyValue.keyText)
   }
 
+  fun testCompletesOciRegionFromUserRegionsConfigFirst() {
+    addOciMetadataAndProviders()
+    val home = Files.createTempDirectory("oci-regions-home")
+    Files.createDirectories(home.resolve(".oci"))
+    Files.writeString(home.resolve(".oci/regions-config.json"), """
+      [{
+        "regionIdentifier": "custom-home-1"
+      }, {
+        "regionIdentifier": "custom-home-2"
+      }]
+    """.trimIndent())
+
+    withUserHome(home) {
+      myFixture.configureByText(HELIDON_OCI_CONFIG_YAML, """
+        helidon:
+          oci:
+            region: <caret>
+      """.trimIndent())
+      myFixture.completeBasic()
+    }
+
+    val lookupStrings = myFixture.lookupElementStrings!!
+    assertContainsElements(lookupStrings, "custom-home-1", "custom-home-2")
+    assertDoesntContain(lookupStrings, "us-ashburn-1")
+  }
+
+  fun testCompletesOciRegionFromFallbackEnumWhenUserRegionsConfigMissing() {
+    addOciMetadataAndProviders()
+    val home = Files.createTempDirectory("oci-regions-empty-home")
+
+    withUserHome(home) {
+      myFixture.configureByText(HELIDON_OCI_CONFIG_YAML, """
+        helidon:
+          oci:
+            authentication:
+              session-token:
+                region: <caret>
+      """.trimIndent())
+      myFixture.completeBasic()
+    }
+
+    val lookupStrings = myFixture.lookupElementStrings!!
+    assertContainsElements(lookupStrings, "us-ashburn-1", "eu-frankfurt-1", "sol-mars-1")
+  }
+
+  fun testCompletesOciEnvLocationOverrideRegion() {
+    addOciMetadataAndProviders()
+    val home = Files.createTempDirectory("oci-env-regions-home")
+    Files.createDirectories(home.resolve(".oci"))
+    Files.writeString(home.resolve(".oci/regions-config.json"), """
+      [{
+        "regionIdentifier": "custom-env-region-1"
+      }]
+    """.trimIndent())
+
+    withUserHome(home) {
+      myFixture.configureByText(HELIDON_OCI_CONFIG_YAML, """
+        helidon:
+          oci-env:
+            location-override:
+              region: <caret>
+      """.trimIndent())
+      myFixture.completeBasic()
+    }
+
+    assertContainsElements(myFixture.lookupElementStrings!!, "custom-env-region-1")
+  }
+
+  fun testDoesNotCompleteOciRegionInApplicationYaml() {
+    addOciMetadataAndProviders()
+    val home = Files.createTempDirectory("oci-regions-application-home")
+    Files.createDirectories(home.resolve(".oci"))
+    Files.writeString(home.resolve(".oci/regions-config.json"), """
+      [{
+        "regionIdentifier": "custom-application-region-1"
+      }]
+    """.trimIndent())
+
+    withUserHome(home) {
+      myFixture.configureByText("application.yaml", """
+        helidon:
+          oci:
+            region: <caret>
+      """.trimIndent())
+      myFixture.completeBasic()
+    }
+
+    val lookupStrings = myFixture.lookupElementStrings ?: emptyList()
+    assertDoesntContain(lookupStrings, "custom-application-region-1")
+  }
+
   private fun addOciMetadataAndProviders() {
     addOciConfigStubs()
     addLibrary("public-oci-metadata", publicOciMetadata())
@@ -197,6 +309,16 @@ class HelidonYamlOciConfigTest : HelidonHighlightingTestCase() {
       package io.helidon.integrations.oci;
 
       public final class OciAuthenticationConfigFileConfig {}
+    """.trimIndent())
+    myFixture.addClass("""
+      package io.helidon.integrations.oci;
+
+      public final class OciAuthenticationConfigConfig {}
+    """.trimIndent())
+    myFixture.addClass("""
+      package io.helidon.integrations.oci;
+
+      public final class OciAuthenticationSessionTokenConfig {}
     """.trimIndent())
     myFixture.addClass("""
       package com.oracle.helidon.oci.envconfig;
@@ -312,6 +434,22 @@ class HelidonYamlOciConfigTest : HelidonHighlightingTestCase() {
                            libraryRootPath.fileName.toString())
   }
 
+  private fun <T> withUserHome(home: Path, action: () -> T): T {
+    val oldValue = System.getProperty("user.home")
+    System.setProperty("user.home", home.toString())
+    try {
+      return action()
+    }
+    finally {
+      if (oldValue == null) {
+        System.clearProperty("user.home")
+      }
+      else {
+        System.setProperty("user.home", oldValue)
+      }
+    }
+  }
+
   private fun publicOciMetadata(): String {
     return """
       [{
@@ -346,6 +484,14 @@ class HelidonYamlOciConfigTest : HelidonHighlightingTestCase() {
             "key": "config-file",
             "type": "io.helidon.integrations.oci.OciAuthenticationConfigFileConfig",
             "description": "Config-file authentication settings"
+          }, {
+            "key": "config",
+            "type": "io.helidon.integrations.oci.OciAuthenticationConfigConfig",
+            "description": "Config authentication settings"
+          }, {
+            "key": "session-token",
+            "type": "io.helidon.integrations.oci.OciAuthenticationSessionTokenConfig",
+            "description": "Session-token authentication settings"
           }]
         }, {
           "type": "io.helidon.integrations.oci.OciAuthenticationConfigFileConfig",
@@ -353,8 +499,76 @@ class HelidonYamlOciConfigTest : HelidonHighlightingTestCase() {
             "key": "profile",
             "description": "OCI config profile"
           }]
+        }, {
+          "type": "io.helidon.integrations.oci.OciAuthenticationConfigConfig",
+          "options": [{
+            "key": "region",
+            "description": "OCI region"
+          }]
+        }, {
+          "type": "io.helidon.integrations.oci.OciAuthenticationSessionTokenConfig",
+          "options": [{
+            "key": "region",
+            "description": "OCI region"
+          }]
         }]
       }]
     """.trimIndent()
+  }
+}
+
+class HelidonYamlOciConfigNoHelidonLibraryTest : HelidonHighlightingTestCase() {
+  override fun getProjectDescriptor(): LightProjectDescriptor {
+    return HelidonProjectDescriptorBuilder().build()
+  }
+
+  fun testCompletesBuiltInOciKeysWithoutHelidonLibraries() {
+    myFixture.configureByText(HELIDON_OCI_CONFIG_YAML, """
+      helidon:
+        oci:
+          <caret>
+    """.trimIndent())
+    myFixture.completeBasic()
+
+    val lookupStrings = myFixture.lookupElementStrings!!
+    assertContainsElements(lookupStrings, "authentication", "region", "tenant-id")
+    assertDoesntContain(lookupStrings, "server")
+  }
+
+  fun testCompletesBuiltInOciRegionValuesWithoutHelidonLibraries() {
+    val home = Files.createTempDirectory("oci-regions-no-helidon-home")
+    Files.createDirectories(home.resolve(".oci"))
+    Files.writeString(home.resolve(".oci/regions-config.json"), """
+      [{
+        "regionIdentifier": "custom-no-helidon-1"
+      }]
+    """.trimIndent())
+
+    withUserHome(home) {
+      myFixture.configureByText(HELIDON_OCI_CONFIG_YAML, """
+        helidon:
+          oci:
+            region: <caret>
+      """.trimIndent())
+      myFixture.completeBasic()
+    }
+
+    assertContainsElements(myFixture.lookupElementStrings!!, "custom-no-helidon-1")
+  }
+
+  private fun <T> withUserHome(home: Path, action: () -> T): T {
+    val oldValue = System.getProperty("user.home")
+    System.setProperty("user.home", home.toString())
+    try {
+      return action()
+    }
+    finally {
+      if (oldValue == null) {
+        System.clearProperty("user.home")
+      }
+      else {
+        System.setProperty("user.home", oldValue)
+      }
+    }
   }
 }

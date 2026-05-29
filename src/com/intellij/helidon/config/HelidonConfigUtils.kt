@@ -57,7 +57,7 @@ internal fun getHelidonConfigFileKind(file: PsiFile): HelidonConfigFileKind? {
   if (file.virtualFile == null) return null
 
   val fileModule = ModuleUtilCore.findModuleForPsiElement(file)
-  if (fileModule == null || !hasHelidonConfigLibrary(fileModule)) return null
+  if (fileModule == null) return null
 
   return CachedValuesManager.getCachedValue(file) {
     val module = ModuleUtilCore.findModuleForPsiElement(file)
@@ -70,10 +70,12 @@ internal fun getHelidonConfigFileKind(file: PsiFile): HelidonConfigFileKind? {
             VfsUtilCore.isUnder(virtualFile, sourceRoots.toSet())) {
           val kind = getHelidonConfigFileKind(virtualFile.nameWithoutExtension)
           if (kind != null) {
-            return@getCachedValue Result.create(
-              kind, file,
-              JavaLibraryModificationTracker.getInstance(file.project),
-              ProjectRootModificationTracker.getInstance(file.project))
+            if (kind == HelidonConfigFileKind.OCI || hasHelidonConfigLibrary(module)) {
+              return@getCachedValue Result.create(
+                kind, file,
+                JavaLibraryModificationTracker.getInstance(file.project),
+                ProjectRootModificationTracker.getInstance(file.project))
+            }
           }
         }
       }

@@ -25,3 +25,22 @@ internal val YAML_KEY_INSERT_HANDLER = InsertHandler<LookupElement> { context: I
   EditorModificationUtilEx.insertStringAtCaret(editor, text)
   editor.project?.let { AutoPopupController.getInstance(it).scheduleAutoPopup(editor) }
 }
+
+internal val YAML_SCALAR_KEY_INSERT_HANDLER = InsertHandler<LookupElement> { context: InsertionContext, _: LookupElement ->
+  context.setAddCompletionChar(false)
+  val editor = context.editor
+  if (YamlKeyCompletionInsertHandler.isCharAtCaret(editor, ':')) {
+    editor.caretModel.moveCaretRelatively(1, 0, false, false, false)
+  }
+  else {
+    EditorModificationUtilEx.insertStringAtCaret(editor, ":")
+  }
+
+  if (!YamlKeyCompletionInsertHandler.isCharAtCaret(editor, ' ')) {
+    EditorModificationUtilEx.insertStringAtCaret(editor, " ")
+  }
+  else {
+    editor.caretModel.moveCaretRelatively(1, 0, false, false, false)
+  }
+  editor.project?.let { AutoPopupController.getInstance(it).scheduleAutoPopup(editor) }
+}

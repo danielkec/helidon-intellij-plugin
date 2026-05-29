@@ -2,14 +2,14 @@
 package com.intellij.helidon.config.properties
 
 import com.intellij.helidon.config.isHelidonConfigFile
-import com.intellij.helidon.utils.HelidonCommonUtils.hasHelidonLibrary
+import com.intellij.helidon.utils.HelidonCommonUtils.hasHelidonConfigLibrary
 import com.intellij.lang.properties.codeInspection.unsorted.AlphaUnsortedPropertiesFileInspectionSuppressor
 import com.intellij.lang.properties.psi.PropertiesFile
 
 internal class HelidonAlphaUnsortedPropertiesFileInspectionSuppressor : AlphaUnsortedPropertiesFileInspectionSuppressor {
 
   override fun suppressInspectionFor(propertiesFile: PropertiesFile): Boolean {
-    return hasHelidonLibrary(propertiesFile.project) &&
+    return hasHelidonConfigLibrary(propertiesFile.project) &&
            isHelidonConfigFile(propertiesFile.containingFile)
   }
 }

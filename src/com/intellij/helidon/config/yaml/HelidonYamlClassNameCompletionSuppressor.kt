@@ -12,7 +12,7 @@ internal val HELIDON_YAML_VALUE_PATTERN = PlatformPatterns.psiElement(LeafPsiEle
   .andOr(PlatformPatterns.psiElement().withElementType(YAMLElementTypes.SCALAR_VALUES)
            .andNot(PlatformPatterns.psiElement().afterLeaf(PlatformPatterns.psiElement(YAMLTokenTypes.INDENT))),
          PlatformPatterns.psiElement().afterLeaf(PlatformPatterns.psiElement(YAMLTokenTypes.COLON)))
-  .with(APPLICATION_YAML_CONDITION)
+  .with(HELIDON_YAML_CONFIG_CONDITION)
 
 /**
  * Suppress {@link JavaClassNameCompletionContributor} for value elements in Helidon YAML config files.

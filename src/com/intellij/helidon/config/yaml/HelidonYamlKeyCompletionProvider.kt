@@ -7,7 +7,12 @@ import com.intellij.codeInsight.lookup.LookupElement
 import com.intellij.codeInsight.lookup.LookupElementBuilder
 import com.intellij.codeInsight.lookup.LookupElementDecorator
 import com.intellij.helidon.config.HelidonMetaConfigKeyManager
+import com.intellij.helidon.config.HelidonOciConfigOptions
 import com.intellij.helidon.config.YAML_KEY_INSERT_HANDLER
+import com.intellij.helidon.config.YAML_SCALAR_KEY_INSERT_HANDLER
+import com.intellij.helidon.config.getPreviousYamlMappingKeyValue
+import com.intellij.helidon.config.isHelidonOciConfigFile
+import com.intellij.helidon.config.isOciRegionKeyName
 import com.intellij.microservices.jvm.config.ConfigKeyPathReference
 import com.intellij.microservices.jvm.config.MetaConfigKey
 import com.intellij.microservices.jvm.config.MetaConfigKeyManager.ConfigKeyNameBinder
@@ -228,7 +233,7 @@ internal class HelidonYamlKeyCompletionProvider : CompletionProvider<CompletionP
       }
     }
     if (configKeys == null) {
-      configKeys = HelidonMetaConfigKeyManager.getInstance().getAllMetaConfigKeys(module)
+      configKeys = HelidonMetaConfigKeyManager.getInstance().getMetaConfigKeys(module, yamlFile)
     }
 
     val rootQualifiedName = if (root is YAMLKeyValue) getQualifiedConfigKeyName(root) else null
@@ -290,6 +295,35 @@ internal class HelidonYamlKeyCompletionProvider : CompletionProvider<CompletionP
       val lookupElement = configKey.presentation.tuneLookupElement(insertHandler)
       keyLookupElements[lookupKeyName] = lookupElement
     }
+    if (isHelidonOciConfigFile(yamlFile)) {
+      val previousParentQualifiedName = getPreviousYamlMappingKeyValue(ObjectUtils.chooseNotNull(originalElement, element), parameters.offset)
+        ?.let(::getQualifiedConfigKeyName)
+      val ociParentQualifiedName = when {
+        previousParentQualifiedName == "helidon.oci" ||
+        previousParentQualifiedName?.startsWith("helidon.oci.") == true -> previousParentQualifiedName
+        previousParentQualifiedName?.startsWith("helidon.oci-") == true -> null
+        else -> parentQualifiedName.ifBlank {
+          parentYamlKeyValue?.let(::getQualifiedConfigKeyName).orEmpty()
+        }
+      }
+      if (ociParentQualifiedName != null) {
+        for (lookupName in HelidonOciConfigOptions.childLookupNames(ociParentQualifiedName)) {
+          val existingKey = accessor?.findExistingKey(lookupName)
+          if (existingKey != null && !isSameKeyValue(existingKey, currentYamlKeyValue)) continue
+          val qualifiedLookupName = "$ociParentQualifiedName.$lookupName"
+          val insertHandler = if (isOciRegionKeyName(qualifiedLookupName)) {
+            YAML_SCALAR_KEY_INSERT_HANDLER
+          }
+          else {
+            YAML_KEY_INSERT_HANDLER
+          }
+          keyLookupElements.putIfAbsent(lookupName,
+                                        LookupElementBuilder.create(lookupName)
+                                          .withIcon(PlatformIcons.PROPERTY_ICON)
+                                          .withInsertHandler(insertHandler))
+        }
+      }
+    }
     if (keyLookupElements.isNotEmpty()) {
       result.addAllElements(keyLookupElements.values)
       hasAddedElements = true
@@ -328,7 +362,7 @@ internal class HelidonYamlKeyCompletionProvider : CompletionProvider<CompletionP
     val anchor = ObjectUtils.chooseNotNull(originalElement, element)
     return parentYamlKeyValue
            ?: getContainingMappingParentKeyValue(anchor)
-           ?: getPreviousMappingKeyValue(anchor, offset)
+           ?: getPreviousYamlMappingKeyValue(anchor, offset)
   }
 
   private fun getCurrentKeyValue(element: PsiElement, originalElement: PsiElement?, offset: Int): YAMLKeyValue? {
@@ -365,31 +399,6 @@ internal class HelidonYamlKeyCompletionProvider : CompletionProvider<CompletionP
   private fun getContainingMappingParentKeyValue(element: PsiElement): YAMLKeyValue? {
     val parentMapping = PsiTreeUtil.getParentOfType(element, YAMLMapping::class.java) ?: return null
     return PsiTreeUtil.getParentOfType(parentMapping, YAMLKeyValue::class.java)
-  }
-
-  private fun getPreviousMappingKeyValue(element: PsiElement, offset: Int): YAMLKeyValue? {
-    val file = element.containingFile.originalFile
-    val text = file.text
-    if (text.isEmpty()) return null
-
-    val safeOffset = offset.coerceIn(0, text.length)
-    val currentLineStart = text.lastIndexOf('\n', (safeOffset - 1).coerceAtLeast(0)) + 1
-    var previousLineEnd = currentLineStart - 1
-    while (previousLineEnd > 0) {
-      val previousLineStart = text.lastIndexOf('\n', previousLineEnd - 1) + 1
-      val lineText = text.substring(previousLineStart, previousLineEnd).trimEnd('\r')
-      val firstNonWhitespace = lineText.indexOfFirst { it != ' ' && it != '\t' }
-      if (firstNonWhitespace >= 0) {
-        if (lineText.substring(firstNonWhitespace).startsWith("#")) return null
-
-        val previousLineElement = file.findElementAt(previousLineStart + firstNonWhitespace) ?: return null
-        val previousKeyValue = PsiTreeUtil.getParentOfType(previousLineElement, YAMLKeyValue::class.java) ?: return null
-        val previousValue = previousKeyValue.value
-        return if (previousValue == null || previousValue is YAMLMapping || previousValue is YAMLSequence) previousKeyValue else null
-      }
-      previousLineEnd = previousLineStart - 1
-    }
-    return null
   }
 
   private fun getRelativeConfigKeyName(configKeyName: String,

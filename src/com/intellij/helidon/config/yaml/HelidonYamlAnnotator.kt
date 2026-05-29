@@ -4,7 +4,7 @@ package com.intellij.helidon.config.yaml
 import com.intellij.helidon.config.HelidonConfigFileAnnotator
 import com.intellij.helidon.config.HelidonParametrizedConfigKey
 import com.intellij.helidon.config.isHelidonConfigFile
-import com.intellij.helidon.utils.HelidonCommonUtils.hasHelidonLibrary
+import com.intellij.helidon.utils.HelidonCommonUtils.hasHelidonConfigLibrary
 import com.intellij.lang.annotation.AnnotationHolder
 import com.intellij.microservices.jvm.config.MetaConfigKeyReference
 import com.intellij.openapi.editor.colors.TextAttributesKey
@@ -26,7 +26,7 @@ internal class HelidonYamlAnnotator : HelidonConfigFileAnnotator() {
     if (element !is YAMLKeyValue) return
 
     val file = holder.currentAnnotationSession.file as? YAMLFile ?: return
-    if (!hasHelidonLibrary(file.project) ||
+    if (!hasHelidonConfigLibrary(file.project) ||
         !isHelidonConfigFile(file)) {
       return
     }

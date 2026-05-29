@@ -4,6 +4,9 @@ package com.intellij.helidon.constants;
 import org.jetbrains.annotations.NonNls;
 
 public interface HelidonConstants {
+  @NonNls String CONFIG = "io.helidon.config.Config";
+  @NonNls String CONFIG_SOURCE_PROVIDER = "io.helidon.config.spi.ConfigSourceProvider";
+
   @NonNls String WEB_SERVER = "io.helidon.webserver.WebServer";
   @NonNls String WEB_SERVER_CONFIG = "io.helidon.webserver.WebServerConfig";
   @NonNls String WEB_SERVER_CONFIG_BUILDER = "io.helidon.webserver.WebServerConfig.Builder";

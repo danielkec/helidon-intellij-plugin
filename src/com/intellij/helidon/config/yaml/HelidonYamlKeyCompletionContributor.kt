@@ -38,6 +38,6 @@ internal class HelidonYamlKeyCompletionContributor : CompletionContributor() {
   }
 
   private fun extendAt(place: PsiElementPattern.Capture<out PsiElement>) {
-    extend(CompletionType.BASIC, place.with(APPLICATION_YAML_CONDITION), provider)
+    extend(CompletionType.BASIC, place.with(HELIDON_YAML_CONFIG_CONDITION), provider)
   }
 }

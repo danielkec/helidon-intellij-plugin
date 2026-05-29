@@ -7,7 +7,9 @@ import com.intellij.helidon.config.HelidonConfigFileContributor
 import com.intellij.helidon.config.HelidonConfigValueSearcher.HelidonConfigValueResult
 import com.intellij.helidon.config.HelidonConfigValueSearcher.HelidonConfigValueSearchParams
 import com.intellij.helidon.config.HelidonMetaConfigKeyManager
+import com.intellij.helidon.config.isHelidonConfigFileName
 import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.util.PsiTreeUtil
@@ -16,6 +18,8 @@ import org.jetbrains.yaml.YAMLFileType
 import org.jetbrains.yaml.psi.*
 
 internal class HelidonYamlConfigFileContributor : HelidonConfigFileContributor(YAMLFileType.YML) {
+  override fun isConfigFile(file: VirtualFile): Boolean = isHelidonConfigFileName(file.nameWithoutExtension)
+
   override fun findKey(psiFile: PsiFile, key: String): PsiElement? {
     if (psiFile !is YAMLFile) return null
 

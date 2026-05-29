@@ -3,8 +3,12 @@ package com.intellij.helidon.config.ce
 
 import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.HelidonIcons
+import com.intellij.helidon.HelidonProjectDescriptorBuilder
 import com.intellij.helidon.config.HELIDON_APPLICATION_PROPERTIES
 import com.intellij.helidon.config.HELIDON_APPLICATION_YAML
+import com.intellij.helidon.config.HELIDON_OCI_CONFIG_YAML
+import com.intellij.helidon.utils.HelidonCoreUtils
+import com.intellij.testFramework.LightProjectDescriptor
 
 class HelidonConfigFileIconProviderTest : HelidonHighlightingTestCase() {
 
@@ -21,6 +25,22 @@ class HelidonConfigFileIconProviderTest : HelidonHighlightingTestCase() {
       val psiFile = myFixture.configureByText(HELIDON_APPLICATION_PROPERTIES, "")
 
       assertSame(HelidonIcons.Helidon, HelidonConfigFileIconProvider().getIcon(psiFile, 0))
+    }
+  }
+
+  fun testOciConfigYamlGetsOraIcon() {
+    withMicroservicesPluginEnabled(false) {
+      val psiFile = myFixture.configureByText(HELIDON_OCI_CONFIG_YAML, "")
+
+      assertSame(HelidonIcons.Ora, HelidonConfigFileIconProvider().getIcon(psiFile, 0))
+    }
+  }
+
+  fun testOciConfigPropertiesDoesNotGetHelidonIcon() {
+    withMicroservicesPluginEnabled(false) {
+      val psiFile = myFixture.configureByText("oci-config.properties", "")
+
+      assertNull(HelidonConfigFileIconProvider().getIcon(psiFile, 0))
     }
   }
 
@@ -45,6 +65,24 @@ class HelidonConfigFileIconProviderTest : HelidonHighlightingTestCase() {
       val psiFile = myFixture.configureByText(HELIDON_APPLICATION_YAML, "")
 
       assertNull(HelidonConfigFileIconProvider().getIcon(psiFile, 0))
+    }
+  }
+}
+
+class HelidonConfigOnlyFileIconProviderTest : HelidonHighlightingTestCase() {
+  override fun getProjectDescriptor(): LightProjectDescriptor {
+    return HelidonProjectDescriptorBuilder()
+      .withConfig()
+      .build()
+  }
+
+  fun testConfigOnlyModuleGetsConfigFileIconWithoutGlobalHelidonFeatureGate() {
+    withMicroservicesPluginEnabled(false) {
+      val psiFile = myFixture.configureByText(HELIDON_OCI_CONFIG_YAML, "")
+
+      assertFalse(HelidonCoreUtils.hasHelidonLibrary(module))
+      assertTrue(HelidonCoreUtils.hasHelidonConfigLibrary(module))
+      assertSame(HelidonIcons.Ora, HelidonConfigFileIconProvider().getIcon(psiFile, 0))
     }
   }
 }

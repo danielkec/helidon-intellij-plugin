@@ -27,7 +27,12 @@ internal class HelidonYamlValueReferenceProvider : PsiReferenceProvider() {
     if (yamlScalar.isMultiline) return PsiReference.EMPTY_ARRAY
 
     val placeholderReferences = createHelidonPlaceholderReferences(element)
-    val langChain4jReferences = HelidonLangChain4jConfigResolver.valueReferences(yamlScalar)
+    val langChain4jReferences = if (isInsideApplicationYamlFile(yamlScalar)) {
+      HelidonLangChain4jConfigResolver.valueReferences(yamlScalar)
+    }
+    else {
+      PsiReference.EMPTY_ARRAY
+    }
     val key = MetaConfigKeyReference.getResolvedMetaConfigKey(yamlKeyValue) ?: return placeholderReferences + langChain4jReferences
     val valueTextRanges: List<TextRange> =
       if (canHaveMultipleValues(yamlKeyValue.value, key)) {

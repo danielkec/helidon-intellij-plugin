@@ -68,6 +68,8 @@ abstract class HelidonConfigFileContributor(val fileType: FileType) {
 
   abstract fun processConfigValues(params: HelidonConfigValueSearchParams, processor: Processor<in HelidonConfigValueResult>): Boolean
 
+  internal open fun isConfigFile(file: VirtualFile): Boolean = isHelidonApplicationConfigFileName(file.nameWithoutExtension)
+
   fun findConfigFiles(module: Module, includeTests: Boolean): List<VirtualFile> {
     val configFileSearchScope = getConfigFileSearchScope(module, includeTests) ?: return emptyList()
 
@@ -75,7 +77,7 @@ abstract class HelidonConfigFileContributor(val fileType: FileType) {
     val processor = object : CommonProcessors.CollectProcessor<VirtualFile>(result) {
       override fun accept(file: VirtualFile): Boolean {
         ProgressManager.checkCanceled()
-        return isHelidonConfigFileName(file.nameWithoutExtension)
+        return isConfigFile(file)
       }
     }
     FileTypeIndex.processFiles(fileType, processor, configFileSearchScope)

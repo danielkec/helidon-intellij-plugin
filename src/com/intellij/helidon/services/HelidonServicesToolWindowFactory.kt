@@ -7,6 +7,7 @@ import com.intellij.helidon.utils.HelidonCoreUtils
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.application.readAction
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
@@ -39,7 +40,9 @@ import javax.swing.tree.DefaultTreeModel
 
 class HelidonServicesToolWindowFactory : ToolWindowFactory {
   override suspend fun isApplicableAsync(project: Project): Boolean =
-    HelidonCoreUtils.hasHelidonLibrary(project)
+    readAction {
+      HelidonCoreUtils.hasHelidonLibrary(project)
+    }
 
   override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
     val panel = HelidonServicesPanel(project)

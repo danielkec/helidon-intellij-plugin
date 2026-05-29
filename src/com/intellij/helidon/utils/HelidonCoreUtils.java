@@ -73,6 +73,18 @@ public final class HelidonCoreUtils {
            JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI);
   }
 
+  public static boolean hasHelidonConfigLibrary(@NotNull Project project) {
+    return hasHelidonLibrary(project) ||
+           JavaLibraryUtil.hasLibraryClass(project, HelidonConstants.CONFIG) ||
+           JavaLibraryUtil.hasLibraryClass(project, HelidonConstants.CONFIG_SOURCE_PROVIDER);
+  }
+
+  public static boolean hasHelidonConfigLibrary(@Nullable Module module) {
+    return hasHelidonLibrary(module) ||
+           JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.CONFIG) ||
+           JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.CONFIG_SOURCE_PROVIDER);
+  }
+
   public static boolean hasHelidonMPLibrary(@Nullable Module module) {
     return JavaLibraryUtil.hasLibraryClass(module, HelidonConstants.MP_MAIN);
   }

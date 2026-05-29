@@ -4,10 +4,14 @@ package com.intellij.helidon.config.ce
 import com.intellij.helidon.config.ConfigOption
 import com.intellij.helidon.config.ConfigOptionKind
 import com.intellij.helidon.config.ConfigType
+import com.intellij.helidon.config.ForcedConfigRoot
 import com.intellij.helidon.config.HELIDON_CONFIG_METADATA
 import com.intellij.helidon.config.HelidonConfigMetadataParser
+import com.intellij.helidon.config.HelidonOciConfigSourceProviderDiscovery
 import com.intellij.helidon.config.ModuleMetadata
 import com.intellij.helidon.config.actualType
+import com.intellij.helidon.config.getRootConfigTypes
+import com.intellij.helidon.config.isHelidonOciConfigFile
 import com.intellij.helidon.utils.HelidonCommonUtils
 import com.intellij.java.library.JavaLibraryModificationTracker
 import com.intellij.openapi.application.ApplicationManager
@@ -32,13 +36,69 @@ internal class HelidonConfigKeyService {
   }
 
   fun getAllKeys(module: Module?): List<HelidonConfigKey> {
-    if (module == null || !HelidonCommonUtils.hasHelidonLibrary(module)) return emptyList()
+    if (module == null || !HelidonCommonUtils.hasHelidonConfigLibrary(module)) return emptyList()
 
+    return getConfigKeysFromLibs(module)
+  }
+
+  fun getAllKeys(module: Module?, configFile: PsiFile?): List<HelidonConfigKey> {
+    if (module == null || !HelidonCommonUtils.hasHelidonConfigLibrary(module)) return emptyList()
+    if (configFile != null && isHelidonOciConfigFile(configFile)) {
+      return getOciConfigKeysFromLibs(module)
+    }
+    return getConfigKeysFromLibs(module)
+  }
+
+  private fun getConfigKeysFromLibs(module: Module): List<HelidonConfigKey> {
     return CachedValuesManager.getManager(module.project).getCachedValue(module, CONFIG_KEYS_KEY, {
       val metadataFiles = findConfigMetadataFiles(module)
       val modulesMetadata = metadataFiles.mapNotNull(::parseMetadata)
       val keys = HelidonConfigKeyBuilder(modulesMetadata).collectKeys()
       CachedValueProvider.Result.create(keys, *metadataCacheDependencies(module, metadataFiles))
+    }, false)
+  }
+
+  private fun getOciConfigKeysFromLibs(module: Module): List<HelidonConfigKey> {
+    return CachedValuesManager.getManager(module.project).getCachedValue(module, OCI_CONFIG_KEYS_KEY, {
+      val allMetadataFiles = findConfigMetadataFiles(module)
+      val moduleMetadataByFile = allMetadataFiles.associateWith(::parseMetadata)
+      val allModulesMetadata = moduleMetadataByFile.values.filterNotNull()
+      val publicOciRoots = allModulesMetadata.flatMap { moduleMetadata ->
+        moduleMetadata.moduleConfigs
+          .flatMap { it.types }
+          .filter { it.standalone && it.prefix == PUBLIC_OCI_CONFIG_ROOT }
+          .map { ForcedConfigRoot(moduleMetadata, it.prefix, it.type) }
+      }
+      val publicOciKeys = if (publicOciRoots.isEmpty()) {
+        emptyList()
+      }
+      else {
+        HelidonConfigKeyBuilder(allModulesMetadata).collectKeys(publicOciRoots)
+      }
+
+      val providerMetadata = HelidonOciConfigSourceProviderDiscovery.getProviderMetadata(module)
+      val providerMetadataFiles = providerMetadata.flatMap { it.metadataFiles }.distinctBy { it.virtualFile.path }
+      val providerModuleMetadataByFile = providerMetadataFiles.associateWith { metadataFile ->
+        moduleMetadataByFile[metadataFile] ?: parseMetadata(metadataFile)
+      }
+      val forcedRoots = providerMetadata.flatMap { provider ->
+        provider.metadataFiles.mapNotNull { providerModuleMetadataByFile[it] }
+          .map { ForcedConfigRoot(it, "helidon.${provider.type}") }
+      }
+      val providerKeys = if (forcedRoots.isEmpty()) {
+        emptyList()
+      }
+      else {
+        HelidonConfigKeyBuilder(allModulesMetadata).collectKeys(forcedRoots)
+      }
+
+      val keys = LinkedHashMap<String, HelidonConfigKey>()
+      for (key in publicOciKeys + providerKeys) {
+        keys.putIfAbsent(key.name, key)
+      }
+
+      val dependencyFiles = (allMetadataFiles + providerMetadata.flatMap { it.dependencyFiles }).distinctBy { it.virtualFile.path }
+      CachedValueProvider.Result.create(keys.values.toList(), *metadataCacheDependencies(module, dependencyFiles))
     }, false)
   }
 
@@ -86,6 +146,19 @@ internal class HelidonConfigKeyService {
       configTypes.values
         .filter { it.standalone && it.prefix.isNotBlank() }
         .forEach { processConfigType(it, it.prefix, keys, HashSet()) }
+      return keys.values.toList()
+    }
+
+    fun collectKeys(forcedRoots: List<ForcedConfigRoot>): List<HelidonConfigKey> {
+      val keys = LinkedHashMap<String, HelidonConfigKey>()
+      for (forcedRoot in forcedRoots) {
+        val rootTypes = forcedRoot.rootType
+          ?.let { configTypes[it]?.let(::listOf) ?: emptyList() }
+          ?: getRootConfigTypes(forcedRoot.moduleMetadata)
+        for (configType in rootTypes) {
+          processConfigType(configType, forcedRoot.prefix, keys, HashSet())
+        }
+      }
       return keys.values.toList()
     }
 
@@ -143,3 +216,5 @@ internal class HelidonConfigKeyService {
 }
 
 private val CONFIG_KEYS_KEY = Key.create<CachedValue<List<HelidonConfigKey>>>("HELIDON_CE_CONFIG_KEYS")
+private const val PUBLIC_OCI_CONFIG_ROOT = "helidon.oci"
+private val OCI_CONFIG_KEYS_KEY = Key.create<CachedValue<List<HelidonConfigKey>>>("HELIDON_CE_OCI_CONFIG_KEYS")

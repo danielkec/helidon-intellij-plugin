@@ -4,7 +4,7 @@ package com.intellij.helidon.config.properties
 import com.intellij.codeInspection.*
 import com.intellij.helidon.config.isHelidonConfigFile
 import com.intellij.helidon.utils.HelidonBundle
-import com.intellij.helidon.utils.HelidonCommonUtils.hasHelidonLibrary
+import com.intellij.helidon.utils.HelidonCommonUtils.hasHelidonConfigLibrary
 import com.intellij.lang.properties.psi.PropertiesFile
 import com.intellij.lang.properties.psi.impl.PropertyImpl
 import com.intellij.lang.properties.psi.impl.PropertyKeyImpl
@@ -22,7 +22,7 @@ import com.intellij.psi.PsiFile
 internal class HelidonPropertiesConfigInspection : LocalInspectionTool() {
 
   override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean, session: LocalInspectionToolSession): PsiElementVisitor {
-    if (!hasHelidonLibrary(holder.project) ||
+    if (!hasHelidonConfigLibrary(holder.project) ||
         !isHelidonConfigFile(holder.file)) {
       return PsiElementVisitor.EMPTY_VISITOR
     }

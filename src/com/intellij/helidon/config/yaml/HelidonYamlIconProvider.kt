@@ -3,7 +3,7 @@ package com.intellij.helidon.config.yaml
 
 import com.intellij.helidon.config.getHelidonConfigFileIcon
 import com.intellij.helidon.config.isHelidonConfigFile
-import com.intellij.helidon.utils.HelidonCommonUtils.hasHelidonLibrary
+import com.intellij.helidon.utils.HelidonCommonUtils.hasHelidonConfigLibrary
 import com.intellij.ide.IconProvider
 import com.intellij.microservices.jvm.config.MetaConfigKeyReference
 import com.intellij.openapi.util.Iconable
@@ -15,14 +15,14 @@ import javax.swing.Icon
 internal class HelidonYamlIconProvider : IconProvider() {
   override fun getIcon(element: PsiElement, @Iconable.IconFlags flags: Int): Icon? {
     if (element is YAMLFile) {
-      if (!hasHelidonLibrary(element.project)) return null
+      if (!hasHelidonConfigLibrary(element.project)) return null
 
       return getHelidonConfigFileIcon(element)
     }
     else if (element is YAMLKeyValue) {
       val containingFile = element.getContainingFile()
       if (containingFile !is YAMLFile ||
-          !hasHelidonLibrary(element.project) ||
+          !hasHelidonConfigLibrary(element.project) ||
           !isHelidonConfigFile(containingFile)) {
         return null
       }

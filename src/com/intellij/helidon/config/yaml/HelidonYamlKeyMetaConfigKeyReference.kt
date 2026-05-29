@@ -61,12 +61,20 @@ internal class HelidonYamlKeyMetaConfigKeyReference(yamlKeyValue: YAMLKeyValue) 
       builder.requireNormal = false
     }
 
-    val key = getAllKeys(builder.keyText).firstOrNull()
+    val key = getMatchingKey(builder.keyText)
     if (key != null) {
       adjustKey(builder, key as HelidonMetaConfigKey)
     }
 
     return builder.build()
+  }
+
+  private fun getMatchingKey(keyText: String): MetaConfigKey? {
+    val module = ModuleUtilCore.findModuleForPsiElement(element) ?: return null
+    val manager = HelidonMetaConfigKeyManager.getInstance()
+    val binder = manager.getConfigKeyNameBinder(module)
+    return manager.getMetaConfigKeys(module, element.containingFile.originalFile)
+      .firstOrNull { it.name == keyText || binder.bindsTo(it, keyText) }
   }
 
   private fun collectParents(): List<YAMLKeyValue> {

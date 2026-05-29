@@ -85,6 +85,10 @@ class HelidonPluginDescriptorTest {
       element.getAttribute("language") == "yaml" &&
         element.getAttribute("implementationClass") == "com.intellij.helidon.config.ce.HelidonYamlKeyCompletionContributor"
     })
+    assertTrue(completionContributors.any { element ->
+      element.getAttribute("language") == "yaml" &&
+        element.getAttribute("implementationClass") == "com.intellij.helidon.config.ce.HelidonYamlOciRegionValueCompletionContributor"
+    })
   }
 
   @Test
@@ -94,6 +98,31 @@ class HelidonPluginDescriptorTest {
 
     assertTrue(iconProviders.any { element ->
       element.getAttribute("implementation") == "com.intellij.helidon.config.ce.HelidonConfigFileIconProvider"
+    })
+  }
+
+  @Test
+  fun testMainDescriptorRegistersConfigFileContributors() {
+    val document = parseDescriptor(Path.of("resources/META-INF/plugin.xml"))
+    val contributors = document.getElementsByTagName("helidon.configFileContributor").elements()
+
+    assertTrue(contributors.any { element ->
+      element.getAttribute("id") == "propertiesConfigFileContributor" &&
+        element.getAttribute("implementation") == "com.intellij.helidon.config.properties.HelidonPropertiesConfigFileContributor"
+    })
+    assertTrue(contributors.any { element ->
+      element.getAttribute("order") == "after propertiesConfigFileContributor" &&
+        element.getAttribute("implementation") == "com.intellij.helidon.config.yaml.HelidonYamlConfigFileContributor"
+    })
+  }
+
+  @Test
+  fun testMainDescriptorRegistersInternalOciConfigTemplate() {
+    val document = parseDescriptor(Path.of("resources/META-INF/plugin.xml"))
+    val internalFileTemplates = document.getElementsByTagName("internalFileTemplate").elements()
+
+    assertTrue(internalFileTemplates.any { element ->
+      element.getAttribute("name") == "oci-config"
     })
   }
 
@@ -153,16 +182,30 @@ class HelidonPluginDescriptorTest {
     val newMenuRegistration = newMenuGroup.getElementsByTagName("add-to-group").elements().single()
 
     assertTrue("All Helidon templates should have Project View New menu actions",
-               newMenuActionClasses.size == 7)
+               newMenuActionClasses.size == 5)
     assertTrue(newMenuActionClasses.containsAll(listOf(
-      "com.intellij.helidon.templates.HelidonCreateSeServiceAction",
-      "com.intellij.helidon.templates.HelidonCreateMpResourceAction",
       "com.intellij.helidon.templates.HelidonCreateDeclarativeHttpServiceAction",
-      "com.intellij.helidon.templates.HelidonCreateConfigClassAction",
       "com.intellij.helidon.templates.HelidonCreateServerTestAction",
       "com.intellij.helidon.templates.HelidonCreateLangChain4jServiceAction",
       "com.intellij.helidon.templates.HelidonCreateLangChain4jAgentAction",
+      "com.intellij.helidon.templates.HelidonCreateOciConfigAction",
     )))
+    val ociConfigAction = newMenuGroup.getElementsByTagName("action")
+      .elements()
+      .single { element -> element.getAttribute("id") == "Helidon.New.OciConfig" }
+    val declarativeHttpAction = newMenuGroup.getElementsByTagName("action")
+      .elements()
+      .single { element -> element.getAttribute("id") == "Helidon.New.DeclarativeHttpService" }
+    val langChain4jServiceAction = newMenuGroup.getElementsByTagName("action")
+      .elements()
+      .single { element -> element.getAttribute("id") == "Helidon.New.LangChain4jService" }
+    val langChain4jAgentAction = newMenuGroup.getElementsByTagName("action")
+      .elements()
+      .single { element -> element.getAttribute("id") == "Helidon.New.LangChain4jAgent" }
+    assertTrue(declarativeHttpAction.getAttribute("icon") == "/icons/helidonGutter.svg")
+    assertTrue(langChain4jServiceAction.getAttribute("icon") == "/icons/aiGutter.svg")
+    assertTrue(langChain4jAgentAction.getAttribute("icon") == "/icons/aiGutter.svg")
+    assertTrue(ociConfigAction.getAttribute("icon") == "/icons/ora.svg")
     assertTrue("Helidon templates must be visible from the Project View New menu",
                newMenuRegistration.getAttribute("group-id") == "NewGroup")
     assertTrue("Helidon templates should appear near the standard template actions",
@@ -185,6 +228,19 @@ class HelidonPluginDescriptorTest {
     val extensionPoints = document.getElementsByTagName("extensionPoint").elements()
 
     assertFalse(extensionPoints.any { element -> element.getAttribute("name") == "configFileContributor" })
+  }
+
+  @Test
+  fun testMicroservicesDescriptorDoesNotRegisterBaseConfigFileContributors() {
+    val document = parseDescriptor(Path.of("resources/META-INF/helidon-microservices.xml"))
+    val contributors = document.getElementsByTagName("helidon.configFileContributor").elements()
+
+    assertFalse(contributors.any { element ->
+      element.getAttribute("implementation") == "com.intellij.helidon.config.properties.HelidonPropertiesConfigFileContributor"
+    })
+    assertFalse(contributors.any { element ->
+      element.getAttribute("implementation") == "com.intellij.helidon.config.yaml.HelidonYamlConfigFileContributor"
+    })
   }
 
   @Test

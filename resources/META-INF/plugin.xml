@@ -10,8 +10,8 @@
     <p>Features:</p>
     <ul>
       <li>Create Helidon Maven projects from the IDE.</li>
-      <li>Create Java Helidon services, resources, configuration classes, server tests, and LangChain4j components from
-        Helidon file templates.</li>
+      <li>Create Java Helidon declarative HTTP services, server tests, LangChain4j components, and OCI configuration
+        from Helidon file templates.</li>
       <li>Inspect Helidon services, contracts, injection points, lookups, endpoints, and LangChain4j components in the
         Helidon Services tool window.</li>
       <li>Navigate between Helidon services, injection points, and service registry lookups.</li>
@@ -42,27 +42,25 @@
 
   <actions>
     <group id="Helidon.New" text="Helidon" popup="true" icon="/icons/helidon.svg">
-      <action id="Helidon.New.SeService"
-              class="com.intellij.helidon.templates.HelidonCreateSeServiceAction"
-              text="SE Service"/>
-      <action id="Helidon.New.MpResource"
-              class="com.intellij.helidon.templates.HelidonCreateMpResourceAction"
-              text="MP Resource"/>
       <action id="Helidon.New.DeclarativeHttpService"
               class="com.intellij.helidon.templates.HelidonCreateDeclarativeHttpServiceAction"
-              text="Declarative HTTP Service"/>
-      <action id="Helidon.New.ConfigClass"
-              class="com.intellij.helidon.templates.HelidonCreateConfigClassAction"
-              text="Config Class"/>
+              text="Declarative HTTP Service"
+              icon="/icons/helidonGutter.svg"/>
       <action id="Helidon.New.ServerTest"
               class="com.intellij.helidon.templates.HelidonCreateServerTestAction"
               text="Server Test"/>
       <action id="Helidon.New.LangChain4jService"
               class="com.intellij.helidon.templates.HelidonCreateLangChain4jServiceAction"
-              text="LangChain4j Service"/>
+              text="LangChain4j Service"
+              icon="/icons/aiGutter.svg"/>
       <action id="Helidon.New.LangChain4jAgent"
               class="com.intellij.helidon.templates.HelidonCreateLangChain4jAgentAction"
-              text="LangChain4j Agent"/>
+              text="LangChain4j Agent"
+              icon="/icons/aiGutter.svg"/>
+      <action id="Helidon.New.OciConfig"
+              class="com.intellij.helidon.templates.HelidonCreateOciConfigAction"
+              text="OCI Config"
+              icon="/icons/ora.svg"/>
       <add-to-group group-id="NewGroup" anchor="after" relative-to-action="NewFromTemplate"/>
     </group>
   </actions>
@@ -96,6 +94,7 @@
     <externalProjectDataService implementation="com.intellij.helidon.newproject.HelidonExternalSystemDataService"/>
 
     <fileTemplateGroup implementation="com.intellij.helidon.templates.HelidonFileTemplateGroupDescriptorFactory"/>
+    <internalFileTemplate name="oci-config"/>
 
     <runConfigurationProducer implementation="com.intellij.helidon.testing.HelidonMavenTestRunConfigurationProducer"/>
 
@@ -105,6 +104,15 @@
                             implementationClass="com.intellij.helidon.config.ce.HelidonPropertiesKeyCompletionContributor"/>
     <completion.contributor language="yaml"
                             implementationClass="com.intellij.helidon.config.ce.HelidonYamlKeyCompletionContributor"/>
+    <completion.contributor language="yaml"
+                            order="before javaClassName"
+                            implementationClass="com.intellij.helidon.config.ce.HelidonYamlOciRegionValueCompletionContributor"/>
+
+    <helidon.configFileContributor id="propertiesConfigFileContributor"
+                                   implementation="com.intellij.helidon.config.properties.HelidonPropertiesConfigFileContributor"/>
+    <helidon.configFileContributor
+            order="after propertiesConfigFileContributor"
+            implementation="com.intellij.helidon.config.yaml.HelidonYamlConfigFileContributor"/>
 
     <iconProvider implementation="com.intellij.helidon.config.ce.HelidonConfigFileIconProvider"/>
   </extensions>

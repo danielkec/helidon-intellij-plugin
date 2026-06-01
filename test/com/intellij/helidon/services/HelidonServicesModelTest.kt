@@ -708,6 +708,16 @@ class HelidonServicesModelNoHelidonTest : LightJavaCodeInsightFixtureTestCase() 
   override fun getProjectDescriptor(): LightProjectDescriptor =
     DefaultLightProjectDescriptor(IdeaTestUtil::getMockJdk21)
 
+  fun testToolWindowApplicabilityDoesNotDependOnResolvedHelidonLibraries() {
+    val future = ApplicationManager.getApplication().executeOnPooledThread<Boolean> {
+      runBlocking {
+        HelidonServicesToolWindowFactory().isApplicableAsync(project)
+      }
+    }
+
+    assertTrue(future.get(10, TimeUnit.SECONDS))
+  }
+
   fun testNoOpOutsideHelidonProjects() {
     myFixture.configureByText("Plain.java", "class Plain {}")
 

@@ -3,11 +3,9 @@ package com.intellij.helidon.services
 
 import com.intellij.icons.AllIcons
 import com.intellij.helidon.HelidonIcons
-import com.intellij.helidon.utils.HelidonCoreUtils
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
-import com.intellij.openapi.application.readAction
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
@@ -39,10 +37,8 @@ import javax.swing.tree.DefaultTreeCellRenderer
 import javax.swing.tree.DefaultTreeModel
 
 class HelidonServicesToolWindowFactory : ToolWindowFactory {
-  override suspend fun isApplicableAsync(project: Project): Boolean =
-    readAction {
-      HelidonCoreUtils.hasHelidonLibrary(project)
-    }
+  // Project libraries may not be imported when IntelliJ performs the one-time tool window applicability check.
+  override suspend fun isApplicableAsync(project: Project): Boolean = true
 
   override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
     val panel = HelidonServicesPanel(project)

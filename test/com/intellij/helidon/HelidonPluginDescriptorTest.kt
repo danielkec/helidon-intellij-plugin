@@ -117,13 +117,18 @@ class HelidonPluginDescriptorTest {
   }
 
   @Test
-  fun testMainDescriptorRegistersInternalOciConfigTemplate() {
+  fun testMainDescriptorRegistersInternalFileTemplates() {
     val document = parseDescriptor(Path.of("resources/META-INF/plugin.xml"))
     val internalFileTemplates = document.getElementsByTagName("internalFileTemplate").elements()
+      .map { element -> element.getAttribute("name") }
 
-    assertTrue(internalFileTemplates.any { element ->
-      element.getAttribute("name") == "oci-config"
-    })
+    assertTrue(internalFileTemplates.containsAll(listOf(
+      "Helidon Declarative HTTP Service",
+      "Helidon Server Test",
+      "Helidon LangChain4j Service",
+      "Helidon LangChain4j Agent",
+      "oci-config",
+    )))
   }
 
   @Test

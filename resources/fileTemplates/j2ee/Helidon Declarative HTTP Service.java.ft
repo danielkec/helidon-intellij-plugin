@@ -1,18 +1,39 @@
 #if (${PACKAGE_NAME} && ${PACKAGE_NAME} != "")package ${PACKAGE_NAME};
 
 #end
-import io.helidon.http.Http.GET;
-import io.helidon.http.Http.Path;
+import io.helidon.http.Http;
+import io.helidon.http.Status;
 import io.helidon.service.registry.Service;
 import io.helidon.webserver.http.RestServer;
 
 #parse("File Header.java")
 @RestServer.Endpoint
-@Path("/greet")
+@Http.Path("#if (${ENDPOINT_PATH} && ${ENDPOINT_PATH} != '')${ENDPOINT_PATH}#else/greet#end")
 @Service.Singleton
 public class ${NAME} {
-  @GET
-  public String greet() {
-    return "Hello from Helidon";
+  private volatile String greeting = "Hello from Helidon";
+
+  @Http.GET
+  public String getGreeting() {
+    return greeting;
+  }
+
+  @Http.POST
+  @RestServer.Status(Status.CREATED_201_CODE)
+  public String createGreeting(@Http.Entity String greeting) {
+    this.greeting = greeting;
+    return this.greeting;
+  }
+
+  @Http.PUT
+  public String updateGreeting(@Http.Entity String greeting) {
+    this.greeting = greeting;
+    return this.greeting;
+  }
+
+  @Http.DELETE
+  @RestServer.Status(Status.NO_CONTENT_204_CODE)
+  public void deleteGreeting() {
+    greeting = "Hello from Helidon";
   }
 }

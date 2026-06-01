@@ -4,11 +4,15 @@ package com.intellij.helidon.templates
 import com.intellij.helidon.HelidonIcons
 import com.intellij.ide.fileTemplates.actions.AttributesDefaults
 import com.intellij.openapi.actionSystem.DataContext
+import org.apache.velocity.VelocityContext
+import org.apache.velocity.app.VelocityEngine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.slf4j.helpers.NOPLogger
+import java.io.StringWriter
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -88,10 +92,46 @@ class HelidonFileTemplatesTest {
                text.contains("public class \${NAME}"))
     assertTrue("Declarative HTTP template should generate a service bean",
                text.contains("@Service.Singleton"))
+    assertTrue("Declarative HTTP template should generate an in-memory greeting bean",
+               text.contains("private volatile String greeting = \"Hello from Helidon\";"))
+    assertTrue("Declarative HTTP template should expose an editable endpoint path",
+               text.contains("\${$HELIDON_ENDPOINT_PATH_ATTRIBUTE}"))
+    assertTrue("Declarative HTTP template should fall back to the default endpoint path",
+               text.contains("#else$HELIDON_ENDPOINT_PATH_DEFAULT#end"))
     assertFalse("Declarative HTTP endpoint interfaces are ignored by Helidon codegen",
                 text.contains("public interface \${NAME}"))
-    assertTrue("Declarative HTTP template should generate a method body",
-               text.contains("return \"Hello from Helidon\";"))
+    listOf(
+      "@Http.GET",
+      "@Http.POST",
+      "@Http.PUT",
+      "@Http.DELETE",
+      "@Http.Entity String greeting",
+      "@RestServer.Status(Status.CREATED_201_CODE)",
+      "@RestServer.Status(Status.NO_CONTENT_204_CODE)",
+    ).forEach { expected ->
+      assertTrue("Declarative HTTP template should contain $expected", text.contains(expected))
+    }
+  }
+
+  @Test
+  fun declarativeHttpActionProvidesEndpointPathDefault() {
+    val defaults = templateAttributesDefaults(HelidonCreateDeclarativeHttpServiceAction())
+      ?: error("Declarative HTTP action should provide endpoint path defaults")
+
+    assertFalse(defaults.isFixedName)
+    assertEquals(HELIDON_ENDPOINT_PATH_DEFAULT, defaults.getDefaultValueFor(HELIDON_ENDPOINT_PATH_ATTRIBUTE))
+    assertEquals("Endpoint path", defaults.attributeVisibleNames?.get(HELIDON_ENDPOINT_PATH_ATTRIBUTE))
+    assertFalse(defaults.defaultProperties?.containsKey(HELIDON_ENDPOINT_PATH_ATTRIBUTE) ?: false)
+  }
+
+  @Test
+  fun declarativeHttpEndpointPathTemplateRendersWithDefaultAndEnteredValue() {
+    val snippet = "@Path(\"#if (\${$HELIDON_ENDPOINT_PATH_ATTRIBUTE} && " +
+      "\${$HELIDON_ENDPOINT_PATH_ATTRIBUTE} != '')\${$HELIDON_ENDPOINT_PATH_ATTRIBUTE}" +
+      "#else$HELIDON_ENDPOINT_PATH_DEFAULT#end\")"
+
+    assertEquals("@Path(\"$HELIDON_ENDPOINT_PATH_DEFAULT\")", renderVelocity(snippet))
+    assertEquals("@Path(\"/hello\")", renderVelocity(snippet, mapOf(HELIDON_ENDPOINT_PATH_ATTRIBUTE to "/hello")))
   }
 
   @Test
@@ -121,6 +161,17 @@ class HelidonFileTemplatesTest {
 
   private fun templatePath(template: String, extension: String): Path =
     Path.of("resources/fileTemplates/j2ee/$template.$extension")
+
+  private fun renderVelocity(template: String, values: Map<String, String> = emptyMap()): String {
+    val engine = VelocityEngine()
+    engine.setProperty("runtime.log.instance", NOPLogger.NOP_LOGGER)
+    engine.init()
+    val context = VelocityContext()
+    values.forEach { (key, value) -> context.put(key, value) }
+    val writer = StringWriter()
+    assertTrue(engine.evaluate(context, writer, "", template))
+    return writer.toString()
+  }
 
   private fun templateAttributesDefaults(action: HelidonCreateFileFromTemplateAction): AttributesDefaults? {
     val method = HelidonCreateFileFromTemplateAction::class.java.getDeclaredMethod(

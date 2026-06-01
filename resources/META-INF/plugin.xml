@@ -95,6 +95,10 @@
     <externalProjectDataService implementation="com.intellij.helidon.newproject.HelidonExternalSystemDataService"/>
 
     <fileTemplateGroup implementation="com.intellij.helidon.templates.HelidonFileTemplateGroupDescriptorFactory"/>
+    <internalFileTemplate name="Helidon Declarative HTTP Service"/>
+    <internalFileTemplate name="Helidon Server Test"/>
+    <internalFileTemplate name="Helidon LangChain4j Service"/>
+    <internalFileTemplate name="Helidon LangChain4j Agent"/>
     <internalFileTemplate name="oci-config"/>
 
     <runConfigurationProducer implementation="com.intellij.helidon.testing.HelidonMavenTestRunConfigurationProducer"/>

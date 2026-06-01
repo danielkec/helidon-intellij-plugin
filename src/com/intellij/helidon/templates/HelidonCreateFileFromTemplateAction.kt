@@ -21,6 +21,8 @@ abstract class HelidonCreateFileFromTemplateAction(
   presentableName: String,
   icon: Icon = HelidonIcons.Helidon,
   private val fixedFileName: String? = null,
+  private val templateAttributeDefaults: Map<String, String> = emptyMap(),
+  private val templateAttributeVisibleNames: Map<String, String> = emptyMap(),
 ) : CreateFromTemplateActionBase(
   presentableName,
   "Create $presentableName from Helidon template",
@@ -43,7 +45,18 @@ abstract class HelidonCreateFileFromTemplateAction(
   override fun getTemplate(project: Project, dir: PsiDirectory): FileTemplate = template(project)
 
   override fun getAttributesDefaults(dataContext: DataContext): AttributesDefaults? {
-    return fixedFileName?.let { AttributesDefaults(it).withFixedName(true) }
+    if (fixedFileName == null &&
+        templateAttributeDefaults.isEmpty() &&
+        templateAttributeVisibleNames.isEmpty()) {
+      return null
+    }
+
+    return (fixedFileName?.let { AttributesDefaults(it).withFixedName(true) } ?: AttributesDefaults()).apply {
+      templateAttributeDefaults.forEach { (name, value) -> add(name, value) }
+      if (templateAttributeVisibleNames.isNotEmpty()) {
+        setAttributeVisibleNames(templateAttributeVisibleNames)
+      }
+    }
   }
 
   private fun template(project: Project): FileTemplate {
@@ -55,6 +68,8 @@ class HelidonCreateDeclarativeHttpServiceAction : HelidonCreateFileFromTemplateA
   HELIDON_DECLARATIVE_HTTP_SERVICE_TEMPLATE,
   "Declarative HTTP Service",
   HelidonIcons.HelidonGutter,
+  templateAttributeDefaults = mapOf(HELIDON_ENDPOINT_PATH_ATTRIBUTE to HELIDON_ENDPOINT_PATH_DEFAULT),
+  templateAttributeVisibleNames = mapOf(HELIDON_ENDPOINT_PATH_ATTRIBUTE to "Endpoint path"),
 )
 
 class HelidonCreateServerTestAction : HelidonCreateFileFromTemplateAction(

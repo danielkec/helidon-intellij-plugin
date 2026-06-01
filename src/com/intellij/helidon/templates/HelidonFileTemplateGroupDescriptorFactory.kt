@@ -7,6 +7,8 @@ import com.intellij.ide.fileTemplates.FileTemplateGroupDescriptor
 import com.intellij.ide.fileTemplates.FileTemplateGroupDescriptorFactory
 
 internal const val HELIDON_DECLARATIVE_HTTP_SERVICE_TEMPLATE = "Helidon Declarative HTTP Service.java"
+internal const val HELIDON_ENDPOINT_PATH_ATTRIBUTE = "ENDPOINT_PATH"
+internal const val HELIDON_ENDPOINT_PATH_DEFAULT = "/greet"
 internal const val HELIDON_SERVER_TEST_TEMPLATE = "Helidon Server Test.java"
 internal const val HELIDON_LANGCHAIN4J_SERVICE_TEMPLATE = "Helidon LangChain4j Service.java"
 internal const val HELIDON_LANGCHAIN4J_AGENT_TEMPLATE = "Helidon LangChain4j Agent.java"

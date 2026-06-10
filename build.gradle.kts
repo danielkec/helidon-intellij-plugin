@@ -66,10 +66,9 @@ intellijPlatform {
 
     changeNotes = """
       <ul>
-        <li>Added the Helidon Services tool window for browsing services, contracts, injection points, service registry lookups, endpoints, and LangChain4j components.</li>
-        <li>Added Helidon file templates to the IDE New menu for Declarative HTTP services, server tests, LangChain4j services and agents, and OCI configuration files.</li>
-        <li>Added Maven-backed Run actions for JUnit test classes and methods in Helidon Maven modules.</li>
-        <li>Added <code>oci-config.yaml</code> support with OCI config source provider key completion, option documentation, file icons, and OCI region value completion.</li>
+        <li>Fixed Helidon Services tool window startup so it remains registered while project libraries are still being imported.</li>
+        <li>Enhanced the Declarative HTTP Service template with an editable endpoint path and generated GET, POST, PUT, and DELETE greeting handlers.</li>
+        <li>Registered Helidon built-in templates in the plugin descriptor so New menu actions resolve the bundled service, test, LangChain4j, and OCI templates reliably.</li>
       </ul>
     """.trimIndent()
   }

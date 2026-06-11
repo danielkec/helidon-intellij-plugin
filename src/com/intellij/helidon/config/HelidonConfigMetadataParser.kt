@@ -4,6 +4,7 @@ package com.intellij.helidon.config
 import com.google.gson.*
 import com.google.gson.stream.JsonReader
 import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.psi.CommonClassNames
@@ -46,7 +47,17 @@ internal class HelidonConfigMetadataParser {
   }
 
   private fun createReader(configMetadataFile: PsiFile): JsonReader {
-    return JsonReader(CharSequenceReader(VfsUtilCore.loadText(configMetadataFile.virtualFile)))
+    return JsonReader(CharSequenceReader(configMetadataText(configMetadataFile)))
+  }
+
+  private fun configMetadataText(configMetadataFile: PsiFile): CharSequence {
+    val virtualFile = configMetadataFile.virtualFile
+    val documentManager = FileDocumentManager.getInstance()
+    val cachedDocument = documentManager.getCachedDocument(virtualFile)
+    if (cachedDocument != null && documentManager.isFileModified(virtualFile)) {
+      return cachedDocument.charsSequence
+    }
+    return VfsUtilCore.loadText(virtualFile)
   }
 
   private fun parseModuleConfigs(moduleConfigs: JsonArray, resolveScope: GlobalSearchScope): List<ModuleConfig> {

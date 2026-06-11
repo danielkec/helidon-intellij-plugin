@@ -5,8 +5,11 @@ import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.config.HELIDON_APPLICATION_YAML
 import com.intellij.helidon.config.HELIDON_CONFIG_METADATA
 import com.intellij.openapi.application.runWriteAction
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.psi.PsiDocumentManager
+import com.intellij.psi.PsiManager
 import com.intellij.testFramework.PsiTestUtil
 import com.intellij.testFramework.VfsTestUtil
 import java.nio.charset.StandardCharsets
@@ -64,6 +67,25 @@ class HelidonConfigKeyServiceTest : HelidonHighlightingTestCase() {
     }
   }
 
+  fun testConfigMetadataCacheReparsesUnsavedEditedDiscoveredMetadataFile() {
+    withMicroservicesPluginEnabled(false) {
+      val metadataFile = addConfigMetadataLibrary("metadata-cache-unsaved-ce", metadataWithOption("before"))
+      val service = HelidonConfigKeyService.getInstance()
+
+      val keysBeforeEdit = service.getAllKeys(module).map { it.name }
+      assertContainsElements(keysBeforeEdit, "review.cache.before")
+      assertFalse(keysBeforeEdit.contains("review.cache.after"))
+
+      replaceDocumentTextWithoutSaving(metadataFile, metadataWithOption("after"))
+      assertTrue(FileDocumentManager.getInstance().isFileModified(metadataFile))
+      assertTrue(String(metadataFile.contentsToByteArray(), StandardCharsets.UTF_8).contains("before"))
+
+      val keysAfterEdit = service.getAllKeys(module).map { it.name }
+      assertFalse(keysAfterEdit.contains("review.cache.before"))
+      assertContainsElements(keysAfterEdit, "review.cache.after")
+    }
+  }
+
   private fun addConfigMetadataLibrary(rootName: String, text: String): VirtualFile {
     val libraryRootPath = Files.createTempDirectory(rootName)
     val libraryRoot = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(libraryRootPath)!!
@@ -80,6 +102,16 @@ class HelidonConfigKeyServiceTest : HelidonHighlightingTestCase() {
     runWriteAction {
       file.setBinaryContent(text.toByteArray(StandardCharsets.UTF_8))
     }
+  }
+
+  private fun replaceDocumentTextWithoutSaving(file: VirtualFile, text: String) {
+    val psiFile = PsiManager.getInstance(project).findFile(file)!!
+    val documentManager = PsiDocumentManager.getInstance(project)
+    val document = documentManager.getDocument(psiFile)!!
+    runWriteAction {
+      document.setText(text)
+    }
+    documentManager.commitDocument(document)
   }
 
   private fun metadataWithOption(optionKey: String): String {

@@ -5,11 +5,14 @@ import com.intellij.helidon.HelidonIcons
 import com.intellij.helidon.utils.HelidonCommonUtils.hasHelidonConfigLibrary
 import com.intellij.java.library.JavaLibraryModificationTracker
 import com.intellij.microservices.jvm.config.ConfigPlaceholderReference
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.openapi.roots.ModuleRootManager
 import com.intellij.openapi.roots.ProjectRootModificationTracker
 import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.vfs.VfsUtilCore
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.ElementManipulators
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
@@ -63,11 +66,11 @@ internal fun getHelidonConfigFileKind(file: PsiFile): HelidonConfigFileKind? {
     val module = ModuleUtilCore.findModuleForPsiElement(file)
     if (module != null && !module.isDisposed) {
       val virtualFile = file.virtualFile
-      val sourceRoots = ModuleRootManager.getInstance(module).sourceRoots
+      val configFileRoots = getConfigFileClassificationRoots(module)
       for (contributor in HelidonConfigFileContributor.EP_NAME.extensions) {
         if (contributor.fileType == file.fileType &&
             contributor.isConfigFile(virtualFile) &&
-            VfsUtilCore.isUnder(virtualFile, sourceRoots.toSet())) {
+            VfsUtilCore.isUnder(virtualFile, configFileRoots)) {
           val kind = getHelidonConfigFileKind(virtualFile.nameWithoutExtension)
           if (kind != null) {
             if (kind == HelidonConfigFileKind.OCI || hasHelidonConfigLibrary(module)) {
@@ -85,6 +88,15 @@ internal fun getHelidonConfigFileKind(file: PsiFile): HelidonConfigFileKind? {
                                                                 JavaLibraryModificationTracker.getInstance(file.project),
                                                                 ProjectRootModificationTracker.getInstance(file.project))
   }
+}
+
+private fun getConfigFileClassificationRoots(module: Module): Set<VirtualFile> {
+  val configFileRoots = HelidonConfigFileContributor.collectConfigDirectories(module, true)
+  if (configFileRoots.isNotEmpty() || !ApplicationManager.getApplication().isUnitTestMode) {
+    return configFileRoots
+  }
+
+  return ModuleRootManager.getInstance(module).sourceRoots.toSet()
 }
 
 fun getHelidonConfigFileIcon(file: PsiFile): Icon? {

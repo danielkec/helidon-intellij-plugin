@@ -8,13 +8,17 @@ import com.intellij.helidon.config.HELIDON_APPLICATION_PROPERTIES
 import com.intellij.helidon.config.HELIDON_APPLICATION_YAML
 import com.intellij.helidon.config.HELIDON_OCI_CONFIG_YAML
 import com.intellij.helidon.utils.HelidonCoreUtils
+import com.intellij.openapi.Disposable
+import com.intellij.openapi.util.Disposer
+import com.intellij.psi.PsiFile
 import com.intellij.testFramework.LightProjectDescriptor
+import com.intellij.testFramework.PsiTestUtil
 
 class HelidonConfigFileIconProviderTest : HelidonHighlightingTestCase() {
 
   fun testApplicationYamlGetsHelidonIcon() {
     withMicroservicesPluginEnabled(false) {
-      val psiFile = myFixture.configureByText(HELIDON_APPLICATION_YAML, "")
+      val psiFile = configureResourceFile(HELIDON_APPLICATION_YAML, "")
 
       assertSame(HelidonIcons.Helidon, HelidonConfigFileIconProvider().getIcon(psiFile, 0))
     }
@@ -22,7 +26,7 @@ class HelidonConfigFileIconProviderTest : HelidonHighlightingTestCase() {
 
   fun testApplicationPropertiesGetsHelidonIcon() {
     withMicroservicesPluginEnabled(false) {
-      val psiFile = myFixture.configureByText(HELIDON_APPLICATION_PROPERTIES, "")
+      val psiFile = configureResourceFile(HELIDON_APPLICATION_PROPERTIES, "")
 
       assertSame(HelidonIcons.Helidon, HelidonConfigFileIconProvider().getIcon(psiFile, 0))
     }
@@ -30,7 +34,7 @@ class HelidonConfigFileIconProviderTest : HelidonHighlightingTestCase() {
 
   fun testOciConfigYamlGetsOraIcon() {
     withMicroservicesPluginEnabled(false) {
-      val psiFile = myFixture.configureByText(HELIDON_OCI_CONFIG_YAML, "")
+      val psiFile = configureResourceFile(HELIDON_OCI_CONFIG_YAML, "")
 
       assertSame(HelidonIcons.Ora, HelidonConfigFileIconProvider().getIcon(psiFile, 0))
     }
@@ -46,7 +50,7 @@ class HelidonConfigFileIconProviderTest : HelidonHighlightingTestCase() {
 
   fun testOtherYamlDoesNotGetHelidonIcon() {
     withMicroservicesPluginEnabled(false) {
-      val psiFile = myFixture.configureByText("other.yaml", "")
+      val psiFile = configureResourceFile("other.yaml", "")
 
       assertNull(HelidonConfigFileIconProvider().getIcon(psiFile, 0))
     }
@@ -60,12 +64,47 @@ class HelidonConfigFileIconProviderTest : HelidonHighlightingTestCase() {
     }
   }
 
-  fun testMicroservicesModeDoesNotOverrideIconProvider() {
-    withMicroservicesPluginEnabled(true) {
-      val psiFile = myFixture.configureByText(HELIDON_APPLICATION_YAML, "")
+  fun testApplicationYamlInJavaSourceRootDoesNotGetHelidonIcon() {
+    withMicroservicesPluginEnabled(false) {
+      configureResourceRoot()
+      val psiFile = configureJavaSourceFile(HELIDON_APPLICATION_YAML, "")
 
       assertNull(HelidonConfigFileIconProvider().getIcon(psiFile, 0))
     }
+  }
+
+  fun testMicroservicesModeDoesNotOverrideIconProvider() {
+    withMicroservicesPluginEnabled(true) {
+      val psiFile = configureResourceFile(HELIDON_APPLICATION_YAML, "")
+
+      assertNull(HelidonConfigFileIconProvider().getIcon(psiFile, 0))
+    }
+  }
+
+  private fun configureResourceFile(fileName: String, text: String): PsiFile {
+    configureResourceRoot()
+    return configureRootedFile("src/main/resources", fileName, text)
+  }
+
+  private fun configureJavaSourceFile(fileName: String, text: String): PsiFile {
+    val sourceRoot = myFixture.tempDirFixture.findOrCreateDir("src/main/java")
+    PsiTestUtil.addSourceContentToRoots(module, sourceRoot, false)
+    Disposer.register(myFixture.testRootDisposable,
+                      Disposable { PsiTestUtil.removeContentEntry(module, sourceRoot) })
+    return configureRootedFile("src/main/java", fileName, text)
+  }
+
+  private fun configureResourceRoot() {
+    val resourceRoot = myFixture.tempDirFixture.findOrCreateDir("src/main/resources")
+    PsiTestUtil.addResourceContentToRoots(module, resourceRoot, false)
+    Disposer.register(myFixture.testRootDisposable,
+                      Disposable { PsiTestUtil.removeContentEntry(module, resourceRoot) })
+  }
+
+  private fun configureRootedFile(rootPath: String, fileName: String, text: String): PsiFile {
+    val file = myFixture.addFileToProject("$rootPath/$fileName", text)
+    myFixture.configureFromExistingVirtualFile(file.virtualFile)
+    return myFixture.file
   }
 }
 

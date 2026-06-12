@@ -345,8 +345,8 @@ internal object HelidonServicesRefreshRelevance {
   }
 
   private fun isRelevantJavaFile(file: PsiJavaFile): Boolean {
-    val text = file.text
-    if (JAVA_REFRESH_MARKERS.any { text.contains(it) }) return true
+    val contents = file.viewProvider.contents
+    if (JAVA_REFRESH_MARKERS.any { contents.contains(it) }) return true
 
     return hasRelevantAnnotation(file)
   }
@@ -382,6 +382,7 @@ internal object HelidonServicesRefreshRelevance {
 
   private fun isRelevantPropertiesConfigFile(file: PsiFile): Boolean {
     if (!isHelidonApplicationConfigFile(file)) return false
+    if (!file.viewProvider.contents.contains(LANGCHAIN4J_ROOT)) return false
     val propertiesFile = file as? PropertiesFile ?: return false
     return propertiesFile.properties.any { property ->
       property.key == LANGCHAIN4J_ROOT || property.key?.startsWith("$LANGCHAIN4J_ROOT.") == true
@@ -390,6 +391,7 @@ internal object HelidonServicesRefreshRelevance {
 
   private fun isRelevantYamlConfigFile(file: YAMLFile): Boolean {
     if (!isHelidonApplicationConfigFile(file)) return false
+    if (!file.viewProvider.contents.contains(LANGCHAIN4J_ROOT)) return false
     return PsiTreeUtil.findChildrenOfType(file, YAMLKeyValue::class.java).any { keyValue ->
       val keyName = getQualifiedConfigKeyName(keyValue)
       keyName == LANGCHAIN4J_ROOT || keyName.startsWith("$LANGCHAIN4J_ROOT.")

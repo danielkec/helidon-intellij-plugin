@@ -247,23 +247,33 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
     assertTrue(HelidonServicesRefreshRelevance.isRelevant(contractFile, knownFiles))
   }
 
-  fun testKnownModelInputFilterPreservesScopeFilters() {
-    val filter = HelidonServicesFilter(
-      moduleName = "app",
-      includeTests = false,
-      includeLibraries = false,
-      kind = HelidonServicesNodeKind.INJECTION_POINT,
-      showOnlyProblems = true,
+  fun testKnownModelInputFilesOnlyBroadenServiceRegistryFilters() {
+    addServiceRegistryStubs()
+    val contractFile = myFixture.configureByText("Greeting.java", """
+      interface Greeting {
+      }
+    """.trimIndent())
+    myFixture.configureByText("GreetingService.java", """
+      import io.helidon.service.registry.Service;
+
+      @Service.Singleton
+      class GreetingService implements Greeting {
+      }
+    """.trimIndent())
+    val contractVirtualFile = contractFile.virtualFile!!
+
+    val serviceResult = HelidonServicesRefreshInputs.collect(
+      project,
+      HelidonServicesFilter(kind = HelidonServicesNodeKind.SERVICE),
+    )
+    val httpResult = HelidonServicesRefreshInputs.collect(
+      project,
+      HelidonServicesFilter(kind = HelidonServicesNodeKind.HTTP_ENDPOINT),
     )
 
-    assertEquals(
-      HelidonServicesFilter(
-        moduleName = "app",
-        includeTests = false,
-        includeLibraries = false,
-      ),
-      HelidonServicesRefreshInputs.knownModelInputFilter(filter),
-    )
+    assertFalse(contractVirtualFile in serviceResult.snapshot.nodes.mapNotNull { it.navigationFile })
+    assertTrue(contractVirtualFile in serviceResult.knownModelInputFiles)
+    assertFalse(contractVirtualFile in httpResult.knownModelInputFiles)
   }
 
   fun testCollectsServiceContractsInjectionLookupsAndAmbiguousTargets() {

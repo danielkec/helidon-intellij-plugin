@@ -160,12 +160,7 @@ object HelidonServicesModel {
   )
 
   fun collect(project: Project, filter: HelidonServicesFilter = HelidonServicesFilter()): HelidonServicesSnapshot {
-    val allHelidonModules = ModuleManager.getInstance(project).modules
-      .asSequence()
-      .filter { !it.isDisposed }
-      .filter { HelidonCoreUtils.hasHelidonLibrary(it) }
-      .sortedBy { it.name }
-      .toList()
+    val allHelidonModules = allHelidonModules(project)
     if (allHelidonModules.isEmpty()) {
       return HelidonServicesSnapshot(emptyList(), emptyList())
     }
@@ -208,6 +203,16 @@ object HelidonServicesModel {
 
   fun filterSnapshot(snapshot: HelidonServicesSnapshot, filter: HelidonServicesFilter): HelidonServicesSnapshot =
     snapshot.copy(nodes = snapshot.nodes.filter { accepts(it, filter) })
+
+  fun collectServiceRegistryInputFiles(project: Project, filter: HelidonServicesFilter): Set<VirtualFile> {
+    val inputFilter = filter.copy(kind = null, showOnlyProblems = false)
+    return allHelidonModules(project)
+      .asSequence()
+      .filter { inputFilter.moduleName == null || it.name == inputFilter.moduleName }
+      .flatMap { collectServiceRegistryNodes(it, inputFilter).asSequence() }
+      .filter { accepts(it, inputFilter) }
+      .mapNotNullTo(LinkedHashSet()) { it.navigationFile }
+  }
 
   fun searchScope(module: Module, filter: HelidonServicesFilter): GlobalSearchScope =
     if (filter.includeLibraries) {
@@ -272,6 +277,14 @@ object HelidonServicesModel {
 
   private fun shouldCollectContributors(filter: HelidonServicesFilter): Boolean =
     !filter.showOnlyProblems && (filter.kind == null || filter.kind == HelidonServicesNodeKind.HTTP_ENDPOINT)
+
+  private fun allHelidonModules(project: Project): List<Module> =
+    ModuleManager.getInstance(project).modules
+      .asSequence()
+      .filter { !it.isDisposed }
+      .filter { HelidonCoreUtils.hasHelidonLibrary(it) }
+      .sortedBy { it.name }
+      .toList()
 
   private fun collectServiceRegistryNodes(module: Module, filter: HelidonServicesFilter): List<HelidonServicesNode> {
     val scope = searchScope(module, filter)

@@ -313,21 +313,38 @@ internal data class HelidonServicesRefreshResult(
 
 internal object HelidonServicesRefreshInputs {
   fun collect(project: Project, filter: HelidonServicesFilter): HelidonServicesRefreshResult {
-    val inputSnapshot = HelidonServicesModel.collect(project, knownModelInputFilter(filter))
+    val inputSnapshot = HelidonServicesModel.collect(project, filter)
     return HelidonServicesRefreshResult(
-      HelidonServicesModel.filterSnapshot(inputSnapshot, filter),
-      collectKnownModelInputFiles(inputSnapshot),
+      inputSnapshot,
+      collectKnownModelInputFiles(project, inputSnapshot, filter),
     )
   }
 
-  private fun collectKnownModelInputFiles(snapshot: HelidonServicesSnapshot): Set<VirtualFile> =
+  private fun collectKnownModelInputFiles(project: Project,
+                                          snapshot: HelidonServicesSnapshot,
+                                          filter: HelidonServicesFilter): Set<VirtualFile> =
+    if (needsServiceRegistryInputFiles(filter)) {
+      HelidonServicesModel.collectServiceRegistryInputFiles(project, filter)
+    }
+    else {
+      collectSnapshotInputFiles(snapshot)
+    }
+
+  private fun collectSnapshotInputFiles(snapshot: HelidonServicesSnapshot): Set<VirtualFile> =
     snapshot
       .nodes
       .mapNotNull { it.navigationFile }
       .toSet()
 
-  internal fun knownModelInputFilter(filter: HelidonServicesFilter): HelidonServicesFilter =
-    filter.copy(kind = null, showOnlyProblems = false)
+  private fun needsServiceRegistryInputFiles(filter: HelidonServicesFilter): Boolean =
+    (filter.showOnlyProblems && filter.kind == null) || filter.kind in SERVICE_REGISTRY_INPUT_KINDS
+
+  private val SERVICE_REGISTRY_INPUT_KINDS = setOf(
+    HelidonServicesNodeKind.SERVICE,
+    HelidonServicesNodeKind.CONTRACT,
+    HelidonServicesNodeKind.INJECTION_POINT,
+    HelidonServicesNodeKind.SERVICE_LOOKUP,
+  )
 }
 
 internal object HelidonServicesRefreshRelevance {
@@ -353,10 +370,11 @@ internal object HelidonServicesRefreshRelevance {
 
   private fun hasRelevantAnnotation(file: PsiJavaFile): Boolean {
     var relevant = false
+    val visited = HashSet<String>()
     file.accept(object : PsiRecursiveElementWalkingVisitor() {
       override fun visitElement(element: PsiElement) {
         if (relevant) return
-        if (element is PsiAnnotation && isRelevantAnnotation(element, HashSet())) {
+        if (element is PsiAnnotation && isRelevantAnnotation(element, visited)) {
           relevant = true
           stopWalking()
           return

@@ -206,6 +206,9 @@ object HelidonServicesModel {
     )
   }
 
+  fun filterSnapshot(snapshot: HelidonServicesSnapshot, filter: HelidonServicesFilter): HelidonServicesSnapshot =
+    snapshot.copy(nodes = snapshot.nodes.filter { accepts(it, filter) })
+
   fun searchScope(module: Module, filter: HelidonServicesFilter): GlobalSearchScope =
     if (filter.includeLibraries) {
       module.getModuleWithDependenciesAndLibrariesScope(filter.includeTests)

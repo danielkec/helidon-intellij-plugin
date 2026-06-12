@@ -18,9 +18,11 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.psi.PsiAnnotation
+import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiJavaFile
 import com.intellij.psi.PsiManager
+import com.intellij.psi.PsiRecursiveElementWalkingVisitor
 import com.intellij.psi.PsiTreeChangeAdapter
 import com.intellij.psi.PsiTreeChangeEvent
 import com.intellij.psi.util.PsiTreeUtil
@@ -37,7 +39,6 @@ import java.awt.FlowLayout
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.util.concurrent.Callable
-import java.util.concurrent.ConcurrentHashMap
 import java.util.function.Consumer
 import javax.swing.JButton
 import javax.swing.JCheckBox
@@ -72,7 +73,8 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
   private val treeRoot = DefaultMutableTreeNode("Helidon Services")
   private val treeModel = DefaultTreeModel(treeRoot)
   private val tree = Tree(treeModel)
-  private val knownModelInputFiles = ConcurrentHashMap.newKeySet<VirtualFile>()
+  @Volatile
+  private var knownModelInputFiles: Set<VirtualFile> = emptySet()
   private var updatingModuleFilter = false
 
   init {
@@ -117,8 +119,7 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
     if (project.isDisposed) return
     val filter = selectedFilter()
     ReadAction.nonBlocking(Callable {
-      val snapshot = HelidonServicesModel.collect(project, filter)
-      HelidonServicesRefreshResult(snapshot, HelidonServicesRefreshInputs.collectKnownModelInputFiles(project, filter))
+      HelidonServicesRefreshInputs.collect(project, filter)
     })
       .coalesceBy(this)
       .expireWith(this)
@@ -211,8 +212,7 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
   }
 
   private fun updateKnownModelInputFiles(inputFiles: Set<VirtualFile>) {
-    knownModelInputFiles.clear()
-    knownModelInputFiles.addAll(inputFiles)
+    knownModelInputFiles = inputFiles
   }
 
   private fun subscribeToProjectRootChanges() {
@@ -306,16 +306,25 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
   }
 }
 
-private data class HelidonServicesRefreshResult(
+internal data class HelidonServicesRefreshResult(
   val snapshot: HelidonServicesSnapshot,
   val knownModelInputFiles: Set<VirtualFile>,
 )
 
 internal object HelidonServicesRefreshInputs {
-  fun collectKnownModelInputFiles(project: Project, filter: HelidonServicesFilter): Set<VirtualFile> =
-    HelidonServicesModel.collect(project, knownModelInputFilter(filter))
+  fun collect(project: Project, filter: HelidonServicesFilter): HelidonServicesRefreshResult {
+    val inputSnapshot = HelidonServicesModel.collect(project, knownModelInputFilter(filter))
+    return HelidonServicesRefreshResult(
+      HelidonServicesModel.filterSnapshot(inputSnapshot, filter),
+      collectKnownModelInputFiles(inputSnapshot),
+    )
+  }
+
+  private fun collectKnownModelInputFiles(snapshot: HelidonServicesSnapshot): Set<VirtualFile> =
+    snapshot
       .nodes
-      .mapNotNullTo(LinkedHashSet()) { it.navigationFile }
+      .mapNotNull { it.navigationFile }
+      .toSet()
 
   internal fun knownModelInputFilter(filter: HelidonServicesFilter): HelidonServicesFilter =
     filter.copy(kind = null, showOnlyProblems = false)
@@ -339,9 +348,23 @@ internal object HelidonServicesRefreshRelevance {
     val text = file.text
     if (JAVA_REFRESH_MARKERS.any { text.contains(it) }) return true
 
-    return PsiTreeUtil.findChildrenOfType(file, PsiAnnotation::class.java).any { annotation ->
-      isRelevantAnnotation(annotation, HashSet())
-    }
+    return hasRelevantAnnotation(file)
+  }
+
+  private fun hasRelevantAnnotation(file: PsiJavaFile): Boolean {
+    var relevant = false
+    file.accept(object : PsiRecursiveElementWalkingVisitor() {
+      override fun visitElement(element: PsiElement) {
+        if (relevant) return
+        if (element is PsiAnnotation && isRelevantAnnotation(element, HashSet())) {
+          relevant = true
+          stopWalking()
+          return
+        }
+        super.visitElement(element)
+      }
+    })
+    return relevant
   }
 
   private fun isRelevantAnnotation(annotation: PsiAnnotation, visited: MutableSet<String>): Boolean {
@@ -360,7 +383,9 @@ internal object HelidonServicesRefreshRelevance {
   private fun isRelevantPropertiesConfigFile(file: PsiFile): Boolean {
     if (!isHelidonApplicationConfigFile(file)) return false
     val propertiesFile = file as? PropertiesFile ?: return false
-    return propertiesFile.properties.any { property -> property.key?.startsWith("$LANGCHAIN4J_ROOT.") == true }
+    return propertiesFile.properties.any { property ->
+      property.key == LANGCHAIN4J_ROOT || property.key?.startsWith("$LANGCHAIN4J_ROOT.") == true
+    }
   }
 
   private fun isRelevantYamlConfigFile(file: YAMLFile): Boolean {

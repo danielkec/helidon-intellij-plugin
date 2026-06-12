@@ -167,6 +167,9 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
     assertTrue(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("application.properties", """
       langchain4j.services.assistant.chat-model=assistant-model
     """.trimIndent())))
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("application-root.properties", """
+      langchain4j=enabled
+    """.trimIndent())))
     assertTrue(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("microprofile-config.properties", """
       langchain4j.models.assistant-model.provider=open-ai
     """.trimIndent())))
@@ -227,14 +230,16 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
 
     val problemFilter = HelidonServicesFilter(showOnlyProblems = true)
     val problemSnapshot = HelidonServicesModel.collect(project, problemFilter)
-    val problemFiles = problemSnapshot.nodes.mapNotNullTo(LinkedHashSet()) { it.navigationFile }
-    val knownFiles = HelidonServicesRefreshInputs.collectKnownModelInputFiles(project, problemFilter)
-    val wrongModuleKnownFiles = HelidonServicesRefreshInputs.collectKnownModelInputFiles(
+    val result = HelidonServicesRefreshInputs.collect(project, problemFilter)
+    val problemFiles = result.snapshot.nodes.mapNotNullTo(LinkedHashSet()) { it.navigationFile }
+    val knownFiles = result.knownModelInputFiles
+    val wrongModuleKnownFiles = HelidonServicesRefreshInputs.collect(
       project,
       problemFilter.copy(moduleName = "missing"),
-    )
+    ).knownModelInputFiles
     val contractVirtualFile = contractFile.virtualFile!!
 
+    assertEquals(problemSnapshot.nodes.map { it.id }, result.snapshot.nodes.map { it.id })
     assertFalse(contractVirtualFile in problemFiles)
     assertTrue(contractVirtualFile in knownFiles)
     assertTrue(wrongModuleKnownFiles.isEmpty())

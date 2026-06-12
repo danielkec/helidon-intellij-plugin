@@ -61,7 +61,6 @@ intellijPlatform {
   pluginConfiguration {
     ideaVersion {
       sinceBuild = "261"
-      untilBuild = "261.*"
     }
 
     changeNotes = """
@@ -81,6 +80,7 @@ intellijPlatform {
       // IDEA 2026.1 is distributed as the unified IU product; IC verifier artifacts are no longer published.
       // Community compatibility is covered by descriptor tests that keep microservices registrations optional.
       create(IntelliJPlatformType.IntellijIdea, "2026.1.1")
+      create(IntelliJPlatformType.IntellijIdea, "262.7132.23")
     }
   }
 }

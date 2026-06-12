@@ -2,6 +2,7 @@
 package com.intellij.helidon
 
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.w3c.dom.Element
@@ -11,6 +12,28 @@ import java.nio.file.Path
 import javax.xml.parsers.DocumentBuilderFactory
 
 class HelidonPluginDescriptorTest {
+
+  @Test
+  fun testReleaseMetadataUsesOpenEndedCompatibility() {
+    val buildScript = Files.readString(Path.of("build.gradle.kts"))
+    val gradleVersion = buildScript.propertyValue("version")
+    val gradleSinceBuild = buildScript.propertyValue("sinceBuild")
+    val updateSite = parseDescriptor(Path.of("docs/updatePlugins.xml"))
+    val plugin = updateSite.getElementsByTagName("plugin").item(0) as Element
+    val ideaVersion = plugin.getElementsByTagName("idea-version").item(0) as Element
+    val patchedDescriptor = parseDescriptor(Path.of("build/resources/main/META-INF/plugin.xml"))
+    val patchedIdeaVersion = patchedDescriptor.getElementsByTagName("idea-version").item(0) as Element
+
+    assertEquals(gradleVersion, plugin.getAttribute("version"))
+    assertEquals(gradleSinceBuild, ideaVersion.getAttribute("since-build"))
+    assertEquals(gradleSinceBuild, patchedIdeaVersion.getAttribute("since-build"))
+    assertFalse("Gradle plugin configuration should keep IntelliJ compatibility open-ended",
+                buildScript.contains("untilBuild"))
+    assertFalse("Custom update repository should keep IntelliJ compatibility open-ended",
+                ideaVersion.hasAttribute("until-build"))
+    assertFalse("Patched plugin descriptor should keep IntelliJ compatibility open-ended",
+                patchedIdeaVersion.hasAttribute("until-build"))
+  }
 
   @Test
   fun testMainDescriptorDoesNotRequireUltimateOrMicroservices() {
@@ -351,4 +374,16 @@ class HelidonPluginDescriptorTest {
 
   private fun NodeList.attributes(name: String): List<String> = elements()
     .map { it.getAttribute(name) }
+
+  private fun String.propertyValue(name: String): String {
+    return Regex("""(?m)^      $name = "([^"]+)"""")
+      .find(this)
+      ?.groupValues
+      ?.get(1)
+      ?: Regex("""(?m)^$name = "([^"]+)"""")
+        .find(this)
+        ?.groupValues
+        ?.get(1)
+      ?: error("Missing $name in build.gradle.kts")
+  }
 }

@@ -28,7 +28,7 @@ class HelidonPluginDescriptorTest {
     assertEquals(gradleSinceBuild, ideaVersion.getAttribute("since-build"))
     assertEquals(gradleSinceBuild, patchedIdeaVersion.getAttribute("since-build"))
     assertFalse("Gradle plugin configuration should keep IntelliJ compatibility open-ended",
-                buildScript.contains("untilBuild"))
+                buildScript.hasPropertyAssignment("untilBuild"))
     assertFalse("Custom update repository should keep IntelliJ compatibility open-ended",
                 ideaVersion.hasAttribute("until-build"))
     assertFalse("Patched plugin descriptor should keep IntelliJ compatibility open-ended",
@@ -376,14 +376,15 @@ class HelidonPluginDescriptorTest {
     .map { it.getAttribute(name) }
 
   private fun String.propertyValue(name: String): String {
-    return Regex("""(?m)^      $name = "([^"]+)"""")
+    return Regex("""(?m)^\s*${Regex.escape(name)}\s*=\s*"([^"]+)"""")
       .find(this)
       ?.groupValues
       ?.get(1)
-      ?: Regex("""(?m)^$name = "([^"]+)"""")
-        .find(this)
-        ?.groupValues
-        ?.get(1)
       ?: error("Missing $name in build.gradle.kts")
+  }
+
+  private fun String.hasPropertyAssignment(name: String): Boolean {
+    return Regex("""(?m)^\s*${Regex.escape(name)}\s*=""")
+      .containsMatchIn(this)
   }
 }

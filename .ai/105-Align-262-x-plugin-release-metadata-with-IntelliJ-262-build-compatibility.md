@@ -12,10 +12,12 @@
 - Reworked `HelidonMetaConfigKey` to implement the stable `MetaConfigKey` interface directly, avoiding the `AbstractMetaConfigKey` constructor that changed between 261 and 262.
 - Replaced verifier-reported internal API usage in the CE Microservices plugin check and metadata-key icon presentation.
 - The CE Microservices check now uses the registered Microservices extension point instead of plugin-manager internals, so disabled optional-plugin sandboxes can still fall back to CE contributors.
+- Addressed PR review comments by aligning the lookup presentation test with the intentional `AllIcons.Nodes.Property` presentation and making release metadata parsing/checks whitespace-tolerant without broad substring matching.
 
 ## Validation
 
 - Passed: `git diff --check`
+- Passed: `TMPDIR=$PWD/.gradle-tmp JAVA_TOOL_OPTIONS=-Djava.io.tmpdir=$PWD/.gradle-tmp ./gradlew test --tests com.intellij.helidon.config.HelidonMetaConfigKeyLookupElementBuilderTest --tests com.intellij.helidon.HelidonPluginDescriptorTest --no-daemon --no-configuration-cache`
 - Passed: `./gradlew test --tests com.intellij.helidon.HelidonPluginDescriptorTest --no-daemon --no-configuration-cache`
 - Passed: `./gradlew test --tests com.intellij.helidon.HelidonPluginDescriptorTest --tests com.intellij.helidon.config.HelidonMetaConfigKeyTest --tests com.intellij.helidon.config.HelidonMetaConfigKeyManagerTest --tests 'com.intellij.helidon.config.ce.*' --no-daemon --no-configuration-cache`
 - Passed: `./gradlew patchPluginXml --no-daemon --no-configuration-cache`

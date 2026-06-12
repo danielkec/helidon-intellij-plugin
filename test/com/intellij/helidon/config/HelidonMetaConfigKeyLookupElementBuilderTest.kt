@@ -2,12 +2,11 @@
 package com.intellij.helidon.config
 
 import com.intellij.codeInsight.lookup.LookupElementPresentation
+import com.intellij.icons.AllIcons
 import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.microservices.jvm.config.MetaConfigKey
 import com.intellij.microservices.jvm.config.MetaConfigKey.DescriptionText
 import com.intellij.psi.util.PsiTypesUtil
-import com.intellij.ui.IconManager
-import com.intellij.ui.PlatformIcons
 
 class HelidonMetaConfigKeyLookupElementBuilderTest : HelidonHighlightingTestCase() {
   fun testPresentation() {
@@ -25,7 +24,7 @@ class HelidonMetaConfigKeyLookupElementBuilderTest : HelidonHighlightingTestCase
                                    MetaConfigKey.AccessType.NORMAL)
     val lookupElement = key.presentation.lookupElement
     val presentation = LookupElementPresentation.renderElement(lookupElement)
-    assertEquals(IconManager.getInstance().getPlatformIcon(PlatformIcons.Property), presentation.icon)
+    assertEquals(AllIcons.Nodes.Property, presentation.icon)
     assertEquals("name", presentation.itemText)
     assertFalse(presentation.isItemTextBold)
     assertFalse(presentation.isStrikeout)

@@ -5,6 +5,6 @@
       url="https://github.com/danielkec/helidon-intellij-plugin/releases/download/v262.0.13/Helidon-262.0.13.zip"
       version="262.0.13">
     <name>Helidon</name>
-    <idea-version since-build="261" until-build="261.*"/>
+    <idea-version since-build="261"/>
   </plugin>
 </plugins>

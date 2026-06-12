@@ -4,16 +4,15 @@ package com.intellij.helidon.config
 import com.intellij.microservices.jvm.config.ConfigKeyDeclarationPsiElement
 import com.intellij.microservices.jvm.config.MetaConfigKey
 import com.intellij.microservices.jvm.config.MetaConfigKey.DescriptionText
+import com.intellij.icons.AllIcons
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiMethod
 import com.intellij.psi.PsiTypes
-import com.intellij.ui.IconManager
-import com.intellij.ui.PlatformIcons
 
 class HelidonMetaConfigKeyTest : HelidonMetaConfigKeyTestCase() {
   fun testGetIcon() {
     val plain = createKey("plain", PsiTypes.booleanType(), MetaConfigKey.AccessType.NORMAL)
-    assertEquals(IconManager.getInstance().getPlatformIcon(PlatformIcons.Property), plain.presentation.icon)
+    assertEquals(AllIcons.Nodes.Property, plain.presentation.icon)
   }
 
   fun testDescriptionTextShortText() {

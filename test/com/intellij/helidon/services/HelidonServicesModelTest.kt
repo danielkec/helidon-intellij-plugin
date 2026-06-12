@@ -63,6 +63,34 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
     assertTrue(HelidonServicesRefreshRelevance.isRelevant(lookupFile))
   }
 
+  fun testRefreshRelevanceAcceptsServiceMetaAnnotatedJavaFiles() {
+    addServiceRegistryStubs()
+    myFixture.addClass("""
+      package demo;
+
+      import java.lang.annotation.ElementType;
+      import java.lang.annotation.Retention;
+      import java.lang.annotation.RetentionPolicy;
+      import java.lang.annotation.Target;
+      import io.helidon.service.registry.Service;
+
+      @Retention(RetentionPolicy.CLASS)
+      @Target(ElementType.TYPE)
+      @Service.Singleton
+      public @interface ApplicationService {
+      }
+    """.trimIndent())
+    val serviceFile = myFixture.configureByText("GreetingService.java", """
+      import demo.ApplicationService;
+
+      @ApplicationService
+      class GreetingService {
+      }
+    """.trimIndent())
+
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(serviceFile))
+  }
+
   fun testRefreshRelevanceAcceptsHttpEndpointJavaFiles() {
     val endpointFile = myFixture.configureByText("GreetingEndpoint.java", """
       import io.helidon.http.Http;
@@ -89,6 +117,26 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
 
     assertTrue(HelidonServicesRefreshRelevance.isRelevant(endpointFile))
     assertTrue(HelidonServicesRefreshRelevance.isRelevant(routingFile))
+  }
+
+  fun testRefreshRelevanceAcceptsHttpEndpointNestedWildcardImports() {
+    addServiceRegistryStubs()
+    addRestServerEndpointStubs()
+    val file = myFixture.configureByText("GreetingEndpoint.java", """
+      import io.helidon.http.Http.*;
+      import io.helidon.webserver.http.RestServer.*;
+
+      @Endpoint
+      class GreetingEndpoint {
+        @GET
+        @Path("/hello")
+        String hello() {
+          return "hello";
+        }
+      }
+    """.trimIndent())
+
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(file))
   }
 
   fun testRefreshRelevanceAcceptsLangChain4jJavaFiles() {
@@ -152,6 +200,40 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
     """.trimIndent())
 
     assertTrue(HelidonServicesRefreshRelevance.isRelevant(file, setOf(file.virtualFile!!)))
+  }
+
+  fun testKnownModelInputFilesUseUnfilteredServicesSnapshot() {
+    addServiceRegistryStubs()
+    val contractFile = myFixture.configureByText("Greeting.java", """
+      interface Greeting {
+      }
+    """.trimIndent())
+    myFixture.configureByText("GreetingService.java", """
+      import io.helidon.service.registry.Service;
+
+      @Service.Singleton
+      class GreetingService implements Greeting {
+      }
+    """.trimIndent())
+    myFixture.configureByText("GreetingConsumer.java", """
+      import io.helidon.service.registry.Service;
+
+      @Service.Singleton
+      class GreetingConsumer {
+        @Service.Inject
+        Greeting greeting;
+      }
+    """.trimIndent())
+
+    val problemSnapshot = HelidonServicesModel.collect(project, HelidonServicesFilter(showOnlyProblems = true))
+    val problemFiles = problemSnapshot.nodes.mapNotNullTo(LinkedHashSet()) { it.navigationFile }
+    val knownFiles = HelidonServicesRefreshInputs.collectKnownModelInputFiles(project)
+    val contractVirtualFile = contractFile.virtualFile!!
+
+    assertFalse(contractVirtualFile in problemFiles)
+    assertTrue(contractVirtualFile in knownFiles)
+    assertFalse(HelidonServicesRefreshRelevance.isRelevant(contractFile))
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(contractFile, knownFiles))
   }
 
   fun testCollectsServiceContractsInjectionLookupsAndAmbiguousTargets() {

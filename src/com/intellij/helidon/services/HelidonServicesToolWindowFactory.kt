@@ -17,6 +17,7 @@ import com.intellij.openapi.roots.ModuleRootListener
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
+import com.intellij.psi.PsiAnnotation
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiJavaFile
 import com.intellij.psi.PsiManager
@@ -116,15 +117,16 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
     if (project.isDisposed) return
     val filter = selectedFilter()
     ReadAction.nonBlocking(Callable {
-      HelidonServicesModel.collect(project, filter)
+      val snapshot = HelidonServicesModel.collect(project, filter)
+      HelidonServicesRefreshResult(snapshot, HelidonServicesRefreshInputs.collectKnownModelInputFiles(project))
     })
       .coalesceBy(this)
       .expireWith(this)
       .inSmartMode(project)
-      .finishOnUiThread(ModalityState.nonModal(), Consumer { snapshot ->
-        updateKnownModelInputFiles(snapshot)
-        updateModuleFilter(snapshot.modules)
-        rebuildTree(snapshot)
+      .finishOnUiThread(ModalityState.nonModal(), Consumer { result ->
+        updateKnownModelInputFiles(result.knownModelInputFiles)
+        updateModuleFilter(result.snapshot.modules)
+        rebuildTree(result.snapshot)
       })
       .submit(AppExecutorUtil.getAppExecutorService())
   }
@@ -208,14 +210,13 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
     }
   }
 
-  private fun updateKnownModelInputFiles(snapshot: HelidonServicesSnapshot) {
+  private fun updateKnownModelInputFiles(inputFiles: Set<VirtualFile>) {
     knownModelInputFiles.clear()
-    snapshot.nodes.mapNotNullTo(knownModelInputFiles) { it.navigationFile }
+    knownModelInputFiles.addAll(inputFiles)
   }
 
-  @Suppress("DEPRECATION")
   private fun subscribeToProjectRootChanges() {
-    project.messageBus.connect(this).subscribe(com.intellij.ProjectTopics.PROJECT_ROOTS, object : ModuleRootListener {
+    project.messageBus.connect(this).subscribe(ModuleRootListener.TOPIC, object : ModuleRootListener {
       override fun rootsChanged(event: ModuleRootEvent) = scheduleRefresh()
     })
   }
@@ -305,6 +306,20 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
   }
 }
 
+private data class HelidonServicesRefreshResult(
+  val snapshot: HelidonServicesSnapshot,
+  val knownModelInputFiles: Set<VirtualFile>,
+)
+
+internal object HelidonServicesRefreshInputs {
+  fun collectKnownModelInputFiles(project: Project): Set<VirtualFile> =
+    HelidonServicesModel.collect(project, KNOWN_MODEL_INPUT_FILTER)
+      .nodes
+      .mapNotNullTo(LinkedHashSet()) { it.navigationFile }
+
+  private val KNOWN_MODEL_INPUT_FILTER = HelidonServicesFilter(includeTests = true, includeLibraries = true)
+}
+
 internal object HelidonServicesRefreshRelevance {
   fun isRelevant(file: PsiFile, knownModelInputFiles: Set<VirtualFile> = emptySet()): Boolean {
     val originalFile = file.originalFile
@@ -319,9 +334,26 @@ internal object HelidonServicesRefreshRelevance {
     }
   }
 
-  private fun isRelevantJavaFile(file: PsiFile): Boolean {
+  private fun isRelevantJavaFile(file: PsiJavaFile): Boolean {
     val text = file.text
-    return JAVA_REFRESH_MARKERS.any { text.contains(it) }
+    if (JAVA_REFRESH_MARKERS.any { text.contains(it) }) return true
+
+    return PsiTreeUtil.findChildrenOfType(file, PsiAnnotation::class.java).any { annotation ->
+      isRelevantAnnotation(annotation, HashSet())
+    }
+  }
+
+  private fun isRelevantAnnotation(annotation: PsiAnnotation, visited: MutableSet<String>): Boolean {
+    val qualifiedName = annotation.qualifiedName
+    if (qualifiedName in JAVA_REFRESH_ANNOTATIONS) return true
+
+    val annotationClass = annotation.resolveAnnotationType() ?: return false
+    val annotationKey = annotationClass.qualifiedName ?: annotationClass.name ?: return false
+    if (!visited.add(annotationKey)) return false
+
+    return annotationClass.modifierList?.annotations?.any {
+      isRelevantAnnotation(it, visited)
+    } == true
   }
 
   private fun isRelevantPropertiesConfigFile(file: PsiFile): Boolean {
@@ -339,6 +371,57 @@ internal object HelidonServicesRefreshRelevance {
   }
 
   private const val LANGCHAIN4J_ROOT = "langchain4j"
+
+  private val JAVA_REFRESH_ANNOTATIONS = setOf(
+    HelidonConstants.SERVICE_SINGLETON,
+    HelidonConstants.SERVICE_PROVIDER,
+    HelidonConstants.SERVICE_PER_LOOKUP,
+    HelidonConstants.SERVICE_PER_REQUEST,
+    HelidonConstants.SERVICE_INJECT,
+    HelidonConstants.SERVICE_CONTRACT,
+    HelidonConstants.SERVICE_NAMED,
+    HelidonConstants.SERVICE_EXTERNAL_CONTRACTS,
+    HelidonConstants.REST_SERVER_ENDPOINT,
+    HelidonConstants.HTTP_PATH,
+    HelidonConstants.HTTP_HTTP_METHOD,
+    HelidonConstants.HTTP_PATH_PARAM,
+    HelidonConstants.HTTP_HEADER_PARAM,
+    HelidonConstants.HTTP_QUERY_PARAM,
+    HelidonConstants.HTTP_ENTITY,
+    HelidonConstants.HTTP_CONSUMES,
+    HelidonConstants.HTTP_PRODUCES,
+    HelidonConstants.HTTP_GET,
+    HelidonConstants.HTTP_HEAD,
+    HelidonConstants.HTTP_POST,
+    HelidonConstants.HTTP_PUT,
+    HelidonConstants.HTTP_PATCH,
+    HelidonConstants.HTTP_DELETE,
+    HelidonConstants.HTTP_OPTIONS,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_SERVICE,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_AGENT,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_CHAT_MODEL,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_STREAMING_CHAT_MODEL,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_CHAT_MEMORY_PROVIDER,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_MODERATION_MODEL,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_CONTENT_RETRIEVER,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_RETRIEVAL_AUGMENTOR,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_TOOL_PROVIDER,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_MCP_CLIENTS,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_TOOLS,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_TOOL,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_SERVICE,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_AGENT,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_CHAT_MODEL,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_STREAMING_CHAT_MODEL,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_CHAT_MEMORY_PROVIDER,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_MODERATION_MODEL,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_CONTENT_RETRIEVER,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_RETRIEVAL_AUGMENTOR,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_TOOL_PROVIDER,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_MCP_CLIENTS,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_TOOLS,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_TOOL,
+  )
 
   private val JAVA_REFRESH_MARKERS = listOf(
     HelidonConstants.WEB_SERVER,

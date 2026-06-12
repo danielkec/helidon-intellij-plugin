@@ -23,6 +23,137 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
     assertTrue(future.get(10, TimeUnit.SECONDS))
   }
 
+  fun testRefreshRelevanceIgnoresUnrelatedJavaPropertiesAndYamlFiles() {
+    assertFalse(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("Plain.java", """
+      class Plain {
+        void update() {
+        }
+      }
+    """.trimIndent())))
+    assertFalse(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("notes.properties", """
+      message=hello
+    """.trimIndent())))
+    assertFalse(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("notes.yaml", """
+      message: hello
+    """.trimIndent())))
+  }
+
+  fun testRefreshRelevanceAcceptsServiceRegistryJavaFiles() {
+    val serviceFile = myFixture.configureByText("GreetingService.java", """
+      import io.helidon.service.registry.Service;
+
+      @Service.Singleton
+      class GreetingService {
+      }
+    """.trimIndent())
+    val lookupFile = myFixture.configureByText("GreetingLookup.java", """
+      import io.helidon.service.registry.Services;
+
+      class GreetingLookup {
+        void lookup() {
+          Services.get(Greeting.class);
+        }
+      }
+
+      interface Greeting {
+      }
+    """.trimIndent())
+
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(serviceFile))
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(lookupFile))
+  }
+
+  fun testRefreshRelevanceAcceptsHttpEndpointJavaFiles() {
+    val endpointFile = myFixture.configureByText("GreetingEndpoint.java", """
+      import io.helidon.http.Http;
+      import io.helidon.webserver.http.RestServer;
+
+      @RestServer.Endpoint
+      class GreetingEndpoint {
+        @Http.GET
+        @Http.Path("/hello")
+        String hello() {
+          return "hello";
+        }
+      }
+    """.trimIndent())
+    val routingFile = myFixture.configureByText("GreetingRouting.java", """
+      import io.helidon.webserver.http.HttpRouting;
+
+      class GreetingRouting {
+        void routes(HttpRouting.Builder routing) {
+          routing.get("/hello", (req, res) -> res.send("hello"));
+        }
+      }
+    """.trimIndent())
+
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(endpointFile))
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(routingFile))
+  }
+
+  fun testRefreshRelevanceAcceptsLangChain4jJavaFiles() {
+    val file = myFixture.configureByText("AssistantService.java", """
+      import io.helidon.extensions.langchain4j.Ai;
+
+      @Ai.Service("assistant")
+      interface AssistantService {
+      }
+    """.trimIndent())
+
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(file))
+  }
+
+  fun testRefreshRelevanceAcceptsOnlyLangChain4jApplicationConfigFiles() {
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("application.yaml", """
+      langchain4j:
+        services:
+          assistant:
+            chat-model: assistant-model
+    """.trimIndent())))
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("application-dev.yaml", """
+      langchain4j:
+        models:
+          assistant-model:
+            provider: open-ai
+    """.trimIndent())))
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("application.properties", """
+      langchain4j.services.assistant.chat-model=assistant-model
+    """.trimIndent())))
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("microprofile-config.properties", """
+      langchain4j.models.assistant-model.provider=open-ai
+    """.trimIndent())))
+    assertFalse(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("application-other.yaml", """
+      server:
+        port: 8080
+    """.trimIndent())))
+    assertFalse(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("application-dev.properties", """
+      server.port=8080
+    """.trimIndent())))
+    assertFalse(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("oci-config.yaml", """
+      helidon:
+        oci:
+          profile: DEFAULT
+    """.trimIndent())))
+    assertFalse(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("other.yaml", """
+      langchain4j:
+        services:
+          assistant:
+            chat-model: assistant-model
+    """.trimIndent())))
+    assertFalse(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("other.properties", """
+      langchain4j.services.assistant.chat-model=assistant-model
+    """.trimIndent())))
+  }
+
+  fun testRefreshRelevanceKeepsKnownModelInputFilesRelevant() {
+    val file = myFixture.configureByText("Tracked.java", """
+      class Tracked {
+      }
+    """.trimIndent())
+
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(file, setOf(file.virtualFile!!)))
+  }
+
   fun testCollectsServiceContractsInjectionLookupsAndAmbiguousTargets() {
     addServiceRegistryStubs()
     myFixture.configureByText("Main.java", """

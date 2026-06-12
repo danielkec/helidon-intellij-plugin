@@ -118,7 +118,7 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
     val filter = selectedFilter()
     ReadAction.nonBlocking(Callable {
       val snapshot = HelidonServicesModel.collect(project, filter)
-      HelidonServicesRefreshResult(snapshot, HelidonServicesRefreshInputs.collectKnownModelInputFiles(project))
+      HelidonServicesRefreshResult(snapshot, HelidonServicesRefreshInputs.collectKnownModelInputFiles(project, filter))
     })
       .coalesceBy(this)
       .expireWith(this)
@@ -312,12 +312,13 @@ private data class HelidonServicesRefreshResult(
 )
 
 internal object HelidonServicesRefreshInputs {
-  fun collectKnownModelInputFiles(project: Project): Set<VirtualFile> =
-    HelidonServicesModel.collect(project, KNOWN_MODEL_INPUT_FILTER)
+  fun collectKnownModelInputFiles(project: Project, filter: HelidonServicesFilter): Set<VirtualFile> =
+    HelidonServicesModel.collect(project, knownModelInputFilter(filter))
       .nodes
       .mapNotNullTo(LinkedHashSet()) { it.navigationFile }
 
-  private val KNOWN_MODEL_INPUT_FILTER = HelidonServicesFilter(includeTests = true, includeLibraries = true)
+  internal fun knownModelInputFilter(filter: HelidonServicesFilter): HelidonServicesFilter =
+    filter.copy(kind = null, showOnlyProblems = false)
 }
 
 internal object HelidonServicesRefreshRelevance {

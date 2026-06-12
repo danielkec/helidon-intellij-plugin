@@ -225,15 +225,40 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
       }
     """.trimIndent())
 
-    val problemSnapshot = HelidonServicesModel.collect(project, HelidonServicesFilter(showOnlyProblems = true))
+    val problemFilter = HelidonServicesFilter(showOnlyProblems = true)
+    val problemSnapshot = HelidonServicesModel.collect(project, problemFilter)
     val problemFiles = problemSnapshot.nodes.mapNotNullTo(LinkedHashSet()) { it.navigationFile }
-    val knownFiles = HelidonServicesRefreshInputs.collectKnownModelInputFiles(project)
+    val knownFiles = HelidonServicesRefreshInputs.collectKnownModelInputFiles(project, problemFilter)
+    val wrongModuleKnownFiles = HelidonServicesRefreshInputs.collectKnownModelInputFiles(
+      project,
+      problemFilter.copy(moduleName = "missing"),
+    )
     val contractVirtualFile = contractFile.virtualFile!!
 
     assertFalse(contractVirtualFile in problemFiles)
     assertTrue(contractVirtualFile in knownFiles)
+    assertTrue(wrongModuleKnownFiles.isEmpty())
     assertFalse(HelidonServicesRefreshRelevance.isRelevant(contractFile))
     assertTrue(HelidonServicesRefreshRelevance.isRelevant(contractFile, knownFiles))
+  }
+
+  fun testKnownModelInputFilterPreservesScopeFilters() {
+    val filter = HelidonServicesFilter(
+      moduleName = "app",
+      includeTests = false,
+      includeLibraries = false,
+      kind = HelidonServicesNodeKind.INJECTION_POINT,
+      showOnlyProblems = true,
+    )
+
+    assertEquals(
+      HelidonServicesFilter(
+        moduleName = "app",
+        includeTests = false,
+        includeLibraries = false,
+      ),
+      HelidonServicesRefreshInputs.knownModelInputFilter(filter),
+    )
   }
 
   fun testCollectsServiceContractsInjectionLookupsAndAmbiguousTargets() {

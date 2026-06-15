@@ -311,7 +311,7 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
       interface Greeting {
       }
     """.trimIndent())
-    myFixture.configureByText("GreetingService.java", """
+    val serviceFile = myFixture.configureByText("GreetingService.java", """
       import io.helidon.service.registry.Service;
 
       @Service.Singleton
@@ -353,7 +353,7 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
       interface Greeting {
       }
     """.trimIndent())
-    myFixture.configureByText("GreetingService.java", """
+    val serviceFile = myFixture.configureByText("GreetingService.java", """
       import io.helidon.service.registry.Service;
 
       @Service.Singleton
@@ -374,6 +374,7 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
       }
     """.trimIndent())
     val contractVirtualFile = contractFile.virtualFile!!
+    val serviceVirtualFile = serviceFile.virtualFile!!
     val consumerVirtualFile = consumerFile.virtualFile!!
 
     val serviceResult = HelidonServicesRefreshInputs.collect(
@@ -388,6 +389,10 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
       project,
       HelidonServicesFilter(kind = HelidonServicesNodeKind.INJECTION_POINT),
     )
+    val serviceLookupResult = HelidonServicesRefreshInputs.collect(
+      project,
+      HelidonServicesFilter(kind = HelidonServicesNodeKind.SERVICE_LOOKUP),
+    )
     val httpResult = HelidonServicesRefreshInputs.collect(
       project,
       HelidonServicesFilter(kind = HelidonServicesNodeKind.HTTP_ENDPOINT),
@@ -399,6 +404,8 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
     assertTrue(contractVirtualFile in contractResult.knownModelInputFiles)
     assertFalse(consumerVirtualFile in contractResult.knownModelInputFiles)
     assertTrue(consumerVirtualFile in injectionResult.knownModelInputFiles)
+    assertTrue(serviceVirtualFile in injectionResult.knownModelInputFiles)
+    assertTrue(serviceVirtualFile in serviceLookupResult.knownModelInputFiles)
     assertFalse(contractVirtualFile in httpResult.knownModelInputFiles)
   }
 
@@ -821,6 +828,37 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
         it.name == "/hello"
     })
     assertTrue(pathsFile.virtualFile!! in nodes.flatMap { it.inputFiles })
+  }
+
+  fun testHttpEndpointInputFilesIgnoreMethodBodyReferences() {
+    addServiceRegistryStubs()
+    addRestServerEndpointStubs()
+    val bodyOnlyFile = myFixture.configureByText("BodyOnly.java", """
+      class BodyOnly {
+        static final String MESSAGE = "hello";
+      }
+    """.trimIndent())
+    myFixture.configureByText("GreetingEndpoint.java", """
+      import io.helidon.http.Http;
+      import io.helidon.webserver.http.RestServer;
+
+      @RestServer.Endpoint
+      class GreetingEndpoint {
+        @Http.GET
+        @Http.Path("/hello")
+        String hello() {
+          return BodyOnly.MESSAGE;
+        }
+      }
+    """.trimIndent())
+
+    val nodes = HelidonHttpServicesViewContributor().collect(module, HelidonServicesFilter())
+
+    assertTrue(nodes.any {
+      it.kind == HelidonServicesNodeKind.HTTP_ENDPOINT &&
+        it.name == "/hello"
+    })
+    assertFalse(bodyOnlyFile.virtualFile!! in nodes.flatMap { it.inputFiles })
   }
 
   fun testCollectsLangChain4jComponentsAndConfig() {

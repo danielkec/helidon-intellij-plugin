@@ -439,7 +439,7 @@ object HelidonServicesModel {
       }
       else {
         for (service in matches) {
-          result.add(injectionNode(module, point, status, detail, parentId = service.nodeId))
+          result.add(injectionNode(module, point, status, detail, parentId = service.nodeId, service = service))
         }
       }
     }
@@ -509,7 +509,8 @@ object HelidonServicesModel {
                             point: InjectionPoint,
                             status: HelidonServicesResolutionStatus,
                             details: String?,
-                            parentId: String?): HelidonServicesNode =
+                            parentId: String?,
+                            service: ServiceInfo? = null): HelidonServicesNode =
     node(
       id = "injection:${parentId.orEmpty()}:${elementKey(point.anchor)}",
       kind = HelidonServicesNodeKind.INJECTION_POINT,
@@ -518,7 +519,7 @@ object HelidonServicesModel {
       name = point.anchor.text,
       details = details,
       status = status,
-      inputElements = point.inputElements,
+      inputElements = point.inputElements + serviceInputElements(service),
       parentId = parentId,
       ownerClass = ownerClass(point.anchor),
     )
@@ -551,10 +552,9 @@ object HelidonServicesModel {
         1 -> HelidonServicesResolutionStatus.RESOLVED
         else -> HelidonServicesResolutionStatus.AMBIGUOUS
       }
-      val parentIds = matches.map { it.nodeId }.ifEmpty { listOf(null) }
-      for (parentId in parentIds) {
+      if (matches.isEmpty()) {
         result.add(node(
-          id = "lookup:${parentId.orEmpty()}:${elementKey(lookup)}",
+          id = "lookup::${elementKey(lookup)}",
           kind = HelidonServicesNodeKind.SERVICE_LOOKUP,
           module = module,
           element = lookup,
@@ -562,9 +562,25 @@ object HelidonServicesModel {
           details = lookupInfo.name?.let { "name: $it" },
           status = status,
           inputElements = lookupInfo.inputElements,
-          parentId = parentId,
+          parentId = null,
           ownerClass = ownerClass(lookup),
         ))
+      }
+      else {
+        for (service in matches) {
+          result.add(node(
+            id = "lookup:${service.nodeId}:${elementKey(lookup)}",
+            kind = HelidonServicesNodeKind.SERVICE_LOOKUP,
+            module = module,
+            element = lookup,
+            name = lookup.text,
+            details = lookupInfo.name?.let { "name: $it" },
+            status = status,
+            inputElements = lookupInfo.inputElements + serviceInputElements(service),
+            parentId = service.nodeId,
+            ownerClass = ownerClass(lookup),
+          ))
+        }
       }
     }
     return result
@@ -645,13 +661,15 @@ object HelidonServicesModel {
     )
   }
 
-  private fun serviceInputElements(service: ServiceInfo): List<PsiElement> =
-    listOfNotNull(
+  private fun serviceInputElements(service: ServiceInfo?): List<PsiElement> {
+    if (service == null) return emptyList()
+    return listOfNotNull(
       service.psiClass.modifierList,
       service.psiClass.extendsList,
       service.psiClass.implementsList,
       service.psiClass.nameIdentifier,
     )
+  }
 
   private fun nodeInputFiles(element: PsiElement, inputElements: Iterable<PsiElement?>): Set<VirtualFile> {
     val inputFiles = LinkedHashSet<VirtualFile>()

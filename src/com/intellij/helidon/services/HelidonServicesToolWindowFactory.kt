@@ -340,12 +340,7 @@ internal object HelidonServicesRefreshInputs {
       .toCollection(LinkedHashSet())
 
   private fun needsServiceRegistryInputFiles(filter: HelidonServicesFilter): Boolean =
-    (filter.showOnlyProblems && filter.kind == null) || filter.kind in SERVICE_REGISTRY_INPUT_KINDS
-
-  private val SERVICE_REGISTRY_INPUT_KINDS = setOf(
-    HelidonServicesNodeKind.INJECTION_POINT,
-    HelidonServicesNodeKind.SERVICE_LOOKUP,
-  )
+    filter.showOnlyProblems && filter.kind == null
 }
 
 internal object HelidonServicesRefreshRelevance {

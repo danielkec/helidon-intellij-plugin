@@ -19,11 +19,12 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.psi.PsiAnnotation
-import com.intellij.psi.PsiElement
+import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiJavaFile
 import com.intellij.psi.PsiManager
-import com.intellij.psi.PsiRecursiveElementWalkingVisitor
+import com.intellij.psi.PsiMethod
+import com.intellij.psi.PsiModifierListOwner
 import com.intellij.psi.PsiTreeChangeAdapter
 import com.intellij.psi.PsiTreeChangeEvent
 import com.intellij.psi.util.PsiTreeUtil
@@ -342,7 +343,6 @@ internal object HelidonServicesRefreshInputs {
     (filter.showOnlyProblems && filter.kind == null) || filter.kind in SERVICE_REGISTRY_INPUT_KINDS
 
   private val SERVICE_REGISTRY_INPUT_KINDS = setOf(
-    HelidonServicesNodeKind.SERVICE,
     HelidonServicesNodeKind.INJECTION_POINT,
     HelidonServicesNodeKind.SERVICE_LOOKUP,
   )
@@ -381,20 +381,22 @@ internal object HelidonServicesRefreshRelevance {
   }
 
   private fun hasRelevantAnnotation(file: PsiJavaFile): Boolean {
-    var relevant = false
     val visited = HashSet<String>()
-    file.accept(object : PsiRecursiveElementWalkingVisitor() {
-      override fun visitElement(element: PsiElement) {
-        if (relevant) return
-        if (element is PsiAnnotation && isRelevantAnnotation(element, visited)) {
-          relevant = true
-          stopWalking()
-          return
-        }
-        super.visitElement(element)
-      }
-    })
-    return relevant
+    return file.classes.any { hasRelevantAnnotation(it, visited) }
+  }
+
+  private fun hasRelevantAnnotation(owner: PsiModifierListOwner, visited: MutableSet<String>): Boolean {
+    if (owner.modifierList?.annotations?.any { isRelevantAnnotation(it, visited) } == true) {
+      return true
+    }
+    return when (owner) {
+      is PsiClass -> owner.fields.any { hasRelevantAnnotation(it, visited) } ||
+                     owner.methods.any { hasRelevantAnnotation(it, visited) } ||
+                     owner.constructors.any { hasRelevantAnnotation(it, visited) } ||
+                     owner.innerClasses.any { hasRelevantAnnotation(it, visited) }
+      is PsiMethod -> owner.parameterList.parameters.any { hasRelevantAnnotation(it, visited) }
+      else -> false
+    }
   }
 
   private fun isRelevantAnnotation(annotation: PsiAnnotation, visited: MutableSet<String>): Boolean {

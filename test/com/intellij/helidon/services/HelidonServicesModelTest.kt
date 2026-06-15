@@ -359,6 +359,7 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
 
     assertFalse(contractVirtualFile in serviceResult.snapshot.nodes.mapNotNull { it.navigationFile })
     assertTrue(contractVirtualFile in serviceResult.knownModelInputFiles)
+    assertFalse(consumerVirtualFile in serviceResult.knownModelInputFiles)
     assertTrue(contractVirtualFile in contractResult.knownModelInputFiles)
     assertFalse(consumerVirtualFile in contractResult.knownModelInputFiles)
     assertTrue(consumerVirtualFile in injectionResult.knownModelInputFiles)

@@ -15,6 +15,7 @@ import com.intellij.openapi.project.IndexNotReadyException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ModuleRootEvent
 import com.intellij.openapi.roots.ModuleRootListener
+import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
@@ -329,15 +330,18 @@ internal object HelidonServicesRefreshInputs {
       HelidonServicesModel.collectServiceRegistryInputFiles(project, filter)
     }
     else {
-      collectSnapshotInputFiles(snapshot)
+      collectSnapshotInputFiles(project, snapshot)
     }
 
-  private fun collectSnapshotInputFiles(snapshot: HelidonServicesSnapshot): Set<VirtualFile> =
-    snapshot
-      .nodes
-      .asSequence()
-      .flatMap { node -> (node.inputFiles + listOfNotNull(node.navigationFile)).asSequence() }
-      .toCollection(LinkedHashSet())
+  private fun collectSnapshotInputFiles(project: Project, snapshot: HelidonServicesSnapshot): Set<VirtualFile> {
+    val fileIndex = ProjectRootManager.getInstance(project).fileIndex
+    val inputFiles = LinkedHashSet<VirtualFile>()
+    for (node in snapshot.nodes) {
+      node.inputFiles.filterTo(inputFiles, fileIndex::isInContent)
+      node.navigationFile?.takeIf(fileIndex::isInContent)?.let(inputFiles::add)
+    }
+    return inputFiles
+  }
 
   private fun needsServiceRegistryInputFiles(filter: HelidonServicesFilter): Boolean =
     filter.showOnlyProblems && filter.kind == null
@@ -359,7 +363,7 @@ internal object HelidonServicesRefreshRelevance {
 
   private fun isRelevantJavaFile(file: PsiJavaFile): Boolean {
     val contents = file.viewProvider.contents
-    if (JAVA_REFRESH_TYPE_MARKERS.any { contents.contains(it) }) return true
+    if (contents.contains(HELIDON_PACKAGE_PREFIX) && JAVA_REFRESH_TYPE_MARKERS.any { contents.contains(it) }) return true
     if (hasRelevantHelidonImport(file)) return true
     if (!contents.contains('@')) return false
 
@@ -432,6 +436,7 @@ internal object HelidonServicesRefreshRelevance {
   }
 
   private const val LANGCHAIN4J_ROOT = "langchain4j"
+  private const val HELIDON_PACKAGE_PREFIX = "io.helidon"
 
   private val JAVA_REFRESH_IMPORT_QUALIFIERS = setOf(
     "io.helidon.http",

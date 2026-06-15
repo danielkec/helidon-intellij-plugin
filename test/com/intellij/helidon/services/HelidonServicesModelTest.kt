@@ -141,6 +141,29 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
     assertTrue(HelidonServicesRefreshRelevance.isRelevant(file))
   }
 
+  fun testRefreshRelevanceAcceptsFullyQualifiedAnnotations() {
+    addServiceRegistryStubs()
+    addRestServerEndpointStubs()
+    val serviceFile = myFixture.configureByText("GreetingService.java", """
+      @io.helidon.service.registry.Service.Singleton
+      class GreetingService {
+      }
+    """.trimIndent())
+    val endpointFile = myFixture.configureByText("GreetingEndpoint.java", """
+      @io.helidon.webserver.http.RestServer.Endpoint
+      class GreetingEndpoint {
+        @io.helidon.http.Http.GET
+        @io.helidon.http.Http.Path("/hello")
+        String hello() {
+          return "hello";
+        }
+      }
+    """.trimIndent())
+
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(serviceFile))
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(endpointFile))
+  }
+
   fun testRefreshRelevanceAcceptsHelidonImportsWithoutAnnotations() {
     assertTrue(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("RegistryUsage.java", """
       import io.helidon.service.registry.*;

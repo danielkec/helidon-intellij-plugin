@@ -364,7 +364,7 @@ internal object HelidonServicesRefreshRelevance {
 
   private fun isRelevantJavaFile(file: PsiJavaFile): Boolean {
     val contents = file.viewProvider.contents
-    if (JAVA_REFRESH_MARKERS.any { contents.contains(it) }) return true
+    if (JAVA_REFRESH_TYPE_MARKERS.any { contents.contains(it) }) return true
     if (hasRelevantHelidonImport(file)) return true
     if (!contents.contains('@')) return false
 
@@ -503,7 +503,7 @@ internal object HelidonServicesRefreshRelevance {
     HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_TOOL,
   )
 
-  private val JAVA_REFRESH_MARKERS = listOf(
+  private val JAVA_REFRESH_TYPE_MARKERS = listOf(
     HelidonConstants.WEB_SERVER,
     HelidonConstants.WEB_SERVER_CONFIG,
     HelidonConstants.WEB_SERVER_CONFIG_BUILDER,
@@ -516,22 +516,6 @@ internal object HelidonServicesRefreshRelevance {
     HelidonConstants.HTTP_ROUTE,
     HelidonConstants.HTTP_ROUTE_BUILDER,
     HelidonConstants.HTTP_HANDLER,
-    HelidonConstants.REST_SERVER_ENDPOINT,
-    HelidonConstants.HTTP_PATH,
-    HelidonConstants.HTTP_HTTP_METHOD,
-    HelidonConstants.HTTP_PATH_PARAM,
-    HelidonConstants.HTTP_HEADER_PARAM,
-    HelidonConstants.HTTP_QUERY_PARAM,
-    HelidonConstants.HTTP_ENTITY,
-    HelidonConstants.HTTP_CONSUMES,
-    HelidonConstants.HTTP_PRODUCES,
-    HelidonConstants.HTTP_GET,
-    HelidonConstants.HTTP_HEAD,
-    HelidonConstants.HTTP_POST,
-    HelidonConstants.HTTP_PUT,
-    HelidonConstants.HTTP_PATCH,
-    HelidonConstants.HTTP_DELETE,
-    HelidonConstants.HTTP_OPTIONS,
     HelidonConstants.ROUTING,
     HelidonConstants.ROUTING_BUILDER,
     HelidonConstants.ROUTING_RULES,

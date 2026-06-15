@@ -206,9 +206,6 @@ object HelidonServicesModel {
     )
   }
 
-  fun filterSnapshot(snapshot: HelidonServicesSnapshot, filter: HelidonServicesFilter): HelidonServicesSnapshot =
-    snapshot.copy(nodes = snapshot.nodes.filter { accepts(it, filter) })
-
   fun collectServiceRegistryInputFiles(project: Project, filter: HelidonServicesFilter): Set<VirtualFile> {
     val inputFilter = filter.copy(kind = null, showOnlyProblems = false)
     return allHelidonModules(project)

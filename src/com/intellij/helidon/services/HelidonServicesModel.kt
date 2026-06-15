@@ -693,9 +693,10 @@ object HelidonServicesModel {
                                 inputFiles: MutableSet<VirtualFile>,
                                 visited: MutableSet<String>,
                                 depth: Int) {
-    if (element == null || depth > MAX_INPUT_REFERENCE_DEPTH) return
-    if (!visited.add(elementKey(element))) return
+    if (element == null) return
     addInputFile(element, inputFiles)
+    if (depth >= MAX_INPUT_REFERENCE_DEPTH) return
+    if (!visited.add(elementKey(element))) return
     element.accept(object : PsiRecursiveElementWalkingVisitor() {
       override fun visitElement(element: PsiElement) {
         collectReferencedInputFiles(element, inputFiles, visited, depth)

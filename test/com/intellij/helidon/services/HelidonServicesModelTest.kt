@@ -324,11 +324,33 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
       class GreetingService implements Greeting {
       }
     """.trimIndent())
+    val consumerFile = myFixture.configureByText("GreetingConsumer.java", """
+      import io.helidon.service.registry.Service;
+      import io.helidon.service.registry.Services;
+
+      class GreetingConsumer {
+        @Service.Inject
+        Greeting greeting;
+
+        void lookup() {
+          Services.get(Greeting.class);
+        }
+      }
+    """.trimIndent())
     val contractVirtualFile = contractFile.virtualFile!!
+    val consumerVirtualFile = consumerFile.virtualFile!!
 
     val serviceResult = HelidonServicesRefreshInputs.collect(
       project,
       HelidonServicesFilter(kind = HelidonServicesNodeKind.SERVICE),
+    )
+    val contractResult = HelidonServicesRefreshInputs.collect(
+      project,
+      HelidonServicesFilter(kind = HelidonServicesNodeKind.CONTRACT),
+    )
+    val injectionResult = HelidonServicesRefreshInputs.collect(
+      project,
+      HelidonServicesFilter(kind = HelidonServicesNodeKind.INJECTION_POINT),
     )
     val httpResult = HelidonServicesRefreshInputs.collect(
       project,
@@ -337,6 +359,9 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
 
     assertFalse(contractVirtualFile in serviceResult.snapshot.nodes.mapNotNull { it.navigationFile })
     assertTrue(contractVirtualFile in serviceResult.knownModelInputFiles)
+    assertTrue(contractVirtualFile in contractResult.knownModelInputFiles)
+    assertFalse(consumerVirtualFile in contractResult.knownModelInputFiles)
+    assertTrue(consumerVirtualFile in injectionResult.knownModelInputFiles)
     assertFalse(contractVirtualFile in httpResult.knownModelInputFiles)
   }
 

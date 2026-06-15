@@ -343,7 +343,6 @@ internal object HelidonServicesRefreshInputs {
 
   private val SERVICE_REGISTRY_INPUT_KINDS = setOf(
     HelidonServicesNodeKind.SERVICE,
-    HelidonServicesNodeKind.CONTRACT,
     HelidonServicesNodeKind.INJECTION_POINT,
     HelidonServicesNodeKind.SERVICE_LOOKUP,
   )
@@ -401,6 +400,7 @@ internal object HelidonServicesRefreshRelevance {
   private fun isRelevantAnnotation(annotation: PsiAnnotation, visited: MutableSet<String>): Boolean {
     val qualifiedName = annotation.qualifiedName
     if (qualifiedName in JAVA_REFRESH_ANNOTATIONS) return true
+    if (qualifiedName != null && !visited.add(qualifiedName)) return false
 
     val annotationClass = try {
       annotation.resolveAnnotationType()
@@ -409,7 +409,7 @@ internal object HelidonServicesRefreshRelevance {
       return true
     } ?: return false
     val annotationKey = annotationClass.qualifiedName ?: annotationClass.name ?: return false
-    if (!visited.add(annotationKey)) return false
+    if (qualifiedName == null && !visited.add(annotationKey)) return false
 
     return annotationClass.modifierList?.annotations?.any {
       isRelevantAnnotation(it, visited)

@@ -364,6 +364,7 @@ internal object HelidonServicesRefreshRelevance {
   private fun isRelevantJavaFile(file: PsiJavaFile): Boolean {
     val contents = file.viewProvider.contents
     if (JAVA_REFRESH_MARKERS.any { contents.contains(it) }) return true
+    if (!contents.contains('@')) return false
 
     return hasRelevantAnnotation(file)
   }

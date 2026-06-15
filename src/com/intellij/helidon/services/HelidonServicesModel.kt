@@ -13,6 +13,7 @@ import com.intellij.openapi.project.IndexNotReadyException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.GeneratedSourcesFilter
 import com.intellij.openapi.roots.ModuleRootManager
+import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiAnnotation
@@ -724,7 +725,10 @@ object HelidonServicesModel {
   }
 
   private fun addInputFile(element: PsiElement, inputFiles: MutableSet<VirtualFile>) {
-    element.containingFile?.originalFile?.virtualFile?.let(inputFiles::add)
+    val virtualFile = element.containingFile?.originalFile?.virtualFile ?: return
+    if (ProjectRootManager.getInstance(element.project).fileIndex.isInContent(virtualFile)) {
+      inputFiles.add(virtualFile)
+    }
   }
 
   private fun ServiceInfo.contractNames(): List<String> =

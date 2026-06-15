@@ -4,6 +4,7 @@ package com.intellij.helidon.services
 import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.HelidonIcons
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.testFramework.IdeaTestUtil
 import com.intellij.testFramework.LightProjectDescriptor
 import com.intellij.testFramework.fixtures.DefaultLightProjectDescriptor
@@ -408,6 +409,36 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
       assertTrue(namesVirtualFile in result.knownModelInputFiles)
       assertTrue(HelidonServicesRefreshRelevance.isRelevant(namesFile, result.knownModelInputFiles))
     }
+  }
+
+  fun testKnownModelInputFilesExcludeLibraryReferences() {
+    addServiceRegistryStubs()
+    myFixture.configureByText("Main.java", """
+      import java.util.List;
+      import io.helidon.service.registry.Service;
+
+      interface Greeting {
+      }
+
+      @Service.Singleton
+      class GreetingService implements Greeting {
+      }
+
+      @Service.Singleton
+      class GreetingConsumer {
+        @Service.Inject
+        List<Greeting> greetings;
+      }
+    """.trimIndent())
+
+    val knownFiles = HelidonServicesRefreshInputs.collect(
+      project,
+      HelidonServicesFilter(kind = HelidonServicesNodeKind.INJECTION_POINT),
+    ).knownModelInputFiles
+    val projectFileIndex = ProjectRootManager.getInstance(project).fileIndex
+
+    assertTrue(knownFiles.isNotEmpty())
+    assertTrue(knownFiles.all(projectFileIndex::isInContent))
   }
 
   fun testKnownModelInputFilesIncludeReferencedLangChain4jConstants() {

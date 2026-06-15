@@ -11,6 +11,7 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
+import com.intellij.openapi.project.IndexNotReadyException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ModuleRootEvent
 import com.intellij.openapi.roots.ModuleRootListener
@@ -333,8 +334,9 @@ internal object HelidonServicesRefreshInputs {
   private fun collectSnapshotInputFiles(snapshot: HelidonServicesSnapshot): Set<VirtualFile> =
     snapshot
       .nodes
-      .mapNotNull { it.navigationFile }
-      .toSet()
+      .asSequence()
+      .flatMap { node -> (node.inputFiles + listOfNotNull(node.navigationFile)).asSequence() }
+      .toCollection(LinkedHashSet())
 
   private fun needsServiceRegistryInputFiles(filter: HelidonServicesFilter): Boolean =
     (filter.showOnlyProblems && filter.kind == null) || filter.kind in SERVICE_REGISTRY_INPUT_KINDS
@@ -364,9 +366,19 @@ internal object HelidonServicesRefreshRelevance {
   private fun isRelevantJavaFile(file: PsiJavaFile): Boolean {
     val contents = file.viewProvider.contents
     if (JAVA_REFRESH_MARKERS.any { contents.contains(it) }) return true
+    if (hasRelevantHelidonImport(file)) return true
     if (!contents.contains('@')) return false
 
     return hasRelevantAnnotation(file)
+  }
+
+  private fun hasRelevantHelidonImport(file: PsiJavaFile): Boolean {
+    val importList = file.importList ?: return false
+    return importList.allImportStatements.any { importStatement ->
+      val importedName = importStatement.importReference?.qualifiedName ?: return@any false
+      importedName in JAVA_REFRESH_IMPORT_QUALIFIERS ||
+        !importStatement.isOnDemand && importedName.substringBeforeLast('.', "") in JAVA_REFRESH_IMPORT_QUALIFIERS
+    }
   }
 
   private fun hasRelevantAnnotation(file: PsiJavaFile): Boolean {
@@ -390,7 +402,12 @@ internal object HelidonServicesRefreshRelevance {
     val qualifiedName = annotation.qualifiedName
     if (qualifiedName in JAVA_REFRESH_ANNOTATIONS) return true
 
-    val annotationClass = annotation.resolveAnnotationType() ?: return false
+    val annotationClass = try {
+      annotation.resolveAnnotationType()
+    }
+    catch (_: IndexNotReadyException) {
+      return true
+    } ?: return false
     val annotationKey = annotationClass.qualifiedName ?: annotationClass.name ?: return false
     if (!visited.add(annotationKey)) return false
 
@@ -418,6 +435,20 @@ internal object HelidonServicesRefreshRelevance {
   }
 
   private const val LANGCHAIN4J_ROOT = "langchain4j"
+
+  private val JAVA_REFRESH_IMPORT_QUALIFIERS = setOf(
+    "io.helidon.http",
+    "io.helidon.http.Http",
+    "io.helidon.service.registry",
+    "io.helidon.service.registry.Service",
+    "io.helidon.webserver",
+    "io.helidon.webserver.http",
+    "io.helidon.webserver.http.RestServer",
+    "io.helidon.extensions.langchain4j",
+    "io.helidon.extensions.langchain4j.Ai",
+    "io.helidon.integrations.langchain4j",
+    "io.helidon.integrations.langchain4j.Ai",
+  )
 
   private val JAVA_REFRESH_ANNOTATIONS = setOf(
     HelidonConstants.SERVICE_SINGLETON,
@@ -509,7 +540,6 @@ internal object HelidonServicesRefreshRelevance {
     HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI,
     HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI,
     "@Service.",
-    "Services.",
     "@RestServer.",
     "@Http.",
     "@Ai.",

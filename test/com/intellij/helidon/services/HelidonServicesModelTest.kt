@@ -139,6 +139,70 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
     assertTrue(HelidonServicesRefreshRelevance.isRelevant(file))
   }
 
+  fun testRefreshRelevanceAcceptsHelidonImportsWithoutAnnotations() {
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("RegistryUsage.java", """
+      import io.helidon.service.registry.*;
+
+      class RegistryUsage {
+        ServiceRegistry registry;
+      }
+    """.trimIndent())))
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("RestServerUsage.java", """
+      import io.helidon.webserver.http.RestServer;
+
+      class RestServerUsage {
+        RestServer.Endpoint endpoint;
+      }
+    """.trimIndent())))
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("RestServerAliasUsage.java", """
+      import io.helidon.http.Http.*;
+      import io.helidon.webserver.http.RestServer.*;
+
+      class RestServerAliasUsage {
+        Endpoint endpoint;
+        GET method;
+      }
+    """.trimIndent())))
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("ExtensionsAiUsage.java", """
+      import io.helidon.extensions.langchain4j.*;
+
+      class ExtensionsAiUsage {
+        Ai.Service service;
+      }
+    """.trimIndent())))
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("IntegrationsAiUsage.java", """
+      import io.helidon.integrations.langchain4j.*;
+
+      class IntegrationsAiUsage {
+        Ai.Service service;
+      }
+    """.trimIndent())))
+    assertFalse(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("PlainList.java", """
+      import java.util.*;
+
+      class PlainList {
+        List<String> values;
+      }
+    """.trimIndent())))
+    assertFalse(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("ConfigUsage.java", """
+      import io.helidon.config.Config;
+
+      class ConfigUsage {
+        Config config;
+      }
+    """.trimIndent())))
+    assertFalse(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("UserServices.java", """
+      class UserServices {
+        void call() {
+          UserServices.get();
+        }
+
+        static void get() {
+        }
+      }
+    """.trimIndent())))
+  }
+
   fun testRefreshRelevanceAcceptsLangChain4jJavaFiles() {
     val file = myFixture.configureByText("AssistantService.java", """
       import io.helidon.extensions.langchain4j.Ai;
@@ -274,6 +338,73 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
     assertFalse(contractVirtualFile in serviceResult.snapshot.nodes.mapNotNull { it.navigationFile })
     assertTrue(contractVirtualFile in serviceResult.knownModelInputFiles)
     assertFalse(contractVirtualFile in httpResult.knownModelInputFiles)
+  }
+
+  fun testKnownModelInputFilesIncludeReferencedServiceConstants() {
+    addServiceRegistryStubs()
+    val namesFile = myFixture.configureByText("Names.java", """
+      class Names {
+        static final String FORMAL = "formal";
+      }
+    """.trimIndent())
+    myFixture.configureByText("Main.java", """
+      import io.helidon.service.registry.Service;
+      import io.helidon.service.registry.Services;
+
+      interface Greeting {
+      }
+
+      @Service.Named(Names.FORMAL)
+      @Service.Singleton
+      class FormalGreetingService implements Greeting {
+      }
+
+      @Service.Singleton
+      class GreetingConsumer {
+        @Service.Inject(Names.FORMAL)
+        Greeting greeting;
+
+        void lookup() {
+          Services.getNamed(Greeting.class, Names.FORMAL);
+        }
+      }
+    """.trimIndent())
+
+    val namesVirtualFile = namesFile.virtualFile!!
+    val serviceRegistryKinds = listOf(
+      HelidonServicesNodeKind.SERVICE,
+      HelidonServicesNodeKind.INJECTION_POINT,
+      HelidonServicesNodeKind.SERVICE_LOOKUP,
+    )
+
+    for (kind in serviceRegistryKinds) {
+      val result = HelidonServicesRefreshInputs.collect(project, HelidonServicesFilter(kind = kind))
+      assertTrue(namesVirtualFile in result.knownModelInputFiles)
+      assertTrue(HelidonServicesRefreshRelevance.isRelevant(namesFile, result.knownModelInputFiles))
+    }
+  }
+
+  fun testKnownModelInputFilesIncludeReferencedLangChain4jConstants() {
+    addLangChain4jStubs()
+    val modelNamesFile = myFixture.configureByText("ModelNames.java", """
+      class ModelNames {
+        static final String ASSISTANT = "assistant-model";
+      }
+    """.trimIndent())
+    myFixture.configureByText("AssistantModel.java", """
+      import io.helidon.extensions.langchain4j.Ai;
+
+      @Ai.ChatModel(ModelNames.ASSISTANT)
+      class AssistantModel {
+      }
+    """.trimIndent())
+
+    val result = HelidonServicesRefreshInputs.collect(
+      project,
+      HelidonServicesFilter(kind = HelidonServicesNodeKind.LANGCHAIN4J_COMPONENT),
+    )
+
+    assertTrue(modelNamesFile.virtualFile!! in result.knownModelInputFiles)
   }
 
   fun testCollectsServiceContractsInjectionLookupsAndAmbiguousTargets() {
@@ -545,6 +676,37 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
         it.name == "/hello" &&
         it.details?.contains("GET") == true
     })
+  }
+
+  fun testHttpEndpointInputFilesIncludeReferencedPathConstants() {
+    addServiceRegistryStubs()
+    addRestServerEndpointStubs()
+    val pathsFile = myFixture.configureByText("Paths.java", """
+      class Paths {
+        static final String HELLO = "/hello";
+      }
+    """.trimIndent())
+    myFixture.configureByText("GreetingEndpoint.java", """
+      import io.helidon.http.Http;
+      import io.helidon.webserver.http.RestServer;
+
+      @RestServer.Endpoint
+      class GreetingEndpoint {
+        @Http.GET
+        @Http.Path(Paths.HELLO)
+        String hello() {
+          return "hello";
+        }
+      }
+    """.trimIndent())
+
+    val nodes = HelidonHttpServicesViewContributor().collect(module, HelidonServicesFilter())
+
+    assertTrue(nodes.any {
+      it.kind == HelidonServicesNodeKind.HTTP_ENDPOINT &&
+        it.name == "/hello"
+    })
+    assertTrue(pathsFile.virtualFile!! in nodes.flatMap { it.inputFiles })
   }
 
   fun testCollectsLangChain4jComponentsAndConfig() {

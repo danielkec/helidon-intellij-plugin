@@ -21,6 +21,7 @@ import com.intellij.psi.PsiAnnotationMemberValue
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiClassType
 import com.intellij.psi.PsiClassObjectAccessExpression
+import com.intellij.psi.PsiComment
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiExpressionList
 import com.intellij.psi.PsiField
@@ -35,6 +36,7 @@ import com.intellij.psi.PsiTypes
 import com.intellij.psi.PsiVariable
 import com.intellij.psi.SmartPointerManager
 import com.intellij.psi.SmartPsiElementPointer
+import com.intellij.psi.javadoc.PsiDocComment
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.searches.AnnotatedElementsSearch
 import com.intellij.psi.search.searches.ReferencesSearch
@@ -699,7 +701,11 @@ object HelidonServicesModel {
     if (depth >= MAX_INPUT_REFERENCE_DEPTH) return
     if (!visited.add(elementKey(element))) return
     element.accept(object : PsiRecursiveElementWalkingVisitor() {
+      override fun visitComment(comment: PsiComment) {
+      }
+
       override fun visitElement(element: PsiElement) {
+        if (isCommentTreeElement(element)) return
         collectReferencedInputFiles(element, inputFiles, visited, depth)
         super.visitElement(element)
       }
@@ -730,6 +736,12 @@ object HelidonServicesModel {
       inputFiles.add(virtualFile)
     }
   }
+
+  private fun isCommentTreeElement(element: PsiElement): Boolean =
+    element is PsiComment ||
+    element is PsiDocComment ||
+    PsiTreeUtil.getParentOfType(element, PsiComment::class.java, false) != null ||
+    PsiTreeUtil.getParentOfType(element, PsiDocComment::class.java, false) != null
 
   private fun ServiceInfo.contractNames(): List<String> =
     contracts.mapNotNull { it.qualifiedName ?: it.name }.distinct()

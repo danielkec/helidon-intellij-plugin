@@ -5,6 +5,7 @@ import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.HelidonIcons
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.roots.ProjectRootManager
+import com.intellij.psi.PsiJavaFile
 import com.intellij.testFramework.IdeaTestUtil
 import com.intellij.testFramework.LightProjectDescriptor
 import com.intellij.testFramework.fixtures.DefaultLightProjectDescriptor
@@ -202,6 +203,17 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
         }
       }
     """.trimIndent())))
+  }
+
+  fun testRefreshRelevanceIgnoresShortAnnotationMarkersInCommentsAndStrings() {
+    val file = myFixture.configureByText("Notes.java", """
+      class Notes {
+        // @Service.Singleton and @RestServer.Endpoint are documentation only.
+        String sample = "@Http.GET and @Ai.Service are not code";
+      }
+    """.trimIndent())
+
+    assertFalse(HelidonServicesRefreshRelevance.isRelevant(file))
   }
 
   fun testRefreshRelevanceAcceptsLangChain4jJavaFiles() {
@@ -439,6 +451,28 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
 
     assertTrue(knownFiles.isNotEmpty())
     assertTrue(knownFiles.all(projectFileIndex::isInContent))
+  }
+
+  fun testKnownModelInputFilesIgnoreJavadocReferences() {
+    val linkedFile = myFixture.configureByText("LinkedFromDocs.java", """
+      class LinkedFromDocs {
+      }
+    """.trimIndent())
+    val file = myFixture.configureByText("Documented.java", """
+      class Documented {
+        /**
+         * See {@link LinkedFromDocs}.
+         */
+        void operation() {
+        }
+      }
+    """.trimIndent()) as PsiJavaFile
+
+    val method = file.classes.single().methods.single()
+    val inputFiles = HelidonServicesModel.inputFiles(method)
+
+    assertTrue(file.virtualFile!! in inputFiles)
+    assertFalse(linkedFile.virtualFile!! in inputFiles)
   }
 
   fun testKnownModelInputFilesIncludeReferencedLangChain4jConstants() {

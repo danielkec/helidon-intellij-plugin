@@ -541,10 +541,6 @@ internal object HelidonServicesRefreshRelevance {
     HelidonConstants.SERVICE_REGISTRY,
     HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI,
     HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI,
-    "@Service.",
-    "@RestServer.",
-    "@Http.",
-    "@Ai.",
   )
 }
 

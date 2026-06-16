@@ -407,7 +407,7 @@ internal object HelidonServicesRefreshRelevance {
       annotation.resolveAnnotationType()
     }
     catch (_: IndexNotReadyException) {
-      return false
+      return true
     } ?: return false
     val annotationKey = annotationClass.qualifiedName ?: annotationClass.name ?: return false
     if (qualifiedName == null && !visited.add(annotationKey)) return false

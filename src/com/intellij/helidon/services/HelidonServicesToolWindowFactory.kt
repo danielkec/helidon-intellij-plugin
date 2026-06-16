@@ -3,27 +3,44 @@ package com.intellij.helidon.services
 
 import com.intellij.icons.AllIcons
 import com.intellij.helidon.HelidonIcons
+import com.intellij.helidon.config.isHelidonApplicationConfigFile
+import com.intellij.helidon.config.yaml.getQualifiedConfigKeyName
+import com.intellij.helidon.constants.HelidonConstants
+import com.intellij.lang.properties.psi.PropertiesFile
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
+import com.intellij.openapi.project.IndexNotReadyException
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.ModuleRootEvent
+import com.intellij.openapi.roots.ModuleRootListener
+import com.intellij.openapi.roots.ProjectRootManager
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
+import com.intellij.psi.PsiAnnotation
+import com.intellij.psi.PsiClass
+import com.intellij.psi.PsiFile
+import com.intellij.psi.PsiJavaFile
 import com.intellij.psi.PsiManager
+import com.intellij.psi.PsiMethod
+import com.intellij.psi.PsiModifierListOwner
 import com.intellij.psi.PsiTreeChangeAdapter
 import com.intellij.psi.PsiTreeChangeEvent
+import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.util.Alarm
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.ui.UIUtil
+import org.jetbrains.yaml.psi.YAMLFile
+import org.jetbrains.yaml.psi.YAMLKeyValue
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
-import java.util.Locale
 import java.util.concurrent.Callable
 import java.util.function.Consumer
 import javax.swing.JButton
@@ -59,6 +76,8 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
   private val treeRoot = DefaultMutableTreeNode("Helidon Services")
   private val treeModel = DefaultTreeModel(treeRoot)
   private val tree = Tree(treeModel)
+  @Volatile
+  private var knownModelInputFiles: Set<VirtualFile> = emptySet()
   private var updatingModuleFilter = false
 
   init {
@@ -96,20 +115,22 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
 
       override fun propertyChanged(event: PsiTreeChangeEvent) = scheduleRefresh(event)
     }, this)
+    subscribeToProjectRootChanges()
   }
 
   fun refresh() {
     if (project.isDisposed) return
     val filter = selectedFilter()
     ReadAction.nonBlocking(Callable {
-      HelidonServicesModel.collect(project, filter)
+      HelidonServicesRefreshInputs.collect(project, filter)
     })
       .coalesceBy(this)
       .expireWith(this)
       .inSmartMode(project)
-      .finishOnUiThread(ModalityState.nonModal(), Consumer { snapshot ->
-        updateModuleFilter(snapshot.modules)
-        rebuildTree(snapshot)
+      .finishOnUiThread(ModalityState.nonModal(), Consumer { result ->
+        updateKnownModelInputFiles(result.knownModelInputFiles)
+        updateModuleFilter(result.snapshot.modules)
+        rebuildTree(result.snapshot)
       })
       .submit(AppExecutorUtil.getAppExecutorService())
   }
@@ -126,9 +147,14 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
   }
 
   private fun isRefreshRelevant(event: PsiTreeChangeEvent): Boolean {
-    val virtualFile = event.file?.originalFile?.virtualFile ?: return false
-    val extension = virtualFile.extension?.lowercase(Locale.ENGLISH) ?: return false
-    return extension in REFRESH_FILE_EXTENSIONS
+    val file = event.file?.originalFile
+               ?: event.child?.containingFile?.originalFile
+               ?: event.oldChild?.containingFile?.originalFile
+               ?: event.newChild?.containingFile?.originalFile
+               ?: event.parent?.containingFile?.originalFile
+               ?: event.element?.containingFile?.originalFile
+               ?: return false
+    return HelidonServicesRefreshRelevance.isRelevant(file, knownModelInputFiles)
   }
 
   private fun toolbar(): JPanel {
@@ -186,6 +212,16 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
     finally {
       updatingModuleFilter = false
     }
+  }
+
+  private fun updateKnownModelInputFiles(inputFiles: Set<VirtualFile>) {
+    knownModelInputFiles = inputFiles
+  }
+
+  private fun subscribeToProjectRootChanges() {
+    project.messageBus.connect(this).subscribe(ModuleRootListener.TOPIC, object : ModuleRootListener {
+      override fun rootsChanged(event: ModuleRootEvent) = scheduleRefresh()
+    })
   }
 
   private fun rebuildTree(snapshot: HelidonServicesSnapshot) {
@@ -270,8 +306,226 @@ private class HelidonServicesPanel(private val project: Project) : JPanel(Border
     private const val ALL_MODULES = "All Modules"
     private const val AUTO_EXPAND_PATH_DEPTH = 4
     private const val MAX_AUTO_EXPANDED_ROWS = 200
-    private val REFRESH_FILE_EXTENSIONS = setOf("java", "properties", "yaml", "yml")
   }
+}
+
+internal data class HelidonServicesRefreshResult(
+  val snapshot: HelidonServicesSnapshot,
+  val knownModelInputFiles: Set<VirtualFile>,
+)
+
+internal object HelidonServicesRefreshInputs {
+  fun collect(project: Project, filter: HelidonServicesFilter): HelidonServicesRefreshResult {
+    val inputSnapshot = HelidonServicesModel.collect(project, filter)
+    return HelidonServicesRefreshResult(
+      inputSnapshot,
+      collectKnownModelInputFiles(project, inputSnapshot, filter),
+    )
+  }
+
+  private fun collectKnownModelInputFiles(project: Project,
+                                          snapshot: HelidonServicesSnapshot,
+                                          filter: HelidonServicesFilter): Set<VirtualFile> =
+    if (needsServiceRegistryInputFiles(filter)) {
+      HelidonServicesModel.collectServiceRegistryInputFiles(project, filter)
+    }
+    else {
+      collectSnapshotInputFiles(project, snapshot)
+    }
+
+  private fun collectSnapshotInputFiles(project: Project, snapshot: HelidonServicesSnapshot): Set<VirtualFile> {
+    val fileIndex = ProjectRootManager.getInstance(project).fileIndex
+    val inputFiles = LinkedHashSet<VirtualFile>()
+    for (node in snapshot.nodes) {
+      node.inputFiles.filterTo(inputFiles, fileIndex::isInContent)
+      node.navigationFile?.takeIf(fileIndex::isInContent)?.let(inputFiles::add)
+    }
+    return inputFiles
+  }
+
+  private fun needsServiceRegistryInputFiles(filter: HelidonServicesFilter): Boolean =
+    filter.showOnlyProblems && filter.kind == null
+}
+
+internal object HelidonServicesRefreshRelevance {
+  fun isRelevant(file: PsiFile, knownModelInputFiles: Set<VirtualFile> = emptySet()): Boolean {
+    val originalFile = file.originalFile
+    val virtualFile = originalFile.virtualFile
+    if (virtualFile != null && virtualFile in knownModelInputFiles) return true
+
+    return when {
+      originalFile is PsiJavaFile -> isRelevantJavaFile(originalFile)
+      originalFile is PropertiesFile -> isRelevantPropertiesConfigFile(originalFile)
+      originalFile is YAMLFile -> isRelevantYamlConfigFile(originalFile)
+      else -> false
+    }
+  }
+
+  private fun isRelevantJavaFile(file: PsiJavaFile): Boolean {
+    val contents = file.viewProvider.contents
+    if (contents.contains(HELIDON_PACKAGE_PREFIX) && JAVA_REFRESH_TYPE_MARKERS.any { contents.contains(it) }) return true
+    if (hasRelevantHelidonImport(file)) return true
+    if (!contents.contains('@')) return false
+
+    return hasRelevantAnnotation(file)
+  }
+
+  private fun hasRelevantHelidonImport(file: PsiJavaFile): Boolean {
+    val importList = file.importList ?: return false
+    return importList.allImportStatements.any { importStatement ->
+      val importedName = importStatement.importReference?.qualifiedName ?: return@any false
+      importedName in JAVA_REFRESH_IMPORT_QUALIFIERS ||
+        !importStatement.isOnDemand && importedName.substringBeforeLast('.', "") in JAVA_REFRESH_IMPORT_QUALIFIERS
+    }
+  }
+
+  private fun hasRelevantAnnotation(file: PsiJavaFile): Boolean {
+    val visited = HashSet<String>()
+    return file.classes.any { hasRelevantAnnotation(it, visited) }
+  }
+
+  private fun hasRelevantAnnotation(owner: PsiModifierListOwner, visited: MutableSet<String>): Boolean {
+    if (owner.modifierList?.annotations?.any { isRelevantAnnotation(it, visited) } == true) {
+      return true
+    }
+    return when (owner) {
+      is PsiClass -> owner.fields.any { hasRelevantAnnotation(it, visited) } ||
+                     owner.methods.any { hasRelevantAnnotation(it, visited) } ||
+                     owner.constructors.any { hasRelevantAnnotation(it, visited) } ||
+                     owner.innerClasses.any { hasRelevantAnnotation(it, visited) }
+      is PsiMethod -> owner.parameterList.parameters.any { hasRelevantAnnotation(it, visited) }
+      else -> false
+    }
+  }
+
+  private fun isRelevantAnnotation(annotation: PsiAnnotation, visited: MutableSet<String>): Boolean {
+    val qualifiedName = annotation.qualifiedName
+    if (qualifiedName in JAVA_REFRESH_ANNOTATIONS) return true
+    if (qualifiedName != null && !visited.add(qualifiedName)) return false
+
+    val annotationClass = try {
+      annotation.resolveAnnotationType()
+    }
+    catch (_: IndexNotReadyException) {
+      return true
+    } ?: return false
+    val annotationKey = annotationClass.qualifiedName ?: annotationClass.name ?: return false
+    if (qualifiedName == null && !visited.add(annotationKey)) return false
+
+    return annotationClass.modifierList?.annotations?.any {
+      isRelevantAnnotation(it, visited)
+    } == true
+  }
+
+  private fun isRelevantPropertiesConfigFile(file: PsiFile): Boolean {
+    if (!isHelidonApplicationConfigFile(file)) return false
+    if (!file.viewProvider.contents.contains(LANGCHAIN4J_ROOT)) return false
+    val propertiesFile = file as? PropertiesFile ?: return false
+    return propertiesFile.properties.any { property ->
+      property.key == LANGCHAIN4J_ROOT || property.key?.startsWith("$LANGCHAIN4J_ROOT.") == true
+    }
+  }
+
+  private fun isRelevantYamlConfigFile(file: YAMLFile): Boolean {
+    if (!isHelidonApplicationConfigFile(file)) return false
+    if (!file.viewProvider.contents.contains(LANGCHAIN4J_ROOT)) return false
+    return PsiTreeUtil.findChildrenOfType(file, YAMLKeyValue::class.java).any { keyValue ->
+      val keyName = getQualifiedConfigKeyName(keyValue)
+      keyName == LANGCHAIN4J_ROOT || keyName.startsWith("$LANGCHAIN4J_ROOT.")
+    }
+  }
+
+  private const val LANGCHAIN4J_ROOT = "langchain4j"
+  private const val HELIDON_PACKAGE_PREFIX = "io.helidon"
+
+  private val JAVA_REFRESH_IMPORT_QUALIFIERS = setOf(
+    "io.helidon.http",
+    "io.helidon.http.Http",
+    "io.helidon.service.registry",
+    "io.helidon.service.registry.Service",
+    "io.helidon.webserver",
+    "io.helidon.webserver.http",
+    "io.helidon.webserver.http.RestServer",
+    "io.helidon.extensions.langchain4j",
+    "io.helidon.extensions.langchain4j.Ai",
+    "io.helidon.integrations.langchain4j",
+    "io.helidon.integrations.langchain4j.Ai",
+  )
+
+  private val JAVA_REFRESH_ANNOTATIONS = setOf(
+    HelidonConstants.SERVICE_SINGLETON,
+    HelidonConstants.SERVICE_PROVIDER,
+    HelidonConstants.SERVICE_PER_LOOKUP,
+    HelidonConstants.SERVICE_PER_REQUEST,
+    HelidonConstants.SERVICE_INJECT,
+    HelidonConstants.SERVICE_CONTRACT,
+    HelidonConstants.SERVICE_NAMED,
+    HelidonConstants.SERVICE_EXTERNAL_CONTRACTS,
+    HelidonConstants.REST_SERVER_ENDPOINT,
+    HelidonConstants.HTTP_PATH,
+    HelidonConstants.HTTP_HTTP_METHOD,
+    HelidonConstants.HTTP_PATH_PARAM,
+    HelidonConstants.HTTP_HEADER_PARAM,
+    HelidonConstants.HTTP_QUERY_PARAM,
+    HelidonConstants.HTTP_ENTITY,
+    HelidonConstants.HTTP_CONSUMES,
+    HelidonConstants.HTTP_PRODUCES,
+    HelidonConstants.HTTP_GET,
+    HelidonConstants.HTTP_HEAD,
+    HelidonConstants.HTTP_POST,
+    HelidonConstants.HTTP_PUT,
+    HelidonConstants.HTTP_PATCH,
+    HelidonConstants.HTTP_DELETE,
+    HelidonConstants.HTTP_OPTIONS,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_SERVICE,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_AGENT,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_CHAT_MODEL,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_STREAMING_CHAT_MODEL,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_CHAT_MEMORY_PROVIDER,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_MODERATION_MODEL,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_CONTENT_RETRIEVER,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_RETRIEVAL_AUGMENTOR,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_TOOL_PROVIDER,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_MCP_CLIENTS,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_TOOLS,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI_TOOL,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_SERVICE,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_AGENT,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_CHAT_MODEL,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_STREAMING_CHAT_MODEL,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_CHAT_MEMORY_PROVIDER,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_MODERATION_MODEL,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_CONTENT_RETRIEVER,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_RETRIEVAL_AUGMENTOR,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_TOOL_PROVIDER,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_MCP_CLIENTS,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_TOOLS,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI_TOOL,
+  )
+
+  private val JAVA_REFRESH_TYPE_MARKERS = listOf(
+    HelidonConstants.WEB_SERVER,
+    HelidonConstants.WEB_SERVER_CONFIG,
+    HelidonConstants.WEB_SERVER_CONFIG_BUILDER,
+    HelidonConstants.LISTENER_CONFIG,
+    HelidonConstants.LISTENER_CONFIG_BUILDER,
+    HelidonConstants.HTTP_ROUTING,
+    HelidonConstants.HTTP_ROUTING_BUILDER,
+    HelidonConstants.HTTP_RULES,
+    HelidonConstants.HTTP_SERVICE,
+    HelidonConstants.HTTP_ROUTE,
+    HelidonConstants.HTTP_ROUTE_BUILDER,
+    HelidonConstants.HTTP_HANDLER,
+    HelidonConstants.ROUTING,
+    HelidonConstants.ROUTING_BUILDER,
+    HelidonConstants.ROUTING_RULES,
+    HelidonConstants.SERVICE,
+    HelidonConstants.SERVICE_REGISTRY_SERVICE,
+    HelidonConstants.SERVICE_REGISTRY_SERVICES,
+    HelidonConstants.SERVICE_REGISTRY,
+    HelidonConstants.LANGCHAIN4J_EXTENSIONS_AI,
+    HelidonConstants.LANGCHAIN4J_INTEGRATIONS_AI,
+  )
 }
 
 internal object HelidonServicesTreeModelBuilder {

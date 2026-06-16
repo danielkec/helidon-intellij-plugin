@@ -4,6 +4,8 @@ package com.intellij.helidon.services
 import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.HelidonIcons
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.roots.ProjectRootManager
+import com.intellij.psi.PsiJavaFile
 import com.intellij.testFramework.IdeaTestUtil
 import com.intellij.testFramework.LightProjectDescriptor
 import com.intellij.testFramework.fixtures.DefaultLightProjectDescriptor
@@ -21,6 +23,509 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
     }
 
     assertTrue(future.get(10, TimeUnit.SECONDS))
+  }
+
+  fun testRefreshRelevanceIgnoresUnrelatedJavaPropertiesAndYamlFiles() {
+    assertFalse(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("Plain.java", """
+      class Plain {
+        void update() {
+        }
+      }
+    """.trimIndent())))
+    assertFalse(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("notes.properties", """
+      message=hello
+    """.trimIndent())))
+    assertFalse(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("notes.yaml", """
+      message: hello
+    """.trimIndent())))
+  }
+
+  fun testRefreshRelevanceAcceptsServiceRegistryJavaFiles() {
+    val serviceFile = myFixture.configureByText("GreetingService.java", """
+      import io.helidon.service.registry.Service;
+
+      @Service.Singleton
+      class GreetingService {
+      }
+    """.trimIndent())
+    val lookupFile = myFixture.configureByText("GreetingLookup.java", """
+      import io.helidon.service.registry.Services;
+
+      class GreetingLookup {
+        void lookup() {
+          Services.get(Greeting.class);
+        }
+      }
+
+      interface Greeting {
+      }
+    """.trimIndent())
+
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(serviceFile))
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(lookupFile))
+  }
+
+  fun testRefreshRelevanceAcceptsServiceMetaAnnotatedJavaFiles() {
+    addServiceRegistryStubs()
+    myFixture.addClass("""
+      package demo;
+
+      import java.lang.annotation.ElementType;
+      import java.lang.annotation.Retention;
+      import java.lang.annotation.RetentionPolicy;
+      import java.lang.annotation.Target;
+      import io.helidon.service.registry.Service;
+
+      @Retention(RetentionPolicy.CLASS)
+      @Target(ElementType.TYPE)
+      @Service.Singleton
+      public @interface ApplicationService {
+      }
+    """.trimIndent())
+    val serviceFile = myFixture.configureByText("GreetingService.java", """
+      import demo.ApplicationService;
+
+      @ApplicationService
+      class GreetingService {
+      }
+    """.trimIndent())
+
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(serviceFile))
+  }
+
+  fun testRefreshRelevanceAcceptsHttpEndpointJavaFiles() {
+    val endpointFile = myFixture.configureByText("GreetingEndpoint.java", """
+      import io.helidon.http.Http;
+      import io.helidon.webserver.http.RestServer;
+
+      @RestServer.Endpoint
+      class GreetingEndpoint {
+        @Http.GET
+        @Http.Path("/hello")
+        String hello() {
+          return "hello";
+        }
+      }
+    """.trimIndent())
+    val routingFile = myFixture.configureByText("GreetingRouting.java", """
+      import io.helidon.webserver.http.HttpRouting;
+
+      class GreetingRouting {
+        void routes(HttpRouting.Builder routing) {
+          routing.get("/hello", (req, res) -> res.send("hello"));
+        }
+      }
+    """.trimIndent())
+
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(endpointFile))
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(routingFile))
+  }
+
+  fun testRefreshRelevanceAcceptsHttpEndpointNestedWildcardImports() {
+    addServiceRegistryStubs()
+    addRestServerEndpointStubs()
+    val file = myFixture.configureByText("GreetingEndpoint.java", """
+      import io.helidon.http.Http.*;
+      import io.helidon.webserver.http.RestServer.*;
+
+      @Endpoint
+      class GreetingEndpoint {
+        @GET
+        @Path("/hello")
+        String hello() {
+          return "hello";
+        }
+      }
+    """.trimIndent())
+
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(file))
+  }
+
+  fun testRefreshRelevanceAcceptsFullyQualifiedAnnotations() {
+    addServiceRegistryStubs()
+    addRestServerEndpointStubs()
+    val serviceFile = myFixture.configureByText("GreetingService.java", """
+      @io.helidon.service.registry.Service.Singleton
+      class GreetingService {
+      }
+    """.trimIndent())
+    val endpointFile = myFixture.configureByText("GreetingEndpoint.java", """
+      @io.helidon.webserver.http.RestServer.Endpoint
+      class GreetingEndpoint {
+        @io.helidon.http.Http.GET
+        @io.helidon.http.Http.Path("/hello")
+        String hello() {
+          return "hello";
+        }
+      }
+    """.trimIndent())
+
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(serviceFile))
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(endpointFile))
+  }
+
+  fun testRefreshRelevanceAcceptsHelidonImportsWithoutAnnotations() {
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("RegistryUsage.java", """
+      import io.helidon.service.registry.*;
+
+      class RegistryUsage {
+        ServiceRegistry registry;
+      }
+    """.trimIndent())))
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("RestServerUsage.java", """
+      import io.helidon.webserver.http.RestServer;
+
+      class RestServerUsage {
+        RestServer.Endpoint endpoint;
+      }
+    """.trimIndent())))
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("RestServerAliasUsage.java", """
+      import io.helidon.http.Http.*;
+      import io.helidon.webserver.http.RestServer.*;
+
+      class RestServerAliasUsage {
+        Endpoint endpoint;
+        GET method;
+      }
+    """.trimIndent())))
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("ExtensionsAiUsage.java", """
+      import io.helidon.extensions.langchain4j.*;
+
+      class ExtensionsAiUsage {
+        Ai.Service service;
+      }
+    """.trimIndent())))
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("IntegrationsAiUsage.java", """
+      import io.helidon.integrations.langchain4j.*;
+
+      class IntegrationsAiUsage {
+        Ai.Service service;
+      }
+    """.trimIndent())))
+    assertFalse(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("PlainList.java", """
+      import java.util.*;
+
+      class PlainList {
+        List<String> values;
+      }
+    """.trimIndent())))
+    assertFalse(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("ConfigUsage.java", """
+      import io.helidon.config.Config;
+
+      class ConfigUsage {
+        Config config;
+      }
+    """.trimIndent())))
+    assertFalse(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("UserServices.java", """
+      class UserServices {
+        void call() {
+          UserServices.get();
+        }
+
+        static void get() {
+        }
+      }
+    """.trimIndent())))
+  }
+
+  fun testRefreshRelevanceIgnoresShortAnnotationMarkersInCommentsAndStrings() {
+    val file = myFixture.configureByText("Notes.java", """
+      class Notes {
+        // @Service.Singleton and @RestServer.Endpoint are documentation only.
+        String sample = "@Http.GET and @Ai.Service are not code";
+      }
+    """.trimIndent())
+
+    assertFalse(HelidonServicesRefreshRelevance.isRelevant(file))
+  }
+
+  fun testRefreshRelevanceAcceptsLangChain4jJavaFiles() {
+    val file = myFixture.configureByText("AssistantService.java", """
+      import io.helidon.extensions.langchain4j.Ai;
+
+      @Ai.Service("assistant")
+      interface AssistantService {
+      }
+    """.trimIndent())
+
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(file))
+  }
+
+  fun testRefreshRelevanceAcceptsOnlyLangChain4jApplicationConfigFiles() {
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("application.yaml", """
+      langchain4j:
+        services:
+          assistant:
+            chat-model: assistant-model
+    """.trimIndent())))
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("application-dev.yaml", """
+      langchain4j:
+        models:
+          assistant-model:
+            provider: open-ai
+    """.trimIndent())))
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("application.properties", """
+      langchain4j.services.assistant.chat-model=assistant-model
+    """.trimIndent())))
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("application-root.properties", """
+      langchain4j=enabled
+    """.trimIndent())))
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("microprofile-config.properties", """
+      langchain4j.models.assistant-model.provider=open-ai
+    """.trimIndent())))
+    assertFalse(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("application-other.yaml", """
+      server:
+        port: 8080
+    """.trimIndent())))
+    assertFalse(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("application-dev.properties", """
+      server.port=8080
+    """.trimIndent())))
+    assertFalse(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("oci-config.yaml", """
+      helidon:
+        oci:
+          profile: DEFAULT
+    """.trimIndent())))
+    assertFalse(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("other.yaml", """
+      langchain4j:
+        services:
+          assistant:
+            chat-model: assistant-model
+    """.trimIndent())))
+    assertFalse(HelidonServicesRefreshRelevance.isRelevant(myFixture.configureByText("other.properties", """
+      langchain4j.services.assistant.chat-model=assistant-model
+    """.trimIndent())))
+  }
+
+  fun testRefreshRelevanceKeepsKnownModelInputFilesRelevant() {
+    val file = myFixture.configureByText("Tracked.java", """
+      class Tracked {
+      }
+    """.trimIndent())
+
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(file, setOf(file.virtualFile!!)))
+  }
+
+  fun testKnownModelInputFilesUseUnfilteredServicesSnapshot() {
+    addServiceRegistryStubs()
+    val contractFile = myFixture.configureByText("Greeting.java", """
+      interface Greeting {
+      }
+    """.trimIndent())
+    val serviceFile = myFixture.configureByText("GreetingService.java", """
+      import io.helidon.service.registry.Service;
+
+      @Service.Singleton
+      class GreetingService implements Greeting {
+      }
+    """.trimIndent())
+    myFixture.configureByText("GreetingConsumer.java", """
+      import io.helidon.service.registry.Service;
+
+      @Service.Singleton
+      class GreetingConsumer {
+        @Service.Inject
+        Greeting greeting;
+      }
+    """.trimIndent())
+
+    val problemFilter = HelidonServicesFilter(showOnlyProblems = true)
+    val problemSnapshot = HelidonServicesModel.collect(project, problemFilter)
+    val result = HelidonServicesRefreshInputs.collect(project, problemFilter)
+    val problemFiles = result.snapshot.nodes.mapNotNullTo(LinkedHashSet()) { it.navigationFile }
+    val knownFiles = result.knownModelInputFiles
+    val wrongModuleKnownFiles = HelidonServicesRefreshInputs.collect(
+      project,
+      problemFilter.copy(moduleName = "missing"),
+    ).knownModelInputFiles
+    val contractVirtualFile = contractFile.virtualFile!!
+
+    assertEquals(problemSnapshot.nodes.map { it.id }, result.snapshot.nodes.map { it.id })
+    assertFalse(contractVirtualFile in problemFiles)
+    assertTrue(contractVirtualFile in knownFiles)
+    assertTrue(wrongModuleKnownFiles.isEmpty())
+    assertFalse(HelidonServicesRefreshRelevance.isRelevant(contractFile))
+    assertTrue(HelidonServicesRefreshRelevance.isRelevant(contractFile, knownFiles))
+  }
+
+  fun testKnownModelInputFilesOnlyBroadenServiceRegistryFilters() {
+    addServiceRegistryStubs()
+    val contractFile = myFixture.configureByText("Greeting.java", """
+      interface Greeting {
+      }
+    """.trimIndent())
+    val serviceFile = myFixture.configureByText("GreetingService.java", """
+      import io.helidon.service.registry.Service;
+
+      @Service.Singleton
+      class GreetingService implements Greeting {
+      }
+    """.trimIndent())
+    val consumerFile = myFixture.configureByText("GreetingConsumer.java", """
+      import io.helidon.service.registry.Service;
+      import io.helidon.service.registry.Services;
+
+      class GreetingConsumer {
+        @Service.Inject
+        Greeting greeting;
+
+        void lookup() {
+          Services.get(Greeting.class);
+        }
+      }
+    """.trimIndent())
+    val contractVirtualFile = contractFile.virtualFile!!
+    val serviceVirtualFile = serviceFile.virtualFile!!
+    val consumerVirtualFile = consumerFile.virtualFile!!
+
+    val serviceResult = HelidonServicesRefreshInputs.collect(
+      project,
+      HelidonServicesFilter(kind = HelidonServicesNodeKind.SERVICE),
+    )
+    val contractResult = HelidonServicesRefreshInputs.collect(
+      project,
+      HelidonServicesFilter(kind = HelidonServicesNodeKind.CONTRACT),
+    )
+    val injectionResult = HelidonServicesRefreshInputs.collect(
+      project,
+      HelidonServicesFilter(kind = HelidonServicesNodeKind.INJECTION_POINT),
+    )
+    val serviceLookupResult = HelidonServicesRefreshInputs.collect(
+      project,
+      HelidonServicesFilter(kind = HelidonServicesNodeKind.SERVICE_LOOKUP),
+    )
+    val httpResult = HelidonServicesRefreshInputs.collect(
+      project,
+      HelidonServicesFilter(kind = HelidonServicesNodeKind.HTTP_ENDPOINT),
+    )
+
+    assertFalse(contractVirtualFile in serviceResult.snapshot.nodes.mapNotNull { it.navigationFile })
+    assertTrue(contractVirtualFile in serviceResult.knownModelInputFiles)
+    assertFalse(consumerVirtualFile in serviceResult.knownModelInputFiles)
+    assertTrue(contractVirtualFile in contractResult.knownModelInputFiles)
+    assertFalse(consumerVirtualFile in contractResult.knownModelInputFiles)
+    assertTrue(consumerVirtualFile in injectionResult.knownModelInputFiles)
+    assertTrue(serviceVirtualFile in injectionResult.knownModelInputFiles)
+    assertTrue(serviceVirtualFile in serviceLookupResult.knownModelInputFiles)
+    assertFalse(contractVirtualFile in httpResult.knownModelInputFiles)
+  }
+
+  fun testKnownModelInputFilesIncludeReferencedServiceConstants() {
+    addServiceRegistryStubs()
+    val namesFile = myFixture.configureByText("Names.java", """
+      class Names {
+        static final String FORMAL = "formal";
+      }
+    """.trimIndent())
+    myFixture.configureByText("Main.java", """
+      import io.helidon.service.registry.Service;
+      import io.helidon.service.registry.Services;
+
+      interface Greeting {
+      }
+
+      @Service.Named(Names.FORMAL)
+      @Service.Singleton
+      class FormalGreetingService implements Greeting {
+      }
+
+      @Service.Singleton
+      class GreetingConsumer {
+        @Service.Inject(Names.FORMAL)
+        Greeting greeting;
+
+        void lookup() {
+          Services.getNamed(Greeting.class, Names.FORMAL);
+        }
+      }
+    """.trimIndent())
+
+    val namesVirtualFile = namesFile.virtualFile!!
+    val serviceRegistryKinds = listOf(
+      HelidonServicesNodeKind.SERVICE,
+      HelidonServicesNodeKind.INJECTION_POINT,
+      HelidonServicesNodeKind.SERVICE_LOOKUP,
+    )
+
+    for (kind in serviceRegistryKinds) {
+      val result = HelidonServicesRefreshInputs.collect(project, HelidonServicesFilter(kind = kind))
+      assertTrue(namesVirtualFile in result.knownModelInputFiles)
+      assertTrue(HelidonServicesRefreshRelevance.isRelevant(namesFile, result.knownModelInputFiles))
+    }
+  }
+
+  fun testKnownModelInputFilesExcludeLibraryReferences() {
+    addServiceRegistryStubs()
+    myFixture.configureByText("Main.java", """
+      import java.util.List;
+      import io.helidon.service.registry.Service;
+
+      interface Greeting {
+      }
+
+      @Service.Singleton
+      class GreetingService implements Greeting {
+      }
+
+      @Service.Singleton
+      class GreetingConsumer {
+        @Service.Inject
+        List<Greeting> greetings;
+      }
+    """.trimIndent())
+
+    val knownFiles = HelidonServicesRefreshInputs.collect(
+      project,
+      HelidonServicesFilter(kind = HelidonServicesNodeKind.INJECTION_POINT),
+    ).knownModelInputFiles
+    val projectFileIndex = ProjectRootManager.getInstance(project).fileIndex
+
+    assertTrue(knownFiles.isNotEmpty())
+    assertTrue(knownFiles.all(projectFileIndex::isInContent))
+  }
+
+  fun testKnownModelInputFilesIgnoreJavadocReferences() {
+    val linkedFile = myFixture.configureByText("LinkedFromDocs.java", """
+      class LinkedFromDocs {
+      }
+    """.trimIndent())
+    val file = myFixture.configureByText("Documented.java", """
+      class Documented {
+        /**
+         * See {@link LinkedFromDocs}.
+         */
+        void operation() {
+        }
+      }
+    """.trimIndent()) as PsiJavaFile
+
+    val method = file.classes.single().methods.single()
+    val inputFiles = HelidonServicesModel.inputFiles(method)
+
+    assertTrue(file.virtualFile!! in inputFiles)
+    assertFalse(linkedFile.virtualFile!! in inputFiles)
+  }
+
+  fun testKnownModelInputFilesIncludeReferencedLangChain4jConstants() {
+    addLangChain4jStubs()
+    val modelNamesFile = myFixture.configureByText("ModelNames.java", """
+      class ModelNames {
+        static final String ASSISTANT = "assistant-model";
+      }
+    """.trimIndent())
+    myFixture.configureByText("AssistantModel.java", """
+      import io.helidon.extensions.langchain4j.Ai;
+
+      @Ai.ChatModel(ModelNames.ASSISTANT)
+      class AssistantModel {
+      }
+    """.trimIndent())
+
+    val result = HelidonServicesRefreshInputs.collect(
+      project,
+      HelidonServicesFilter(kind = HelidonServicesNodeKind.LANGCHAIN4J_COMPONENT),
+    )
+
+    assertTrue(modelNamesFile.virtualFile!! in result.knownModelInputFiles)
   }
 
   fun testCollectsServiceContractsInjectionLookupsAndAmbiguousTargets() {
@@ -294,6 +799,97 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
     })
   }
 
+  fun testHttpEndpointInputFilesIncludeReferencedPathConstants() {
+    addServiceRegistryStubs()
+    addRestServerEndpointStubs()
+    val pathsFile = myFixture.configureByText("Paths.java", """
+      class Paths {
+        static final String HELLO = "/hello";
+      }
+    """.trimIndent())
+    myFixture.configureByText("GreetingEndpoint.java", """
+      import io.helidon.http.Http;
+      import io.helidon.webserver.http.RestServer;
+
+      @RestServer.Endpoint
+      class GreetingEndpoint {
+        @Http.GET
+        @Http.Path(Paths.HELLO)
+        String hello() {
+          return "hello";
+        }
+      }
+    """.trimIndent())
+
+    val nodes = HelidonHttpServicesViewContributor().collect(module, HelidonServicesFilter())
+
+    assertTrue(nodes.any {
+      it.kind == HelidonServicesNodeKind.HTTP_ENDPOINT &&
+        it.name == "/hello"
+    })
+    assertTrue(pathsFile.virtualFile!! in nodes.flatMap { it.inputFiles })
+  }
+
+  fun testHttpEndpointInputFilesIncludeReferencedPathMatcherConstants() {
+    addServiceRegistryStubs()
+    addRestServerEndpointStubs()
+    val pathsFile = myFixture.configureByText("Paths.java", """
+      class Paths {
+        static final String HELLO = "/hello";
+      }
+    """.trimIndent())
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Method;
+      import io.helidon.http.PathMatchers;
+      import io.helidon.webserver.http.HttpRouting;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.route(Method.GET, PathMatchers.prefix(Paths.HELLO), (req, res) -> {});
+        }
+      }
+    """.trimIndent())
+
+    val nodes = HelidonHttpServicesViewContributor().collect(module, HelidonServicesFilter())
+
+    assertTrue(nodes.any {
+      it.kind == HelidonServicesNodeKind.HTTP_ENDPOINT &&
+        it.name == "/hello"
+    })
+    assertTrue(pathsFile.virtualFile!! in nodes.flatMap { it.inputFiles })
+  }
+
+  fun testHttpEndpointInputFilesIgnoreMethodBodyReferences() {
+    addServiceRegistryStubs()
+    addRestServerEndpointStubs()
+    val bodyOnlyFile = myFixture.configureByText("BodyOnly.java", """
+      class BodyOnly {
+        static final String MESSAGE = "hello";
+      }
+    """.trimIndent())
+    myFixture.configureByText("GreetingEndpoint.java", """
+      import io.helidon.http.Http;
+      import io.helidon.webserver.http.RestServer;
+
+      @RestServer.Endpoint
+      class GreetingEndpoint {
+        @Http.GET
+        @Http.Path("/hello")
+        String hello() {
+          return BodyOnly.MESSAGE;
+        }
+      }
+    """.trimIndent())
+
+    val nodes = HelidonHttpServicesViewContributor().collect(module, HelidonServicesFilter())
+
+    assertTrue(nodes.any {
+      it.kind == HelidonServicesNodeKind.HTTP_ENDPOINT &&
+        it.name == "/hello"
+    })
+    assertFalse(bodyOnlyFile.virtualFile!! in nodes.flatMap { it.inputFiles })
+  }
+
   fun testCollectsLangChain4jComponentsAndConfig() {
     addLangChain4jStubs()
     myFixture.addClass("""
@@ -559,6 +1155,31 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
       }
     """.trimIndent())
     myFixture.addClass("""
+      package io.helidon.http;
+
+      public enum Method {
+        GET
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package io.helidon.http;
+
+      public interface PathMatcher {
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package io.helidon.http;
+
+      public final class PathMatchers {
+        private PathMatchers() {
+        }
+
+        public static PathMatcher prefix(String path) {
+          return null;
+        }
+      }
+    """.trimIndent())
+    myFixture.addClass("""
       package io.helidon.webserver.http;
 
       import java.lang.annotation.ElementType;
@@ -576,6 +1197,37 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
         @Target(ElementType.TYPE)
         @Service.Singleton
         public @interface Endpoint {
+        }
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package io.helidon.webserver.http;
+
+      public interface ServerRequest {
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package io.helidon.webserver.http;
+
+      public interface ServerResponse {
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package io.helidon.webserver.http;
+
+      public interface Handler {
+        void handle(ServerRequest request, ServerResponse response);
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package io.helidon.webserver.http;
+
+      import io.helidon.http.Method;
+      import io.helidon.http.PathMatcher;
+
+      public interface HttpRouting {
+        interface Builder {
+          Builder route(Method method, PathMatcher path, Handler handler);
         }
       }
     """.trimIndent())

@@ -8,6 +8,8 @@ import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiClass
+import com.intellij.psi.PsiMethod
+import com.intellij.psi.PsiMethodCallExpression
 import com.intellij.psi.SmartPointerManager
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.util.CommonProcessors.CollectProcessor
@@ -46,11 +48,30 @@ class HelidonHttpServicesViewContributor : HelidonServicesViewContributor {
       navigation = SmartPointerManager.getInstance(targetModule.project).createSmartPsiElementPointer(target),
       navigationFile = target.containingFile?.originalFile?.virtualFile,
       navigationOffset = target.textRange.startOffset,
+      inputFiles = HelidonServicesModel.inputFiles(endpointInputElements(target, endpoint.declarationMethod)),
       packageName = container?.let(::packageName),
       ownerClassName = container?.name ?: container?.qualifiedName,
       ownerClassQualifiedName = container?.qualifiedName,
     )
   }
+
+  private fun endpointInputElements(target: PsiElement, declarationMethod: PsiMethod?): List<PsiElement> =
+    endpointAnchorInputElements(target) + methodInputElements(declarationMethod)
+
+  private fun endpointAnchorInputElements(target: PsiElement): List<PsiElement> =
+    when (target) {
+      is PsiMethod -> methodInputElements(target)
+      is PsiMethodCallExpression -> listOf(target.methodExpression, target.argumentList)
+      else -> listOf(target)
+    }
+
+  private fun methodInputElements(method: PsiMethod?): List<PsiElement> =
+    listOfNotNull(
+      method?.modifierList,
+      method?.returnTypeElement,
+      method?.parameterList,
+      method?.nameIdentifier,
+    )
 
   private fun packageName(psiClass: PsiClass): String? {
     val qualifiedName = psiClass.qualifiedName ?: return null

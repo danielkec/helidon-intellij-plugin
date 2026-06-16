@@ -78,6 +78,8 @@ class HelidonFileTemplatesTest {
   fun langChain4jAgentTemplateUsesRequiredAgentName() {
     val text = Files.readString(templatePath(HELIDON_LANGCHAIN4J_AGENT_TEMPLATE, "ft"))
 
+    assertTrue("LangChain4j agent template should import the package that declares Ai.Agent",
+               text.contains("import io.helidon.extensions.langchain4j.Ai;"))
     assertTrue("LangChain4j agent template should provide an agent name",
                text.contains("@Ai.Agent(\"\${NAME}\")"))
     assertTrue("LangChain4j agent template should define an agentic method",

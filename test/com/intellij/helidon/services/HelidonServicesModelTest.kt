@@ -830,6 +830,35 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
     assertTrue(pathsFile.virtualFile!! in nodes.flatMap { it.inputFiles })
   }
 
+  fun testHttpEndpointInputFilesIncludeReferencedPathMatcherConstants() {
+    addServiceRegistryStubs()
+    addRestServerEndpointStubs()
+    val pathsFile = myFixture.configureByText("Paths.java", """
+      class Paths {
+        static final String HELLO = "/hello";
+      }
+    """.trimIndent())
+    myFixture.configureByText("Main.java", """
+      import io.helidon.http.Method;
+      import io.helidon.http.PathMatchers;
+      import io.helidon.webserver.http.HttpRouting;
+
+      class Main {
+        static void routing(HttpRouting.Builder routing) {
+          routing.route(Method.GET, PathMatchers.prefix(Paths.HELLO), (req, res) -> {});
+        }
+      }
+    """.trimIndent())
+
+    val nodes = HelidonHttpServicesViewContributor().collect(module, HelidonServicesFilter())
+
+    assertTrue(nodes.any {
+      it.kind == HelidonServicesNodeKind.HTTP_ENDPOINT &&
+        it.name == "/hello"
+    })
+    assertTrue(pathsFile.virtualFile!! in nodes.flatMap { it.inputFiles })
+  }
+
   fun testHttpEndpointInputFilesIgnoreMethodBodyReferences() {
     addServiceRegistryStubs()
     addRestServerEndpointStubs()
@@ -1126,6 +1155,31 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
       }
     """.trimIndent())
     myFixture.addClass("""
+      package io.helidon.http;
+
+      public enum Method {
+        GET
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package io.helidon.http;
+
+      public interface PathMatcher {
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package io.helidon.http;
+
+      public final class PathMatchers {
+        private PathMatchers() {
+        }
+
+        public static PathMatcher prefix(String path) {
+          return null;
+        }
+      }
+    """.trimIndent())
+    myFixture.addClass("""
       package io.helidon.webserver.http;
 
       import java.lang.annotation.ElementType;
@@ -1143,6 +1197,37 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
         @Target(ElementType.TYPE)
         @Service.Singleton
         public @interface Endpoint {
+        }
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package io.helidon.webserver.http;
+
+      public interface ServerRequest {
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package io.helidon.webserver.http;
+
+      public interface ServerResponse {
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package io.helidon.webserver.http;
+
+      public interface Handler {
+        void handle(ServerRequest request, ServerResponse response);
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package io.helidon.webserver.http;
+
+      import io.helidon.http.Method;
+      import io.helidon.http.PathMatcher;
+
+      public interface HttpRouting {
+        interface Builder {
+          Builder route(Method method, PathMatcher path, Handler handler);
         }
       }
     """.trimIndent())

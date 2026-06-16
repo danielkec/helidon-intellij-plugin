@@ -61,7 +61,7 @@ class HelidonHttpServicesViewContributor : HelidonServicesViewContributor {
   private fun endpointAnchorInputElements(target: PsiElement): List<PsiElement> =
     when (target) {
       is PsiMethod -> methodInputElements(target)
-      is PsiMethodCallExpression -> listOf(target.methodExpression)
+      is PsiMethodCallExpression -> listOf(target.methodExpression, target.argumentList)
       else -> listOf(target)
     }
 

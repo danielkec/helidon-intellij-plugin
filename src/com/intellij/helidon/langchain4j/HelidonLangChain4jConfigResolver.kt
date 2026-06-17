@@ -569,7 +569,8 @@ internal object HelidonLangChain4jConfigResolver {
       val section = propertiesConfigSection(key) ?: continue
       if (section !in CONFIG_SECTIONS) continue
       val runtimeKey = propertiesConfigEntryKey(key, section) ?: continue
-      entries.putIfAbsent(LangChain4jConfigEntryKey(section, runtimeKey), propertyImpl)
+      val entryKey = LangChain4jConfigEntryKey(section, runtimeKey)
+      entries[entryKey] = preferredPropertiesConfigEntry(entries[entryKey], propertyImpl, section)
     }
     for ((entryKey, target) in entries) {
       result.add(LangChain4jConfigEntry(entryKey.section, entryKey.key, target))
@@ -614,6 +615,21 @@ internal object HelidonLangChain4jConfigResolver {
       delimiter = entryPath.indexOf('.', delimiter + 1)
     }
     return null
+  }
+
+  private fun preferredPropertiesConfigEntry(current: PropertyImpl?,
+                                             candidate: PropertyImpl,
+                                             section: String): PropertyImpl {
+    if (current == null) return candidate
+    return if (propertiesConfigEntryRank(candidate, section) < propertiesConfigEntryRank(current, section)) candidate else current
+  }
+
+  private fun propertiesConfigEntryRank(property: PropertyImpl, section: String): PropertiesConfigEntryRank {
+    val key = property.key ?: return PropertiesConfigEntryRank(Int.MAX_VALUE, Int.MAX_VALUE, Int.MAX_VALUE, "")
+    val optionPath = propertiesConfigEntryOptionPath(key, section)
+    val optionDepth = optionPath?.split('.')?.size ?: 0
+    val optionLength = optionPath?.length ?: 0
+    return PropertiesConfigEntryRank(optionDepth, optionLength, key.length, key)
   }
 
   private fun findYamlSectionEntryKey(file: YAMLFile?, section: String, key: String): YAMLKeyValue? {
@@ -683,7 +699,8 @@ internal object HelidonLangChain4jConfigResolver {
     return file.properties
       .asSequence()
       .mapNotNull { it.psiElement as? PropertyImpl }
-      .firstOrNull { property -> property.key?.let { propertiesConfigEntryKey(it, section) } == key }
+      .filter { property -> property.key?.let { propertiesConfigEntryKey(it, section) } == key }
+      .minByOrNull { property -> propertiesConfigEntryRank(property, section) }
   }
 
   private fun findMcpClientKeyValueUsages(context: PsiElement, value: String): List<PsiElement> {
@@ -829,6 +846,21 @@ internal object HelidonLangChain4jConfigResolver {
     val section: String,
     val key: String,
   )
+
+  private data class PropertiesConfigEntryRank(
+    val optionDepth: Int,
+    val optionLength: Int,
+    val keyLength: Int,
+    val key: String,
+  ) : Comparable<PropertiesConfigEntryRank> {
+    override fun compareTo(other: PropertiesConfigEntryRank): Int {
+      return compareValuesBy(this, other,
+                             { it.optionDepth },
+                             { it.optionLength },
+                             { it.keyLength },
+                             { it.key })
+    }
+  }
 
   private data class ConfigFile(
     val psiFile: PsiFile,

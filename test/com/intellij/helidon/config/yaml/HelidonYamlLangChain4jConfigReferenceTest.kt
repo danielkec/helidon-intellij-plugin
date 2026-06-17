@@ -723,8 +723,8 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
   fun testAiChatModelAnnotationValueResolvesToPropertiesBackedModelConfigKey() {
     addLangChain4jStubs()
     configureApplicationProperties("""
-      langchain4j.models.chat.provider=openai
       langchain4j.models.chat.temperature=0.2
+      langchain4j.models.chat.provider=openai
     """.trimIndent())
     myFixture.configureByText("Main.java", """
       import io.helidon.extensions.langchain4j.Ai;
@@ -901,6 +901,7 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
   fun testAiMcpClientsAnnotationValueResolvesToPropertiesBackedMcpClientConfigKey() {
     addLangChain4jStubs()
     configureApplicationProperties("""
+      langchain4j.mcp-clients.filesystem.tls.trust-all=true
       langchain4j.mcp-clients.filesystem.uri=http://localhost:9999/mcp
     """.trimIndent())
     myFixture.configureByText("Main.java", """

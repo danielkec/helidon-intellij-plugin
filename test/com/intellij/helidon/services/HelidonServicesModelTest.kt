@@ -950,18 +950,18 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
 
   fun testCollectsPropertiesLangChain4jConfigByLogicalRuntimeEntry() {
     myFixture.configureByText("application.properties", """
-      langchain4j.models.chat.provider=openai
       langchain4j.models.chat.temperature=0.2
+      langchain4j.models.chat.provider=openai
       langchain4j.models.demo.Model.provider=openai
-      langchain4j.models.test-moderation-model.provider=openai
       langchain4j.models.test-moderation-model.proxy.type=HTTP
       langchain4j.models.test-moderation-model.proxy.host=localhost
-      langchain4j.providers.open-ai.api-key=api-key
+      langchain4j.models.test-moderation-model.provider=openai
       langchain4j.providers.open-ai.logit-bias.key1=1
       langchain4j.providers.open-ai.custom-headers.header1=value1
-      langchain4j.mcp-clients.filesystem.uri=http://localhost:9999/mcp
+      langchain4j.providers.open-ai.api-key=api-key
       langchain4j.mcp-clients.filesystem.tls.trust-all=true
       langchain4j.mcp-clients.filesystem.headers.authorization=Bearer token
+      langchain4j.mcp-clients.filesystem.uri=http://localhost:9999/mcp
     """.trimIndent())
 
     val snapshot = HelidonServicesModel.collect(
@@ -974,8 +974,11 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
     }
 
     assertEquals(1, modelNodes.count { it.name == "chat" })
+    assertEquals("langchain4j.models.chat.provider=openai", modelNodes.single { it.name == "chat" }.navigation?.element?.text)
     assertTrue(modelNodes.any { it.name == "demo.Model" })
     assertEquals(1, modelNodes.count { it.name == "test-moderation-model" })
+    assertEquals("langchain4j.models.test-moderation-model.provider=openai",
+                 modelNodes.single { it.name == "test-moderation-model" }.navigation?.element?.text)
     assertFalse(modelNodes.any { it.name == "demo" })
     assertFalse(modelNodes.any { it.name == "test-moderation-model.proxy" })
 
@@ -984,6 +987,8 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
         it.details == "langchain4j.providers"
     }
     assertEquals(1, providerNodes.count { it.name == "open-ai" })
+    assertEquals("langchain4j.providers.open-ai.api-key=api-key",
+                 providerNodes.single { it.name == "open-ai" }.navigation?.element?.text)
     assertFalse(providerNodes.any { it.name == "open-ai.logit-bias" })
     assertFalse(providerNodes.any { it.name == "open-ai.custom-headers" })
 
@@ -992,6 +997,8 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
         it.details == "langchain4j.mcp-clients"
     }
     assertEquals(1, mcpNodes.count { it.name == "filesystem" })
+    assertEquals("langchain4j.mcp-clients.filesystem.uri=http://localhost:9999/mcp",
+                 mcpNodes.single { it.name == "filesystem" }.navigation?.element?.text)
     assertFalse(mcpNodes.any { it.name == "filesystem.tls" })
     assertFalse(mcpNodes.any { it.name == "filesystem.headers" })
   }

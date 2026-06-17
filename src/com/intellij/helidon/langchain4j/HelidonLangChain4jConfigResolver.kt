@@ -91,6 +91,12 @@ internal object HelidonLangChain4jConfigResolver {
     MCP_CLIENTS,
   )
 
+  private val PROPERTIES_NESTED_CONFIG_KEYS: Map<String, Set<String>> = mapOf(
+    MODELS to setOf("custom-headers", "logit-bias", "proxy"),
+    PROVIDERS to setOf("custom-headers", "logit-bias", "proxy"),
+    MCP_CLIENTS to setOf("headers", "tls"),
+  )
+
   private val VALUE_CONFIG_TARGETS: Map<String, String> = mapOf(
     "provider" to PROVIDERS,
     "chat-model" to MODELS,
@@ -556,16 +562,74 @@ internal object HelidonLangChain4jConfigResolver {
   }
 
   private fun collectPropertiesConfigEntries(file: PropertiesFile, result: MutableSet<LangChain4jConfigEntry>) {
+    val entries = LinkedHashMap<LangChain4jConfigEntryKey, PropertyImpl>()
     for (property in file.properties) {
       val propertyImpl = property.psiElement as? PropertyImpl ?: continue
       val key = property.key ?: continue
-      val parts = key.split('.')
-      if (parts.size < 3 || parts[0] != ROOT) continue
-      val section = parts[1]
+      val section = propertiesConfigSection(key) ?: continue
       if (section !in CONFIG_SECTIONS) continue
-      val runtimeKey = parts[2].takeIf { it.isNotBlank() } ?: continue
-      result.add(LangChain4jConfigEntry(section, runtimeKey, propertyImpl))
+      val runtimeKey = propertiesConfigEntryKey(key, section) ?: continue
+      val entryKey = LangChain4jConfigEntryKey(section, runtimeKey)
+      entries[entryKey] = preferredPropertiesConfigEntry(entries[entryKey], propertyImpl, section)
     }
+    for ((entryKey, target) in entries) {
+      result.add(LangChain4jConfigEntry(entryKey.section, entryKey.key, target))
+    }
+  }
+
+  private fun propertiesConfigSection(key: String): String? {
+    if (!key.startsWith("$ROOT.")) return null
+    return key.removePrefix("$ROOT.")
+      .substringBefore('.', missingDelimiterValue = "")
+      .takeIf { it.isNotBlank() }
+  }
+
+  private fun propertiesConfigEntryKey(key: String, section: String): String? {
+    val prefix = "$ROOT.$section."
+    if (!key.startsWith(prefix)) return null
+    val entryPath = key.removePrefix(prefix)
+    if (entryPath.isBlank()) return null
+    val nestedDelimiter = propertiesNestedConfigDelimiter(entryPath, section)
+    val leafDelimiter = entryPath.lastIndexOf('.')
+    val runtimeKeyDelimiter = nestedDelimiter ?: leafDelimiter
+    val runtimeKey = if (runtimeKeyDelimiter == -1) entryPath else entryPath.substring(0, runtimeKeyDelimiter)
+    return runtimeKey.takeIf { it.isNotBlank() }
+  }
+
+  private fun propertiesConfigEntryOptionPath(key: String, section: String): String? {
+    val prefix = "$ROOT.$section."
+    if (!key.startsWith(prefix)) return null
+    val entryPath = key.removePrefix(prefix)
+    val runtimeKey = propertiesConfigEntryKey(key, section) ?: return null
+    if (entryPath == runtimeKey) return null
+    return entryPath.removePrefix("$runtimeKey.").takeIf { it.isNotBlank() }
+  }
+
+  private fun propertiesNestedConfigDelimiter(entryPath: String, section: String): Int? {
+    val nestedKeys = PROPERTIES_NESTED_CONFIG_KEYS[section] ?: return null
+    var delimiter = entryPath.indexOf('.')
+    while (delimiter != -1) {
+      val optionPath = entryPath.substring(delimiter + 1)
+      val optionRoot = optionPath.substringBefore('.')
+      if (optionRoot in nestedKeys && optionPath.contains('.')) return delimiter
+      delimiter = entryPath.indexOf('.', delimiter + 1)
+    }
+    return null
+  }
+
+  private fun preferredPropertiesConfigEntry(current: PropertyImpl?,
+                                             candidate: PropertyImpl,
+                                             section: String): PropertyImpl {
+    if (current == null) return candidate
+    return if (propertiesConfigEntryRank(candidate, section) < propertiesConfigEntryRank(current, section)) candidate else current
+  }
+
+  private fun propertiesConfigEntryRank(property: PropertyImpl, section: String): PropertiesConfigEntryRank {
+    val key = property.key ?: return PropertiesConfigEntryRank(Int.MAX_VALUE, Int.MAX_VALUE, Int.MAX_VALUE, "")
+    val optionPath = propertiesConfigEntryOptionPath(key, section)
+    val optionDepth = optionPath?.split('.')?.size ?: 0
+    val optionLength = optionPath?.length ?: 0
+    return PropertiesConfigEntryRank(optionDepth, optionLength, key.length, key)
   }
 
   private fun findYamlSectionEntryKey(file: YAMLFile?, section: String, key: String): YAMLKeyValue? {
@@ -612,6 +676,9 @@ internal object HelidonLangChain4jConfigResolver {
         return@processConfigFiles findYamlMcpClientSectionFallback(psiFile, value)?.let(::listOf) ?: emptyList()
       }
       if (!mcpClientSectionFallbackAllowed(psiFile, value)) return@processConfigFiles emptyList()
+      if (psiFile is PropertiesFile) {
+        return@processConfigFiles findPropertiesSectionEntryKey(psiFile, MCP_CLIENTS, value)?.let(::listOf) ?: emptyList()
+      }
       contributor.findKey(psiFile, "$ROOT.$MCP_CLIENTS.$value")?.let(::listOf) ?: emptyList()
     }
   }
@@ -621,8 +688,19 @@ internal object HelidonLangChain4jConfigResolver {
       if (psiFile is YAMLFile) {
         return@processConfigFiles findYamlSectionEntryKey(psiFile, section, key)?.let(::listOf) ?: emptyList()
       }
+      if (psiFile is PropertiesFile) {
+        return@processConfigFiles findPropertiesSectionEntryKey(psiFile, section, key)?.let(::listOf) ?: emptyList()
+      }
       contributor.findKey(psiFile, "$ROOT.$section.$key")?.let(::listOf) ?: emptyList()
     }
+  }
+
+  private fun findPropertiesSectionEntryKey(file: PropertiesFile, section: String, key: String): PsiElement? {
+    return file.properties
+      .asSequence()
+      .mapNotNull { it.psiElement as? PropertyImpl }
+      .filter { property -> property.key?.let { propertiesConfigEntryKey(it, section) } == key }
+      .minByOrNull { property -> propertiesConfigEntryRank(property, section) }
   }
 
   private fun findMcpClientKeyValueUsages(context: PsiElement, value: String): List<PsiElement> {
@@ -709,7 +787,7 @@ internal object HelidonLangChain4jConfigResolver {
       val propertyImpl = property.psiElement as? PropertyImpl ?: return@mapNotNull null
       val key = propertyImpl.key ?: return@mapNotNull null
       if (key.startsWith("$ROOT.$MCP_CLIENTS.") &&
-          key.endsWith(".key") &&
+          propertiesConfigEntryOptionPath(key, MCP_CLIENTS) == "key" &&
           propertyImpl.value == value) {
         HelidonPropertiesUtils.getPropertyValue(propertyImpl) ?: propertyImpl
       }
@@ -763,6 +841,26 @@ internal object HelidonLangChain4jConfigResolver {
     val key: String,
     val target: PsiElement,
   )
+
+  private data class LangChain4jConfigEntryKey(
+    val section: String,
+    val key: String,
+  )
+
+  private data class PropertiesConfigEntryRank(
+    val optionDepth: Int,
+    val optionLength: Int,
+    val keyLength: Int,
+    val key: String,
+  ) : Comparable<PropertiesConfigEntryRank> {
+    override fun compareTo(other: PropertiesConfigEntryRank): Int {
+      return compareValuesBy(this, other,
+                             { it.optionDepth },
+                             { it.optionLength },
+                             { it.keyLength },
+                             { it.key })
+    }
+  }
 
   private data class ConfigFile(
     val psiFile: PsiFile,

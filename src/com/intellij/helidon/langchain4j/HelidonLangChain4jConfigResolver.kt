@@ -556,16 +556,35 @@ internal object HelidonLangChain4jConfigResolver {
   }
 
   private fun collectPropertiesConfigEntries(file: PropertiesFile, result: MutableSet<LangChain4jConfigEntry>) {
+    val entries = LinkedHashMap<LangChain4jConfigEntryKey, PropertyImpl>()
     for (property in file.properties) {
       val propertyImpl = property.psiElement as? PropertyImpl ?: continue
       val key = property.key ?: continue
-      val parts = key.split('.')
-      if (parts.size < 3 || parts[0] != ROOT) continue
-      val section = parts[1]
+      val section = propertiesConfigSection(key) ?: continue
       if (section !in CONFIG_SECTIONS) continue
-      val runtimeKey = parts[2].takeIf { it.isNotBlank() } ?: continue
-      result.add(LangChain4jConfigEntry(section, runtimeKey, propertyImpl))
+      val runtimeKey = propertiesConfigEntryKey(key, section) ?: continue
+      entries.putIfAbsent(LangChain4jConfigEntryKey(section, runtimeKey), propertyImpl)
     }
+    for ((entryKey, target) in entries) {
+      result.add(LangChain4jConfigEntry(entryKey.section, entryKey.key, target))
+    }
+  }
+
+  private fun propertiesConfigSection(key: String): String? {
+    if (!key.startsWith("$ROOT.")) return null
+    return key.removePrefix("$ROOT.")
+      .substringBefore('.', missingDelimiterValue = "")
+      .takeIf { it.isNotBlank() }
+  }
+
+  private fun propertiesConfigEntryKey(key: String, section: String): String? {
+    val prefix = "$ROOT.$section."
+    if (!key.startsWith(prefix)) return null
+    val entryPath = key.removePrefix(prefix)
+    if (entryPath.isBlank()) return null
+    val leafDelimiter = entryPath.lastIndexOf('.')
+    val runtimeKey = if (leafDelimiter == -1) entryPath else entryPath.substring(0, leafDelimiter)
+    return runtimeKey.takeIf { it.isNotBlank() }
   }
 
   private fun findYamlSectionEntryKey(file: YAMLFile?, section: String, key: String): YAMLKeyValue? {
@@ -621,8 +640,18 @@ internal object HelidonLangChain4jConfigResolver {
       if (psiFile is YAMLFile) {
         return@processConfigFiles findYamlSectionEntryKey(psiFile, section, key)?.let(::listOf) ?: emptyList()
       }
+      if (psiFile is PropertiesFile) {
+        return@processConfigFiles findPropertiesSectionEntryKey(psiFile, section, key)?.let(::listOf) ?: emptyList()
+      }
       contributor.findKey(psiFile, "$ROOT.$section.$key")?.let(::listOf) ?: emptyList()
     }
+  }
+
+  private fun findPropertiesSectionEntryKey(file: PropertiesFile, section: String, key: String): PsiElement? {
+    return file.properties
+      .asSequence()
+      .mapNotNull { it.psiElement as? PropertyImpl }
+      .firstOrNull { property -> property.key?.let { propertiesConfigEntryKey(it, section) } == key }
   }
 
   private fun findMcpClientKeyValueUsages(context: PsiElement, value: String): List<PsiElement> {
@@ -762,6 +791,11 @@ internal object HelidonLangChain4jConfigResolver {
     val section: String,
     val key: String,
     val target: PsiElement,
+  )
+
+  private data class LangChain4jConfigEntryKey(
+    val section: String,
+    val key: String,
   )
 
   private data class ConfigFile(

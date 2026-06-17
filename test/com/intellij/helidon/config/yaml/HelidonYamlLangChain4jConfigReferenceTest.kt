@@ -7,6 +7,7 @@ import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.config.HELIDON_APPLICATION_YAML
 import com.intellij.helidon.langchain4j.HelidonLangChain4jJavaLineMarkerProvider
 import com.intellij.helidon.langchain4j.HelidonLangChain4jYamlLineMarkerProvider
+import com.intellij.lang.properties.psi.impl.PropertyImpl
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.util.Disposer
 import com.intellij.psi.PsiElement
@@ -719,6 +720,39 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     assertResolvesToConfigKey("langchain4j.models.demo.Model")
   }
 
+  fun testAiChatModelAnnotationValueResolvesToPropertiesBackedModelConfigKey() {
+    addLangChain4jStubs()
+    configureApplicationProperties("""
+      langchain4j.models.chat.provider=openai
+      langchain4j.models.chat.temperature=0.2
+    """.trimIndent())
+    myFixture.configureByText("Main.java", """
+      import io.helidon.extensions.langchain4j.Ai;
+
+      @Ai.ChatModel("ch<caret>at")
+      interface ChatModel {
+      }
+    """.trimIndent())
+
+    assertResolvesToPropertyKey("langchain4j.models.chat.provider")
+  }
+
+  fun testAiChatModelAnnotationValueResolvesToDottedPropertiesBackedModelConfigKey() {
+    addLangChain4jStubs()
+    configureApplicationProperties("""
+      langchain4j.models.demo.Model.provider=openai
+    """.trimIndent())
+    myFixture.configureByText("Main.java", """
+      import io.helidon.extensions.langchain4j.Ai;
+
+      @Ai.ChatModel("demo.<caret>Model")
+      interface DemoModel {
+      }
+    """.trimIndent())
+
+    assertResolvesToPropertyKey("langchain4j.models.demo.Model.provider")
+  }
+
   fun testAiStreamingChatModelAnnotationValueResolvesToModelConfigKey() {
     addLangChain4jStubs()
     configureLangChain4jConfig()
@@ -1030,6 +1064,13 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
       .filterIsInstance<YAMLKeyValue>()
       .firstOrNull { getQualifiedConfigKeyName(it) == qualifiedName }
     assertNotNull("Expected config key '$qualifiedName', got ${resolvedTargetsAtCaretText()}", target)
+  }
+
+  private fun assertResolvesToPropertyKey(key: String) {
+    val target = resolveTargetsAtCaret()
+      .filterIsInstance<PropertyImpl>()
+      .firstOrNull { it.key == key }
+    assertNotNull("Expected property key '$key', got ${resolvedTargetsAtCaretText()}", target)
   }
 
   private fun assertResolvesToConfigValue(value: String) {

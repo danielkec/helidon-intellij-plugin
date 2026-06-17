@@ -948,6 +948,27 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
     assertTrue(configOnly.nodes.none { it.kind == HelidonServicesNodeKind.LANGCHAIN4J_COMPONENT })
   }
 
+  fun testCollectsPropertiesLangChain4jConfigByLogicalRuntimeEntry() {
+    myFixture.configureByText("application.properties", """
+      langchain4j.models.chat.provider=openai
+      langchain4j.models.chat.temperature=0.2
+      langchain4j.models.demo.Model.provider=openai
+    """.trimIndent())
+
+    val snapshot = HelidonServicesModel.collect(
+      project,
+      HelidonServicesFilter(kind = HelidonServicesNodeKind.LANGCHAIN4J_CONFIG),
+    )
+    val modelNodes = snapshot.nodes.filter {
+      it.kind == HelidonServicesNodeKind.LANGCHAIN4J_CONFIG &&
+        it.details == "langchain4j.models"
+    }
+
+    assertEquals(1, modelNodes.count { it.name == "chat" })
+    assertTrue(modelNodes.any { it.name == "demo.Model" })
+    assertFalse(modelNodes.any { it.name == "demo" })
+  }
+
   fun testGroupsLangChain4jConfigBySectionInTreeModel() {
     val root = DefaultMutableTreeNode("Helidon Services")
     val nodes = listOf(

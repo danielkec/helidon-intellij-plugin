@@ -73,17 +73,22 @@ internal class HelidonConfigMetadataBuilder(modulesMetadata: List<ModuleMetadata
                                 prefix: String,
                                 processor: Processor<MetaConfigKey>,
                                 module: Module,
-                                processedConfigTypes: MutableSet<ConfigType>): List<HelidonMetaConfigKey> {
-    if (!processedConfigTypes.add(configType)) return emptyList()
+                                visitingConfigTypes: MutableSet<String>): List<HelidonMetaConfigKey> {
+    if (!visitingConfigTypes.add(configType.type)) return emptyList()
 
-    val keys = mutableListOf<HelidonMetaConfigKey>()
-    for (configOption in configType.options) {
-      keys += processConfigOption(configOption, prefix, configType, processor, module, processedConfigTypes)
+    try {
+      val keys = mutableListOf<HelidonMetaConfigKey>()
+      for (configOption in configType.options) {
+        keys += processConfigOption(configOption, prefix, configType, processor, module, visitingConfigTypes)
+      }
+      getInheritedConfigTypes(configType).forEach {
+        keys += processConfigType(it, prefix, processor, module, visitingConfigTypes)
+      }
+      return keys
     }
-    getInheritedConfigTypes(configType).forEach {
-      keys += processConfigType(it, prefix, processor, module, processedConfigTypes)
+    finally {
+      visitingConfigTypes.remove(configType.type)
     }
-    return keys
   }
 
   private fun getInheritedConfigTypes(configType: ConfigType): List<ConfigType> = configType.inherits.mapNotNull { myConfigTypes[it] }
@@ -93,17 +98,17 @@ internal class HelidonConfigMetadataBuilder(modulesMetadata: List<ModuleMetadata
                                   configType: ConfigType,
                                   processor: Processor<MetaConfigKey>,
                                   module: Module,
-                                  processedConfigTypes: MutableSet<ConfigType>): List<HelidonMetaConfigKey> {
+                                  visitingConfigTypes: MutableSet<String>): List<HelidonMetaConfigKey> {
     val (psiType, accessType) = parsePsiTypeAndAccessType(configOption, project) ?: return emptyList()
 
     val keys = mutableListOf<HelidonMetaConfigKey>()
 
     if (isLeafConfigOption(psiType, configOption, configType.resolveScope)) {
-      keys += processPrimitiveConfigOption(configOption, prefix, psiType, accessType, configType, processor, module, processedConfigTypes)
+      keys += processPrimitiveConfigOption(configOption, prefix, psiType, accessType, configType, processor, module, visitingConfigTypes)
     }
     else {
       myConfigTypes[configOption.type]?.let { nestedConfigType ->
-        keys += processConfigType(nestedConfigType, concatPrefixAndKey(prefix, configOption.key), processor, module, processedConfigTypes)
+        keys += processConfigType(nestedConfigType, concatPrefixAndKey(prefix, configOption.key), processor, module, visitingConfigTypes)
       }
     }
     return keys
@@ -118,7 +123,7 @@ internal class HelidonConfigMetadataBuilder(modulesMetadata: List<ModuleMetadata
                                            configType: ConfigType,
                                            processor: Processor<MetaConfigKey>,
                                            module: Module,
-                                           processedConfigTypes: MutableSet<ConfigType>): List<HelidonMetaConfigKey> {
+                                           visitingConfigTypes: MutableSet<String>): List<HelidonMetaConfigKey> {
     val configOptionKey = concatPrefixAndKey(prefix, configOption.key)
 
     val (optionDeclaration, resolveResult) = parseDeclaration(configOption.method,
@@ -133,7 +138,7 @@ internal class HelidonConfigMetadataBuilder(modulesMetadata: List<ModuleMetadata
     val subKeys: List<HelidonMetaConfigKey> = if (accessType == MetaConfigKey.AccessType.INDEXED ||
                                                   accessType == MetaConfigKey.AccessType.MAP) {
       myConfigTypes[configOption.type]?.let {
-        processConfigType(it, "", EVERYTHING_PROCESSOR, module, processedConfigTypes.toMutableSet())
+        processConfigType(it, "", EVERYTHING_PROCESSOR, module, visitingConfigTypes.toMutableSet())
       } ?: emptyList()
     }
     else {

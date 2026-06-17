@@ -34,4 +34,51 @@ class HelidonConfigMetadataBuilderTest : HelidonHighlightingTestCase() {
 
     assertContainsElements(keys.map { it.name }, "server.host")
   }
+
+  fun testCollectsSharedNestedValueTypeUnderSiblingPrefixesAndGuardsCycles() {
+    myFixture.addClass("""
+      package example;
+
+      public class RootConfig {
+      }
+    """.trimIndent())
+    myFixture.addClass("""
+      package example;
+
+      public class SharedConfig {
+      }
+    """.trimIndent())
+    val metadataFile = myFixture.configureByText("config-metadata.json", """
+      [{
+        "module": "test",
+        "types": [{
+          "type": "example.RootConfig",
+          "standalone": true,
+          "prefix": "server",
+          "options": [{
+            "key": "primary",
+            "type": "example.SharedConfig"
+          }, {
+            "key": "secondary",
+            "type": "example.SharedConfig"
+          }]
+        }, {
+          "type": "example.SharedConfig",
+          "options": [{
+            "key": "endpoint"
+          }, {
+            "key": "cycle",
+            "type": "example.RootConfig"
+          }]
+        }]
+      }]
+    """.trimIndent())
+
+    val moduleMetadata = HelidonConfigMetadataParser().parse(metadataFile)
+    assertNotNull(moduleMetadata)
+
+    val keys = HelidonConfigMetadataBuilder(listOf(moduleMetadata!!), project).collectKeys(module)
+
+    assertEquals(listOf("server.primary.endpoint", "server.secondary.endpoint"), keys.map { it.name })
+  }
 }

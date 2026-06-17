@@ -953,6 +953,15 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
       langchain4j.models.chat.provider=openai
       langchain4j.models.chat.temperature=0.2
       langchain4j.models.demo.Model.provider=openai
+      langchain4j.models.test-moderation-model.provider=openai
+      langchain4j.models.test-moderation-model.proxy.type=HTTP
+      langchain4j.models.test-moderation-model.proxy.host=localhost
+      langchain4j.providers.open-ai.api-key=api-key
+      langchain4j.providers.open-ai.logit-bias.key1=1
+      langchain4j.providers.open-ai.custom-headers.header1=value1
+      langchain4j.mcp-clients.filesystem.uri=http://localhost:9999/mcp
+      langchain4j.mcp-clients.filesystem.tls.trust-all=true
+      langchain4j.mcp-clients.filesystem.headers.authorization=Bearer token
     """.trimIndent())
 
     val snapshot = HelidonServicesModel.collect(
@@ -966,7 +975,25 @@ class HelidonServicesModelTest : HelidonHighlightingTestCase() {
 
     assertEquals(1, modelNodes.count { it.name == "chat" })
     assertTrue(modelNodes.any { it.name == "demo.Model" })
+    assertEquals(1, modelNodes.count { it.name == "test-moderation-model" })
     assertFalse(modelNodes.any { it.name == "demo" })
+    assertFalse(modelNodes.any { it.name == "test-moderation-model.proxy" })
+
+    val providerNodes = snapshot.nodes.filter {
+      it.kind == HelidonServicesNodeKind.LANGCHAIN4J_CONFIG &&
+        it.details == "langchain4j.providers"
+    }
+    assertEquals(1, providerNodes.count { it.name == "open-ai" })
+    assertFalse(providerNodes.any { it.name == "open-ai.logit-bias" })
+    assertFalse(providerNodes.any { it.name == "open-ai.custom-headers" })
+
+    val mcpNodes = snapshot.nodes.filter {
+      it.kind == HelidonServicesNodeKind.LANGCHAIN4J_CONFIG &&
+        it.details == "langchain4j.mcp-clients"
+    }
+    assertEquals(1, mcpNodes.count { it.name == "filesystem" })
+    assertFalse(mcpNodes.any { it.name == "filesystem.tls" })
+    assertFalse(mcpNodes.any { it.name == "filesystem.headers" })
   }
 
   fun testGroupsLangChain4jConfigBySectionInTreeModel() {

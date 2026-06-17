@@ -91,6 +91,12 @@ internal object HelidonLangChain4jConfigResolver {
     MCP_CLIENTS,
   )
 
+  private val PROPERTIES_NESTED_CONFIG_KEYS: Map<String, Set<String>> = mapOf(
+    MODELS to setOf("custom-headers", "logit-bias", "proxy"),
+    PROVIDERS to setOf("custom-headers", "logit-bias", "proxy"),
+    MCP_CLIENTS to setOf("headers", "tls"),
+  )
+
   private val VALUE_CONFIG_TARGETS: Map<String, String> = mapOf(
     "provider" to PROVIDERS,
     "chat-model" to MODELS,
@@ -582,9 +588,32 @@ internal object HelidonLangChain4jConfigResolver {
     if (!key.startsWith(prefix)) return null
     val entryPath = key.removePrefix(prefix)
     if (entryPath.isBlank()) return null
+    val nestedDelimiter = propertiesNestedConfigDelimiter(entryPath, section)
     val leafDelimiter = entryPath.lastIndexOf('.')
-    val runtimeKey = if (leafDelimiter == -1) entryPath else entryPath.substring(0, leafDelimiter)
+    val runtimeKeyDelimiter = nestedDelimiter ?: leafDelimiter
+    val runtimeKey = if (runtimeKeyDelimiter == -1) entryPath else entryPath.substring(0, runtimeKeyDelimiter)
     return runtimeKey.takeIf { it.isNotBlank() }
+  }
+
+  private fun propertiesConfigEntryOptionPath(key: String, section: String): String? {
+    val prefix = "$ROOT.$section."
+    if (!key.startsWith(prefix)) return null
+    val entryPath = key.removePrefix(prefix)
+    val runtimeKey = propertiesConfigEntryKey(key, section) ?: return null
+    if (entryPath == runtimeKey) return null
+    return entryPath.removePrefix("$runtimeKey.").takeIf { it.isNotBlank() }
+  }
+
+  private fun propertiesNestedConfigDelimiter(entryPath: String, section: String): Int? {
+    val nestedKeys = PROPERTIES_NESTED_CONFIG_KEYS[section] ?: return null
+    var delimiter = entryPath.indexOf('.')
+    while (delimiter != -1) {
+      val optionPath = entryPath.substring(delimiter + 1)
+      val optionRoot = optionPath.substringBefore('.')
+      if (optionRoot in nestedKeys && optionPath.contains('.')) return delimiter
+      delimiter = entryPath.indexOf('.', delimiter + 1)
+    }
+    return null
   }
 
   private fun findYamlSectionEntryKey(file: YAMLFile?, section: String, key: String): YAMLKeyValue? {
@@ -631,6 +660,9 @@ internal object HelidonLangChain4jConfigResolver {
         return@processConfigFiles findYamlMcpClientSectionFallback(psiFile, value)?.let(::listOf) ?: emptyList()
       }
       if (!mcpClientSectionFallbackAllowed(psiFile, value)) return@processConfigFiles emptyList()
+      if (psiFile is PropertiesFile) {
+        return@processConfigFiles findPropertiesSectionEntryKey(psiFile, MCP_CLIENTS, value)?.let(::listOf) ?: emptyList()
+      }
       contributor.findKey(psiFile, "$ROOT.$MCP_CLIENTS.$value")?.let(::listOf) ?: emptyList()
     }
   }
@@ -738,7 +770,7 @@ internal object HelidonLangChain4jConfigResolver {
       val propertyImpl = property.psiElement as? PropertyImpl ?: return@mapNotNull null
       val key = propertyImpl.key ?: return@mapNotNull null
       if (key.startsWith("$ROOT.$MCP_CLIENTS.") &&
-          key.endsWith(".key") &&
+          propertiesConfigEntryOptionPath(key, MCP_CLIENTS) == "key" &&
           propertyImpl.value == value) {
         HelidonPropertiesUtils.getPropertyValue(propertyImpl) ?: propertyImpl
       }

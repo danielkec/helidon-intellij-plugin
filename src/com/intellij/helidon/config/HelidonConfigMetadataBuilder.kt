@@ -45,13 +45,13 @@ internal class HelidonConfigMetadataBuilder(modulesMetadata: List<ModuleMetadata
 
   internal fun collectKeys(module: Module): List<MetaConfigKey> {
     val metaKeys = mutableListOf<MetaConfigKey>()
-    processMetadata(Processors.cancelableCollectProcessor(metaKeys), module)
+    processMetadata(deduplicatingProcessor(Processors.cancelableCollectProcessor(metaKeys)), module)
     return metaKeys
   }
 
   internal fun collectKeys(module: Module, forcedRoots: List<ForcedConfigRoot>): List<MetaConfigKey> {
     val metaKeys = mutableListOf<MetaConfigKey>()
-    val processor = Processors.cancelableCollectProcessor(metaKeys)
+    val processor = deduplicatingProcessor(Processors.cancelableCollectProcessor(metaKeys))
     for (forcedRoot in forcedRoots) {
       val configTypes = forcedRoot.rootType
         ?.let { myConfigTypes[it]?.let(::listOf) ?: emptyList() }
@@ -73,37 +73,57 @@ internal class HelidonConfigMetadataBuilder(modulesMetadata: List<ModuleMetadata
                                 prefix: String,
                                 processor: Processor<MetaConfigKey>,
                                 module: Module,
-                                processedConfigTypes: MutableSet<ConfigType>): List<HelidonMetaConfigKey> {
-    if (!processedConfigTypes.add(configType)) return emptyList()
+                                visitingConfigTypes: MutableSet<String>): List<HelidonMetaConfigKey> {
+    if (!visitingConfigTypes.add(configType.type)) return emptyList()
 
-    val keys = mutableListOf<HelidonMetaConfigKey>()
-    for (configOption in configType.options) {
-      keys += processConfigOption(configOption, prefix, configType, processor, module, processedConfigTypes)
+    try {
+      val keys = mutableListOf<HelidonMetaConfigKey>()
+      for (configOption in configType.options) {
+        keys += processConfigOption(configOption, prefix, configType, processor, module, visitingConfigTypes)
+      }
+      getInheritedConfigTypes(configType).forEach {
+        keys += processConfigType(it, prefix, processor, module, visitingConfigTypes)
+      }
+      return deduplicateKeys(keys)
     }
-    getInheritedConfigTypes(configType).forEach {
-      keys += processConfigType(it, prefix, processor, module, processedConfigTypes)
+    finally {
+      visitingConfigTypes.remove(configType.type)
     }
-    return keys
   }
 
   private fun getInheritedConfigTypes(configType: ConfigType): List<ConfigType> = configType.inherits.mapNotNull { myConfigTypes[it] }
+
+  private fun deduplicateKeys(keys: List<HelidonMetaConfigKey>): List<HelidonMetaConfigKey> {
+    val result = LinkedHashMap<String, HelidonMetaConfigKey>()
+    for (key in keys) {
+      result.putIfAbsent(key.name, key)
+    }
+    return result.values.toList()
+  }
+
+  private fun deduplicatingProcessor(processor: Processor<MetaConfigKey>): Processor<MetaConfigKey> {
+    val processedNames = HashSet<String>()
+    return Processor { metaKey ->
+      if (!processedNames.add(metaKey.name)) true else processor.process(metaKey)
+    }
+  }
 
   private fun processConfigOption(configOption: ConfigOption,
                                   prefix: String,
                                   configType: ConfigType,
                                   processor: Processor<MetaConfigKey>,
                                   module: Module,
-                                  processedConfigTypes: MutableSet<ConfigType>): List<HelidonMetaConfigKey> {
+                                  visitingConfigTypes: MutableSet<String>): List<HelidonMetaConfigKey> {
     val (psiType, accessType) = parsePsiTypeAndAccessType(configOption, project) ?: return emptyList()
 
     val keys = mutableListOf<HelidonMetaConfigKey>()
 
     if (isLeafConfigOption(psiType, configOption, configType.resolveScope)) {
-      keys += processPrimitiveConfigOption(configOption, prefix, psiType, accessType, configType, processor, module, processedConfigTypes)
+      keys += processPrimitiveConfigOption(configOption, prefix, psiType, accessType, configType, processor, module, visitingConfigTypes)
     }
     else {
       myConfigTypes[configOption.type]?.let { nestedConfigType ->
-        keys += processConfigType(nestedConfigType, concatPrefixAndKey(prefix, configOption.key), processor, module, processedConfigTypes)
+        keys += processConfigType(nestedConfigType, concatPrefixAndKey(prefix, configOption.key), processor, module, visitingConfigTypes)
       }
     }
     return keys
@@ -118,7 +138,7 @@ internal class HelidonConfigMetadataBuilder(modulesMetadata: List<ModuleMetadata
                                            configType: ConfigType,
                                            processor: Processor<MetaConfigKey>,
                                            module: Module,
-                                           processedConfigTypes: MutableSet<ConfigType>): List<HelidonMetaConfigKey> {
+                                           visitingConfigTypes: MutableSet<String>): List<HelidonMetaConfigKey> {
     val configOptionKey = concatPrefixAndKey(prefix, configOption.key)
 
     val (optionDeclaration, resolveResult) = parseDeclaration(configOption.method,
@@ -133,7 +153,7 @@ internal class HelidonConfigMetadataBuilder(modulesMetadata: List<ModuleMetadata
     val subKeys: List<HelidonMetaConfigKey> = if (accessType == MetaConfigKey.AccessType.INDEXED ||
                                                   accessType == MetaConfigKey.AccessType.MAP) {
       myConfigTypes[configOption.type]?.let {
-        processConfigType(it, "", EVERYTHING_PROCESSOR, module, processedConfigTypes.toMutableSet())
+        processConfigType(it, "", EVERYTHING_PROCESSOR, module, visitingConfigTypes.toMutableSet())
       } ?: emptyList()
     }
     else {

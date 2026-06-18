@@ -81,4 +81,150 @@ class HelidonConfigMetadataBuilderTest : HelidonHighlightingTestCase() {
 
     assertEquals(listOf("server.primary.endpoint", "server.secondary.endpoint"), keys.map { it.name })
   }
+
+  fun testDeduplicatesSharedInheritedConfigTypeUnderSamePrefix() {
+    addClasses("RootConfig", "LeftConfig", "RightConfig", "SharedConfig")
+    val metadataFile = myFixture.configureByText("config-metadata.json", """
+      [{
+        "module": "test",
+        "types": [{
+          "type": "example.RootConfig",
+          "standalone": true,
+          "prefix": "server",
+          "inherits": [
+            "example.LeftConfig",
+            "example.RightConfig"
+          ]
+        }, {
+          "type": "example.LeftConfig",
+          "inherits": [
+            "example.SharedConfig"
+          ]
+        }, {
+          "type": "example.RightConfig",
+          "inherits": [
+            "example.SharedConfig"
+          ]
+        }, {
+          "type": "example.SharedConfig",
+          "options": [{
+            "key": "endpoint"
+          }]
+        }]
+      }]
+    """.trimIndent())
+
+    val moduleMetadata = HelidonConfigMetadataParser().parse(metadataFile)
+    assertNotNull(moduleMetadata)
+
+    val keys = HelidonConfigMetadataBuilder(listOf(moduleMetadata!!), project).collectKeys(module)
+
+    assertEquals(listOf("server.endpoint"), keys.map { it.name })
+  }
+
+  fun testDeduplicatesSharedInheritedConfigTypeUnderSameForcedPrefix() {
+    addClasses("RootConfig", "LeftConfig", "RightConfig", "SharedConfig")
+    val metadataFile = myFixture.configureByText("config-metadata.json", """
+      [{
+        "module": "test",
+        "types": [{
+          "type": "example.RootConfig",
+          "inherits": [
+            "example.LeftConfig",
+            "example.RightConfig"
+          ]
+        }, {
+          "type": "example.LeftConfig",
+          "inherits": [
+            "example.SharedConfig"
+          ]
+        }, {
+          "type": "example.RightConfig",
+          "inherits": [
+            "example.SharedConfig"
+          ]
+        }, {
+          "type": "example.SharedConfig",
+          "options": [{
+            "key": "endpoint"
+          }]
+        }]
+      }]
+    """.trimIndent())
+
+    val moduleMetadata = HelidonConfigMetadataParser().parse(metadataFile)
+    assertNotNull(moduleMetadata)
+
+    val keys = HelidonConfigMetadataBuilder(listOf(moduleMetadata!!), project)
+      .collectKeys(module, listOf(ForcedConfigRoot(moduleMetadata, "forced", "example.RootConfig")))
+
+    assertEquals(listOf("forced.endpoint"), keys.map { it.name })
+  }
+
+  fun testDeduplicatesSharedInheritedConfigTypeInMapSubKeys() {
+    assertDeduplicatesSharedInheritedConfigTypeInCollectionSubKeys("MAP")
+  }
+
+  fun testDeduplicatesSharedInheritedConfigTypeInListSubKeys() {
+    assertDeduplicatesSharedInheritedConfigTypeInCollectionSubKeys("LIST")
+  }
+
+  private fun assertDeduplicatesSharedInheritedConfigTypeInCollectionSubKeys(kind: String) {
+    addClasses("RootConfig", "ContainerConfig", "LeftConfig", "RightConfig", "SharedConfig")
+    val metadataFile = myFixture.configureByText("config-metadata.json", """
+      [{
+        "module": "test",
+        "types": [{
+          "type": "example.RootConfig",
+          "standalone": true,
+          "prefix": "server",
+          "options": [{
+            "key": "items",
+            "kind": "$kind",
+            "type": "example.ContainerConfig"
+          }]
+        }, {
+          "type": "example.ContainerConfig",
+          "inherits": [
+            "example.LeftConfig",
+            "example.RightConfig"
+          ]
+        }, {
+          "type": "example.LeftConfig",
+          "inherits": [
+            "example.SharedConfig"
+          ]
+        }, {
+          "type": "example.RightConfig",
+          "inherits": [
+            "example.SharedConfig"
+          ]
+        }, {
+          "type": "example.SharedConfig",
+          "options": [{
+            "key": "endpoint"
+          }]
+        }]
+      }]
+    """.trimIndent())
+
+    val moduleMetadata = HelidonConfigMetadataParser().parse(metadataFile)
+    assertNotNull(moduleMetadata)
+
+    val keys = HelidonConfigMetadataBuilder(listOf(moduleMetadata!!), project).collectKeys(module)
+
+    val key = assertInstanceOf(keys.single(), HelidonMetaConfigKey::class.java)
+    assertEquals(listOf("endpoint"), key.subKeys.map { it.name })
+  }
+
+  private fun addClasses(vararg classNames: String) {
+    for (className in classNames) {
+      myFixture.addClass("""
+        package example;
+
+        public class $className {
+        }
+      """.trimIndent())
+    }
+  }
 }

@@ -45,13 +45,13 @@ internal class HelidonConfigMetadataBuilder(modulesMetadata: List<ModuleMetadata
 
   internal fun collectKeys(module: Module): List<MetaConfigKey> {
     val metaKeys = mutableListOf<MetaConfigKey>()
-    processMetadata(Processors.cancelableCollectProcessor(metaKeys), module)
+    processMetadata(deduplicatingProcessor(Processors.cancelableCollectProcessor(metaKeys)), module)
     return metaKeys
   }
 
   internal fun collectKeys(module: Module, forcedRoots: List<ForcedConfigRoot>): List<MetaConfigKey> {
     val metaKeys = mutableListOf<MetaConfigKey>()
-    val processor = Processors.cancelableCollectProcessor(metaKeys)
+    val processor = deduplicatingProcessor(Processors.cancelableCollectProcessor(metaKeys))
     for (forcedRoot in forcedRoots) {
       val configTypes = forcedRoot.rootType
         ?.let { myConfigTypes[it]?.let(::listOf) ?: emptyList() }
@@ -84,7 +84,7 @@ internal class HelidonConfigMetadataBuilder(modulesMetadata: List<ModuleMetadata
       getInheritedConfigTypes(configType).forEach {
         keys += processConfigType(it, prefix, processor, module, visitingConfigTypes)
       }
-      return keys
+      return deduplicateKeys(keys)
     }
     finally {
       visitingConfigTypes.remove(configType.type)
@@ -92,6 +92,21 @@ internal class HelidonConfigMetadataBuilder(modulesMetadata: List<ModuleMetadata
   }
 
   private fun getInheritedConfigTypes(configType: ConfigType): List<ConfigType> = configType.inherits.mapNotNull { myConfigTypes[it] }
+
+  private fun deduplicateKeys(keys: List<HelidonMetaConfigKey>): List<HelidonMetaConfigKey> {
+    val result = LinkedHashMap<String, HelidonMetaConfigKey>()
+    for (key in keys) {
+      result.putIfAbsent(key.name, key)
+    }
+    return result.values.toList()
+  }
+
+  private fun deduplicatingProcessor(processor: Processor<MetaConfigKey>): Processor<MetaConfigKey> {
+    val processedNames = HashSet<String>()
+    return Processor { metaKey ->
+      if (!processedNames.add(metaKey.name)) true else processor.process(metaKey)
+    }
+  }
 
   private fun processConfigOption(configOption: ConfigOption,
                                   prefix: String,

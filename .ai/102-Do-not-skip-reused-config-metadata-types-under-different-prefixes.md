@@ -27,3 +27,15 @@ safe reuse across siblings while still stopping recursive type cycles.
 - Passed: `git diff --check`
 - Passed: `GRADLE_USER_HOME=$PWD/.gradle-home XDG_DATA_HOME=$PWD/.xdg-data TMPDIR=$PWD/.gradle-tmp JAVA_TOOL_OPTIONS=-Djava.io.tmpdir=$PWD/.gradle-tmp ./gradlew test --tests com.intellij.helidon.config.HelidonConfigMetadataBuilderTest --no-daemon --no-configuration-cache`
 - Note: this repo has no `etc/scripts/copyright.sh` or `etc/scripts/checkstyle.sh`.
+
+## PR #115 Review Follow-up
+
+- Addressed the duplicate-key review thread by deduplicating emitted metadata keys by name while keeping the
+  path-local visiting guard for cycle protection.
+- Added coverage for diamond inheritance under the same generated prefix, forced-root collection, and map/list
+  subkeys.
+
+## Follow-up Validation
+
+- Passed: `git diff --check`
+- Passed: `GRADLE_USER_HOME=$PWD/.gradle-user-home XDG_DATA_HOME=$PWD/.xdg-data TMPDIR=$PWD/.gradle-tmp JAVA_TOOL_OPTIONS=-Djava.io.tmpdir=$PWD/.gradle-tmp ./gradlew test --tests com.intellij.helidon.config.HelidonConfigMetadataBuilderTest --no-daemon --no-configuration-cache`

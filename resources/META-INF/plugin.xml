@@ -10,6 +10,7 @@
     <p>Features:</p>
     <ul>
       <li>Create Helidon Maven projects from the IDE.</li>
+      <li>Run and debug Helidon applications with a dedicated Helidon configuration type.</li>
       <li>Create Java Helidon declarative HTTP services, server tests, LangChain4j components, and OCI configuration
         from Helidon file templates.</li>
       <li>Inspect Helidon services, contracts, injection points, lookups, endpoints, and LangChain4j components in the
@@ -101,6 +102,8 @@
     <internalFileTemplate name="Helidon LangChain4j Agent"/>
     <internalFileTemplate name="oci-config"/>
 
+    <configurationType implementation="com.intellij.helidon.run.HelidonRunConfigurationType"/>
+    <runConfigurationProducer implementation="com.intellij.helidon.run.HelidonRunConfigurationProducer"/>
     <runConfigurationProducer implementation="com.intellij.helidon.testing.HelidonMavenTestRunConfigurationProducer"/>
 
     <dependencySupport coordinate="io.helidon.config:helidon-config" kind="java" displayName="Helidon"/>

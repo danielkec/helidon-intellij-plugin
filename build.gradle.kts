@@ -65,9 +65,11 @@ intellijPlatform {
 
     changeNotes = """
       <ul>
-        <li>Fixed Helidon Services tool window startup so it remains registered while project libraries are still being imported.</li>
-        <li>Enhanced the Declarative HTTP Service template with an editable endpoint path and generated GET, POST, PUT, and DELETE greeting handlers.</li>
-        <li>Registered Helidon built-in templates in the plugin descriptor so New menu actions resolve the bundled service, test, LangChain4j, and OCI templates reliably.</li>
+        <li>Enabled open-ended IntelliJ compatibility from the 2026.1 line onward and added verifier coverage for the 2026.2 EAP line.</li>
+        <li>Reduced Helidon Services refresh work by reacting only to relevant project files, config keys, annotations, and route path inputs.</li>
+        <li>Improved LangChain4j properties support so Services entries and <code>@Ai</code> annotation navigation resolve logical runtime entries, dotted ids, and MCP clients consistently.</li>
+        <li>Fixed the LangChain4j Agent file template to import the correct Helidon <code>Ai</code> annotation package.</li>
+        <li>Improved config metadata handling for resource-root config file detection, unsaved <code>config-metadata.json</code> edits, reused metadata types, and duplicate metadata keys.</li>
       </ul>
     """.trimIndent()
   }

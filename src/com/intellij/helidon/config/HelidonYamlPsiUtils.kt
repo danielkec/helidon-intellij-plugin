@@ -17,7 +17,7 @@ internal fun getPreviousYamlMappingKeyValue(element: PsiElement, offset: Int): Y
   val safeOffset = offset.coerceIn(0, text.length)
   if (safeOffset == 0) return null
 
-  var line = document.getLineNumber(safeOffset - 1) - 1
+  var line = document.getLineNumber(safeOffset) - 1
   while (line >= 0) {
     val lineStart = document.getLineStartOffset(line)
     val lineEnd = document.getLineEndOffset(line)

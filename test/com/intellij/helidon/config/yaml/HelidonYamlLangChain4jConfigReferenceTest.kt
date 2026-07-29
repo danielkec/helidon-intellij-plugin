@@ -2,6 +2,7 @@
 package com.intellij.helidon.config.yaml
 
 import com.intellij.codeInsight.daemon.RelatedItemLineMarkerInfo
+import com.intellij.codeInsight.navigation.actions.GotoDeclarationAction
 import com.intellij.helidon.HelidonIcons
 import com.intellij.helidon.HelidonHighlightingTestCase
 import com.intellij.helidon.config.HELIDON_APPLICATION_YAML
@@ -636,6 +637,25 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     assertResolvesToConfigKey("langchain4j.services.assistant-service")
   }
 
+  fun testAiServiceAnnotationConstantValueResolvesToServiceConfigKey() {
+    addLangChain4jStubs()
+    configureLangChain4jConfig()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.integrations.langchain4j.Ai;
+
+      final class ServiceNames {
+        static final String ASSISTANT = "assistant-service";
+      }
+
+      @Ai.Service(value = ServiceNames.ASS<caret>ISTANT)
+      interface AssistantService {
+      }
+    """.trimIndent())
+
+    assertGotoDeclarationTargetsNamedElementAndConfigKey("ASSISTANT",
+                                                          "langchain4j.services.assistant-service")
+  }
+
   fun testAiAgentAnnotationValueResolvesToAgentConfigKey() {
     addLangChain4jStubs()
     configureLangChain4jConfig()
@@ -670,8 +690,8 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     myFixture.configureByText("Main.java", """
       import io.helidon.extensions.langchain4j.Ai;
 
-      interface ModelNames {
-        String EXPENSIVE = "expensive-model";
+      final class ModelNames {
+        static final String EXPENSIVE = "expensive-model";
       }
 
       @Ai.ChatModel(ModelNames.EXPENS<caret>IVE)
@@ -679,7 +699,8 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
       }
     """.trimIndent())
 
-    assertResolvesToConfigKey("langchain4j.models.expensive-model")
+    assertGotoDeclarationTargetsNamedElementAndConfigKey("EXPENSIVE",
+                                                          "langchain4j.models.expensive-model")
   }
 
   fun testAiChatModelAnnotationConstantExpressionResolvesToModelConfigKey() {
@@ -688,9 +709,9 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     myFixture.configureByText("Main.java", """
       import io.helidon.extensions.langchain4j.Ai;
 
-      interface ModelNames {
-        String PREFIX = "expensive-";
-        String NAME = "model";
+      final class ModelNames {
+        static final String PREFIX = "expensive-";
+        static final String NAME = "model";
       }
 
       @Ai.ChatModel(ModelNames.PRE<caret>FIX + ModelNames.NAME)
@@ -698,7 +719,68 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
       }
     """.trimIndent())
 
-    assertResolvesToConfigKey("langchain4j.models.expensive-model")
+    assertGotoDeclarationTargetsNamedElementAndConfigKey("PREFIX",
+                                                          "langchain4j.models.expensive-model")
+  }
+
+  fun testAiChatModelAnnotationConstantExpressionSecondOperandResolvesToModelConfigKey() {
+    addLangChain4jStubs()
+    configureLangChain4jConfig()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.extensions.langchain4j.Ai;
+
+      final class ModelNames {
+        static final String PREFIX = "expensive-";
+        static final String NAME = "model";
+      }
+
+      @Ai.ChatModel(ModelNames.PREFIX + ModelNames.NA<caret>ME)
+      interface HelidonSeExpert {
+      }
+    """.trimIndent())
+
+    assertGotoDeclarationTargetsNamedElementAndConfigKey("NAME",
+                                                          "langchain4j.models.expensive-model")
+  }
+
+  fun testUnsupportedAnnotationConstantKeepsJavaNavigationOnly() {
+    addLangChain4jStubs()
+    configureLangChain4jConfig()
+    myFixture.configureByText("Main.java", """
+      @interface Alias {
+        String value();
+      }
+
+      final class ModelNames {
+        static final String EXPENSIVE = "expensive-model";
+      }
+
+      @Alias(ModelNames.EXPENS<caret>IVE)
+      interface HelidonSeExpert {
+      }
+    """.trimIndent())
+
+    assertGotoDeclarationTargetsNamedElementWithoutConfigKey("EXPENSIVE",
+                                                              "langchain4j.models.expensive-model")
+  }
+
+  fun testAiChatModelAnnotationNonConstantValueKeepsJavaNavigationOnly() {
+    addLangChain4jStubs()
+    configureLangChain4jConfig()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.extensions.langchain4j.Ai;
+
+      final class ModelNames {
+        static String EXPENSIVE = "expensive-model";
+      }
+
+      @Ai.ChatModel(ModelNames.EXPENS<caret>IVE)
+      interface HelidonSeExpert {
+      }
+    """.trimIndent())
+
+    assertGotoDeclarationTargetsNamedElementWithoutConfigKey("EXPENSIVE",
+                                                              "langchain4j.models.expensive-model")
   }
 
   fun testAiChatModelAnnotationValueResolvesToDottedModelConfigKey() {
@@ -735,6 +817,28 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     """.trimIndent())
 
     assertResolvesToPropertyKey("langchain4j.models.chat.provider")
+  }
+
+  fun testAiChatModelAnnotationConstantValueResolvesToPropertiesBackedModelConfigKey() {
+    addLangChain4jStubs()
+    configureApplicationProperties("""
+      langchain4j.models.expensive-model.temperature=0.2
+      langchain4j.models.expensive-model.provider=openai
+    """.trimIndent())
+    myFixture.configureByText("Main.java", """
+      import io.helidon.extensions.langchain4j.Ai;
+
+      final class ModelNames {
+        static final String EXPENSIVE = "expensive-model";
+      }
+
+      @Ai.ChatModel(ModelNames.EXPENS<caret>IVE)
+      interface ChatModel {
+      }
+    """.trimIndent())
+
+    assertGotoDeclarationTargetsNamedElementAndPropertyKey("EXPENSIVE",
+                                                            "langchain4j.models.expensive-model.provider")
   }
 
   fun testAiChatModelAnnotationValueResolvesToDottedPropertiesBackedModelConfigKey() {
@@ -839,6 +943,25 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     """.trimIndent())
 
     assertResolvesToConfigKey("langchain4j.mcp-clients.cli-tools")
+  }
+
+  fun testAiMcpClientsAnnotationConstantArrayValueResolvesToMcpClientConfigKey() {
+    addLangChain4jStubs()
+    configureLangChain4jConfig()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.integrations.langchain4j.Ai;
+
+      final class McpClientNames {
+        static final String CLI_TOOLS = "cli-tools";
+      }
+
+      @Ai.McpClients({McpClientNames.CLI_TO<caret>OLS, "filesystem"})
+      interface HelidonSeExpert {
+      }
+    """.trimIndent())
+
+    assertGotoDeclarationTargetsNamedElementAndConfigKey("CLI_TOOLS",
+                                                          "langchain4j.mcp-clients.cli-tools")
   }
 
   fun testAiMcpClientsAnnotationValueResolvesToMcpClientKeyValueWhenSectionNameDiffers() {
@@ -960,6 +1083,24 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     """.trimIndent())
 
     assertResolvesToConfigValue("conversation-memory")
+  }
+
+  fun testAiChatMemoryProviderAnnotationConstantValueResolvesToConfigValue() {
+    addLangChain4jStubs()
+    configureLangChain4jConfig()
+    myFixture.configureByText("Main.java", """
+      import io.helidon.extensions.langchain4j.Ai;
+
+      final class ProviderNames {
+        static final String MEMORY = "conversation-memory";
+      }
+
+      @Ai.ChatMemoryProvider(ProviderNames.MEM<caret>ORY)
+      interface HelidonSeExpert {
+      }
+    """.trimIndent())
+
+    assertGotoDeclarationTargetsNamedElementAndConfigValue("MEMORY", "conversation-memory")
   }
 
   fun testAiToolProviderAnnotationValueResolvesToConfigValue() {
@@ -1116,6 +1257,62 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
     assertNotNull("Expected config key '$qualifiedName', got ${resolvedTargetsAtCaretText()}", target)
   }
 
+  private fun assertGotoDeclarationTargetsNamedElementAndConfigKey(name: String, qualifiedName: String) {
+    val targets = gotoDeclarationTargetsAtCaret()
+    val actual = gotoDeclarationTargetsText(targets)
+    val namedTarget = targets
+      .filterIsInstance<PsiNamedElement>()
+      .firstOrNull { it.name == name }
+    val configTarget = targets
+      .filterIsInstance<YAMLKeyValue>()
+      .firstOrNull { getQualifiedConfigKeyName(it) == qualifiedName }
+
+    assertNotNull("Expected named target '$name', got $actual", namedTarget)
+    assertNotNull("Expected config key '$qualifiedName', got $actual", configTarget)
+  }
+
+  private fun assertGotoDeclarationTargetsNamedElementAndConfigValue(name: String, value: String) {
+    val targets = gotoDeclarationTargetsAtCaret()
+    val actual = gotoDeclarationTargetsText(targets)
+    val namedTarget = targets
+      .filterIsInstance<PsiNamedElement>()
+      .firstOrNull { it.name == name }
+    val configTarget = targets
+      .filterIsInstance<YAMLScalar>()
+      .firstOrNull { it.textValue == value }
+
+    assertNotNull("Expected named target '$name', got $actual", namedTarget)
+    assertNotNull("Expected config value '$value', got $actual", configTarget)
+  }
+
+  private fun assertGotoDeclarationTargetsNamedElementAndPropertyKey(name: String, key: String) {
+    val targets = gotoDeclarationTargetsAtCaret()
+    val actual = gotoDeclarationTargetsText(targets)
+    val namedTarget = targets
+      .filterIsInstance<PsiNamedElement>()
+      .firstOrNull { it.name == name }
+    val configTarget = targets
+      .filterIsInstance<PropertyImpl>()
+      .firstOrNull { it.key == key }
+
+    assertNotNull("Expected named target '$name', got $actual", namedTarget)
+    assertNotNull("Expected property key '$key', got $actual", configTarget)
+  }
+
+  private fun assertGotoDeclarationTargetsNamedElementWithoutConfigKey(name: String, qualifiedName: String) {
+    val targets = gotoDeclarationTargetsAtCaret()
+    val actual = gotoDeclarationTargetsText(targets)
+    val namedTarget = targets
+      .filterIsInstance<PsiNamedElement>()
+      .firstOrNull { it.name == name }
+    val configTarget = targets
+      .filterIsInstance<YAMLKeyValue>()
+      .firstOrNull { getQualifiedConfigKeyName(it) == qualifiedName }
+
+    assertNotNull("Expected named target '$name', got $actual", namedTarget)
+    assertNull("Did not expect config key '$qualifiedName', got $actual", configTarget)
+  }
+
   private fun assertResolvesToPropertyKey(key: String) {
     val target = resolveTargetsAtCaret()
       .filterIsInstance<PropertyImpl>()
@@ -1232,6 +1429,18 @@ class HelidonYamlLangChain4jConfigReferenceTest : HelidonHighlightingTestCase() 
       }
       .distinct()
       .toList()
+  }
+
+  private fun gotoDeclarationTargetsAtCaret(): List<PsiElement> {
+    return GotoDeclarationAction.findAllTargetElements(myFixture.project,
+                                                       myFixture.editor,
+                                                       myFixture.caretOffset)
+      .distinct()
+  }
+
+  private fun gotoDeclarationTargetsText(targets: List<PsiElement>): String {
+    if (targets.isEmpty()) return "no targets"
+    return targets.joinToString { target -> "${target.javaClass.simpleName} '${target.text}'" }
   }
 
   private fun resolvedTargetsAtCaretText(): String {

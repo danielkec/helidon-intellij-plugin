@@ -19,6 +19,8 @@
                               implementation="com.intellij.helidon.config.HelidonConfigPropertyReferenceContributor"/>
     <psi.referenceContributor language="UAST"
                               implementation="com.intellij.helidon.langchain4j.HelidonLangChain4jJavaReferenceContributor"/>
+    <gotoDeclarationHandler
+      implementation="com.intellij.helidon.langchain4j.HelidonLangChain4jGotoDeclarationHandler"/>
     <codeInsight.lineMarkerProvider language="JAVA" order="last"
                                     implementationClass="com.intellij.helidon.langchain4j.HelidonLangChain4jJavaLineMarkerProvider"/>
 

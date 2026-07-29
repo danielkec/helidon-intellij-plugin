@@ -32,6 +32,40 @@ class HelidonCeYamlKeyCompletionTest : HelidonHighlightingTestCase() {
     }
   }
 
+  fun testCompletesNestedConfigKeyAtEmptyLineStartBeforeExistingKeys() {
+    withMicroservicesPluginEnabled(false) {
+      myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+        server:
+        <caret>
+          port: 8789
+          host: 0.0.0.0
+      """.trimIndent())
+      myFixture.completeBasic()
+
+      val lookupElementStrings = myFixture.lookupElementStrings
+      assertNotNull(lookupElementStrings)
+      assertContainsElements(lookupElementStrings!!, "backlog", "name", "sockets")
+      assertDoesntContain(lookupElementStrings, "server", "server.backlog", "server.name", "server.sockets")
+    }
+  }
+
+  fun testCompletesNestedConfigKeyBeforeIndentOnBlankLineBeforeExistingKeys() {
+    withMicroservicesPluginEnabled(false) {
+      myFixture.configureByText(HELIDON_APPLICATION_YAML, """
+        server:
+        <caret>${"  "}
+          port: 8789
+          host: 0.0.0.0
+      """.trimIndent())
+      myFixture.completeBasic()
+
+      val lookupElementStrings = myFixture.lookupElementStrings
+      assertNotNull(lookupElementStrings)
+      assertContainsElements(lookupElementStrings!!, "backlog", "name", "sockets")
+      assertDoesntContain(lookupElementStrings, "server", "server.backlog", "server.name", "server.sockets")
+    }
+  }
+
   fun testCompletesRelaxedCamelCaseKeyFromMetadata() {
     withMicroservicesPluginEnabled(false) {
       myFixture.configureByText(HELIDON_APPLICATION_YAML, """

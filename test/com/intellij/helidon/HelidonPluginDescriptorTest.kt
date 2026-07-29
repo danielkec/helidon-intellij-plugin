@@ -251,6 +251,17 @@ class HelidonPluginDescriptorTest {
   }
 
   @Test
+  fun testMicroservicesDescriptorRegistersLangChain4jGotoDeclarationHandler() {
+    val document = parseDescriptor(Path.of("resources/META-INF/helidon-microservices.xml"))
+    val handlers = document.getElementsByTagName("gotoDeclarationHandler").elements()
+
+    assertTrue(handlers.any { element ->
+      element.getAttribute("implementation") ==
+        "com.intellij.helidon.langchain4j.HelidonLangChain4jGotoDeclarationHandler"
+    })
+  }
+
+  @Test
   fun testMicroservicesDescriptorDoesNotDeclareBaseExtensionPoints() {
     val document = parseDescriptor(Path.of("resources/META-INF/helidon-microservices.xml"))
     val extensionPoints = document.getElementsByTagName("extensionPoint").elements()

@@ -301,6 +301,17 @@ internal object HelidonLangChain4jConfigResolver {
     return arrayOf(reference)
   }
 
+  fun annotationValueTargets(element: PsiElement): List<PsiElement> {
+    val valueElement = annotationValueExpression(element) ?: return emptyList()
+    val annotationName = annotationName(valueElement) ?: return emptyList()
+    if (!isSupportedAnnotationReference(annotationName)) return emptyList()
+
+    val value = constantString(valueElement)?.trim() ?: return emptyList()
+    if (value.isEmpty()) return emptyList()
+
+    return annotationValueTargets(valueElement, annotationName, value)
+  }
+
   fun annotationMarkerTargets(element: PsiElement): MarkerTargets? {
     val valueElement = annotationValueExpression(element) ?: return null
     val annotationName = annotationName(valueElement) ?: return null

@@ -3,8 +3,8 @@ package com.intellij.helidon.newproject
 
 import com.intellij.execution.RunManager
 import com.intellij.execution.application.ApplicationConfiguration
-import com.intellij.execution.application.ApplicationConfigurationType
 import com.intellij.helidon.constants.HelidonConstants
+import com.intellij.helidon.run.HelidonRunConfigurationType
 import com.intellij.helidon.utils.HelidonCoreUtils
 import com.intellij.java.library.JavaLibraryUtil
 import com.intellij.openapi.application.ApplicationManager
@@ -86,7 +86,7 @@ class HelidonRunConfigurationService {
 
   private fun existingRunConfigurationKeys(project: Project): Set<RunConfigurationKey> =
     RunManager.getInstance(project)
-      .getConfigurationSettingsList(ApplicationConfigurationType::class.java)
+      .allSettings
       .asSequence()
       .map { it.configuration }
       .filterIsInstance<ApplicationConfiguration>()
@@ -146,7 +146,7 @@ class HelidonRunConfigurationService {
 
     val runManager = RunManager.getInstance(module.project)
     try {
-      val settings = runManager.createConfiguration("", ApplicationConfigurationType.getInstance().configurationFactories[0])
+      val settings = runManager.createConfiguration("", HelidonRunConfigurationType.getInstance().configurationFactories[0])
       val newRunConfig = settings.configuration as ApplicationConfiguration
       newRunConfig.setModule(module)
       newRunConfig.mainClassName = target.mainClassName

@@ -183,8 +183,9 @@ class HelidonPluginDescriptorTest {
   }
 
   @Test
-  fun testMainDescriptorRegistersHelidonTemplatesAndTestProducer() {
+  fun testMainDescriptorRegistersHelidonTemplatesAndRunConfigurations() {
     val document = parseDescriptor(Path.of("resources/META-INF/plugin.xml"))
+    val configurationTypes = document.getElementsByTagName("configurationType").elements()
     val fileTemplateGroups = document.getElementsByTagName("fileTemplateGroup").elements()
     val newMenuGroups = document.getElementsByTagName("group").elements()
     val runConfigurationProducers = document.getElementsByTagName("runConfigurationProducer").elements()
@@ -195,6 +196,14 @@ class HelidonPluginDescriptorTest {
     assertTrue(fileTemplateGroups.any { element ->
       element.getAttribute("implementation") ==
         "com.intellij.helidon.templates.HelidonFileTemplateGroupDescriptorFactory"
+    })
+    assertTrue(configurationTypes.any { element ->
+      element.getAttribute("implementation") ==
+        "com.intellij.helidon.run.HelidonRunConfigurationType"
+    })
+    assertTrue(runConfigurationProducers.any { element ->
+      element.getAttribute("implementation") ==
+        "com.intellij.helidon.run.HelidonRunConfigurationProducer"
     })
     assertTrue(runConfigurationProducers.any { element ->
       element.getAttribute("implementation") ==
@@ -296,6 +305,8 @@ class HelidonPluginDescriptorTest {
                   document.getElementsByTagName("fileTemplateGroup").elements().isNotEmpty())
       assertFalse("$path should not register base test run producers",
                   document.getElementsByTagName("runConfigurationProducer").elements().isNotEmpty())
+      assertFalse("$path should not register base run configuration types",
+                  document.getElementsByTagName("configurationType").elements().isNotEmpty())
     }
   }
 
